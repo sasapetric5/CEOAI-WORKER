@@ -7,7 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "check": "node --check ceoai-index-v4.9.js",
+    "check": "node --check ceoai-index-v4.9.mjs",
     "test": "node test-ceoai-v4.9.mjs",
     "verify": "npm run check && npm test"
   }
