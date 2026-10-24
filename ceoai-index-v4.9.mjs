@@ -656,7 +656,11 @@ export default {
           : []),
       ].filter(p => typeof p.key === "string" && p.key.trim());
 
-      const candidates = pool.filter(p => p.tier === intent || p.tier === "fast");
+      // Explicit GLM-only mode is intended for controlled provider verification.
+      // When enabled, neither normal fallback nor complex-intent routing may call another provider.
+      const candidates = env.ZAI_GLM_FLASH_ONLY === "true"
+        ? pool.filter(p => p.provider === "glm-flash")
+        : pool.filter(p => p.tier === intent || p.tier === "fast");
       if (!candidates.length) {
         return json({ success: false, error: "Nema konfigurisanog provajdera. Nije moguće poslati zahtev." }, 503, corsHeaders(origin));
       }
