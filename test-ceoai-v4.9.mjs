@@ -264,4 +264,57 @@ try {
   assert.ok(cyrillicCalls.some(url => url.includes('api.deepseek.com')), 'Cyrillic sequence should select a complex provider');
 } finally { globalThis.fetch = originalFetch8; }
 
-console.log('PASS: 26 CEOAI V4.9 smoke/security assertions');
+// 27–29: GLM Flash primary key is used through the Z.ai OpenAI-compatible endpoint.
+const originalFetchGlm = globalThis.fetch;
+const glmCalls = [];
+globalThis.fetch = async (url, options = {}) => {
+  const target = String(url);
+  if (!target.includes("api.z.ai/api/paas/v4/chat/completions")) throw new Error("Unexpected provider URL: " + target);
+  glmCalls.push({ url: target, authorization: options.headers?.Authorization, body: JSON.parse(options.body || "{}") });
+  return new Response(JSON.stringify({choices:[{message:{content:"GLM Flash radi."}}]}), {status:200, headers:{"Content-Type":"application/json"}});
+};
+try {
+  const glmEnv = makeEnv({AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true", ZAI_GLM_FLASH_KEY_1:"test-glm-key-1"});
+  const {cookie: glmCookie} = await getSession(glmEnv);
+  const glmResponse = await worker.fetch(apiRequest(glmCookie, JSON.stringify({prompt:"Zdravo"})), glmEnv);
+  assert.equal(glmResponse.status, 200);
+  assert.equal((await glmResponse.json()).reply, "GLM Flash radi.");
+  assert.equal(glmCalls.length, 1);
+  assert.equal(glmCalls[0].authorization, "Bearer test-glm-key-1");
+  assert.equal(glmCalls[0].body.model, "glm-4.5-flash");
+} finally { globalThis.fetch = originalFetchGlm; }
+
+// 30–31: a failing GLM primary key falls back to the second key without parallel requests.
+const originalFetchGlmFallback = globalThis.fetch;
+const glmFallbackCalls = [];
+globalThis.fetch = async (url, options = {}) => {
+  const target = String(url);
+  if (!target.includes("api.z.ai/api/paas/v4/chat/completions")) throw new Error("Unexpected provider URL: " + target);
+  const authorization = options.headers?.Authorization;
+  glmFallbackCalls.push(authorization);
+  if (authorization === "Bearer test-glm-key-1") return new Response(JSON.stringify({error:"rate limited"}), {status:429});
+  if (authorization === "Bearer test-glm-key-2") return new Response(JSON.stringify({choices:[{message:{content:"GLM rezervni ključ radi."}}]}), {status:200, headers:{"Content-Type":"application/json"}});
+  throw new Error("Unexpected GLM authorization header");
+};
+try {
+  const glmFallbackEnv = makeEnv({AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true", ZAI_GLM_FLASH_KEY_1:"test-glm-key-1", ZAI_GLM_FLASH_KEY_2:"test-glm-key-2"});
+  const {cookie: glmFallbackCookie} = await getSession(glmFallbackEnv);
+  const glmFallbackResponse = await worker.fetch(apiRequest(glmFallbackCookie, JSON.stringify({prompt:"Zdravo"})), glmFallbackEnv);
+  assert.equal(glmFallbackResponse.status, 200);
+  assert.equal((await glmFallbackResponse.json()).reply, "GLM rezervni ključ radi.");
+  assert.deepEqual(glmFallbackCalls, ["Bearer test-glm-key-1", "Bearer test-glm-key-2"]);
+} finally { globalThis.fetch = originalFetchGlmFallback; }
+
+// 32: provider failures do not leak the configured GLM keys in the public response.
+const originalFetchGlmError = globalThis.fetch;
+globalThis.fetch = async (_url, options = {}) => new Response(JSON.stringify({error:"invalid api key"}), {status:401});
+try {
+  const glmErrorEnv = makeEnv({AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true", ZAI_GLM_FLASH_KEY_1:"test-glm-secret", DEBUG_PROVIDER_ERRORS:"true"});
+  const {cookie: glmErrorCookie} = await getSession(glmErrorEnv);
+  const glmErrorResponse = await worker.fetch(apiRequest(glmErrorCookie, JSON.stringify({prompt:"Zdravo"})), glmErrorEnv);
+  const body = await glmErrorResponse.text();
+  assert.equal(glmErrorResponse.status, 503);
+  assert.doesNotMatch(body, /test-glm-secret/);
+} finally { globalThis.fetch = originalFetchGlmError; }
+
+console.log("PASS: 32 CEOAI V4.9 smoke/security assertions");
