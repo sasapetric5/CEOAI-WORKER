@@ -313,11 +313,14 @@ async function executeModel(provider, messages) {
     return result.slice(0, MAX_REPLY_CHARS);
   }
 
-  if (provider.provider === "openrouter" || provider.provider === "deepseek") {
+  if (provider.provider === "glm-flash" || provider.provider === "openrouter" || provider.provider === "deepseek") {
     const isOpenRouter = provider.provider === "openrouter";
-    const endpoint = isOpenRouter
-      ? "https://openrouter.ai/api/v1/chat/completions"
-      : "https://api.deepseek.com/chat/completions";
+    const isDeepSeek = provider.provider === "deepseek";
+    const endpoint = provider.provider === "glm-flash"
+      ? "https://api.z.ai/api/paas/v4/chat/completions"
+      : isOpenRouter
+        ? "https://openrouter.ai/api/v1/chat/completions"
+        : "https://api.deepseek.com/chat/completions";
     const headers = { "Authorization": `Bearer ${provider.key}`, "Content-Type": "application/json" };
     if (isOpenRouter) {
       headers["HTTP-Referer"] = "https://ceoai.dev";
@@ -636,7 +639,12 @@ export default {
         console.warn("OPENROUTER_COMPLEX_MODEL is invalid; expected a model ID up to 200 characters ending in :free.");
         warnedInvalidOpenRouterModel = true;
       }
+      const glmFlashModel = typeof env.ZAI_GLM_FLASH_MODEL === "string" && /^[A-Za-z0-9._-]{1,80}$/.test(env.ZAI_GLM_FLASH_MODEL.trim())
+        ? env.ZAI_GLM_FLASH_MODEL.trim() : "glm-4.5-flash";
       const pool = [
+        // Both GLM keys use the same adapter and model; the second key is a fallback, never parallelized.
+        { id: "glm-flash-1", provider: "glm-flash", model: glmFlashModel, key: env.ZAI_GLM_FLASH_KEY_1, tier: "fast" },
+        { id: "glm-flash-2", provider: "glm-flash", model: glmFlashModel, key: env.ZAI_GLM_FLASH_KEY_2, tier: "fast" },
         { id: "gemini-1", provider: "gemini", model: "gemini-1.5-flash", key: env.GEMINI_KEY_1, tier: "fast" },
         { id: "gemini-2", provider: "gemini", model: "gemini-1.5-flash", key: env.GEMINI_KEY_2, tier: "fast" },
         { id: "gemini-3", provider: "gemini", model: "gemini-1.5-flash", key: env.GEMINI_KEY_3, tier: "fast" },
