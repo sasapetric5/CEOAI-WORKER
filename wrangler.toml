@@ -1,6 +1,5 @@
 # CEOAI V4.9 — Cloudflare Workers configuration
-# Before deploying, create a Workers KV namespace and replace the placeholder ID below.
-# Do not deploy while the placeholder remains.
+# Dedicated CEOAI memory namespace; do not reuse the ContentCraft API_KEYS namespace.
 name = "ceoai-worker"
 main = "ceoai-index-v4.9.js"
 compatibility_date = "2026-10-24"
@@ -15,7 +14,7 @@ WORKERS_AI_ENABLED = "false"
 
 [[kv_namespaces]]
 binding = "KV_MEMORY"
-id = "REPLACE_WITH_REAL_KV_NAMESPACE_ID"
+id = "b0837272625647779b705adccc79972b"
 
 # Cloudflare rate-limit binding. namespace_id must be a positive integer unique
 # within this Cloudflare account. Verify uniqueness before deployment.
