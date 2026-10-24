@@ -1,23 +1,25 @@
-# CEOAI V4.9 — Cloudflare Workers configuration
-# Dedicated CEOAI memory namespace; do not reuse the ContentCraft API_KEYS namespace.
+# CEOAI V5.0 — Cloudflare Workers configuration
+# Dedicated CEOAI memory namespace; do not reuse other product namespaces.
 name = "ceoai-worker"
-main = "ceoai-index-v4.9.mjs"
+main = "ceoai-index-v5.0.mjs"
 compatibility_date = "2026-10-24"
 workers_dev = true
 # Preserve Worker variables configured in Cloudflare Dashboard during code deployments.
-# Keep dashboard configuration authoritative until provider settings are explicitly validated.
 keep_vars = true
 
 [vars]
 ALLOWED_ORIGINS = "https://ceoai.dev"
 DEBUG_PROVIDER_ERRORS = "false"
+# Free-only gates (default off). Set to "true" only after confirming no billing risk.
+# XAI_FREE_CONFIRMED = "false"
+# NVIDIA_FREE_CONFIRMED = "false"
+# HF_FREE_CONFIRMED = "false"
+# JINA_READER_ENABLED = "true"
 
 [[kv_namespaces]]
 binding = "KV_MEMORY"
 id = "b0837272625647779b705adccc79972b"
 
-# Cloudflare rate-limit binding. namespace_id must be a positive integer unique
-# within this Cloudflare account. Chosen as a dedicated account-local ID; ensure no other Worker uses this ID before deployment.
 [[ratelimits]]
 name = "RATE_LIMITER"
 namespace_id = "2026102401"

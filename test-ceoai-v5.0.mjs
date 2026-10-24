@@ -1,0 +1,712 @@
+import assert from 'node:assert/strict';
+import worker from './ceoai-index-v5.0.mjs';
+
+class MemoryKV {
+  constructor() { this.data = new Map(); }
+  async get(key, type) {
+    const value = this.data.get(key);
+    if (value === undefined) return null;
+    if (type === 'json') return JSON.parse(value);
+    return value;
+  }
+  async put(key, value) { this.data.set(key, String(value)); }
+}
+const makeEnv = (overrides = {}) => ({
+  KV_MEMORY: new MemoryKV(),
+  RATE_LIMITER: { async limit() { return { success: true }; } },
+  ...overrides,
+});
+const getSession = async (env, origin = 'https://ceoai.dev') => {
+  const response = await worker.fetch(new Request(origin + '/', { headers: { Origin: origin } }), env);
+  assert.equal(response.status, 200);
+  return { response, cookie: response.headers.get('Set-Cookie')?.split(';')[0] };
+};
+const apiRequest = (cookie, body, overrides = {}) => new Request('https://ceoai.dev/api/chat', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', Origin: 'https://ceoai.dev', Cookie: cookie, 'CF-Connecting-IP': '198.51.100.22', ...overrides.headers },
+  body,
+});
+
+// 1–7: root, security headers, nonce, cookie, and default origin policy.
+const env = makeEnv();
+const { response: root, cookie } = await getSession(env);
+assert.match(root.headers.get('Content-Security-Policy') || '', /script-src 'nonce-[a-f0-9]+'/i);
+assert.match(root.headers.get('Content-Security-Policy') || '', /style-src 'nonce-[a-f0-9]+'/i);
+assert.doesNotMatch(root.headers.get('Content-Security-Policy') || '', /unsafe-inline/);
+const html = await root.text();
+assert.doesNotMatch(html, /__NONCE__/);
+assert.match(html, /<style nonce="[a-f0-9]+">/i);
+assert.match(html, /<script nonce="[a-f0-9]+">/i);
+assert.ok(cookie);
+assert.equal((await worker.fetch(new Request('https://ceoai.dev/api/chat', { method:'POST', headers:{Origin:'http://localhost:8787','Content-Type':'application/json'}, body:'{}' }), env)).status, 403);
+
+// 8: strict rate-limit default fails closed if the native binding is missing.
+const noLimiterEnv = makeEnv({ RATE_LIMITER: undefined, AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true' });
+const { cookie: strictCookie } = await getSession(noLimiterEnv);
+const strictResponse = await worker.fetch(apiRequest(strictCookie, JSON.stringify({prompt:'Zdravo'})), noLimiterEnv);
+assert.equal(strictResponse.status, 503);
+assert.match((await strictResponse.json()).error, /Zaštita od preopterećenja/);
+
+// 9: malformed JSON has a distinct error.
+const badJson = await worker.fetch(apiRequest(cookie, '{bad json'), env);
+assert.equal(badJson.status, 400);
+assert.match((await badJson.json()).error, /Neispravan JSON/);
+
+// 10: invalid UTF-8 has a distinct error.
+const invalidUtf8 = new Uint8Array([0x7b, 0x22, 0x70, 0x22, 0x3a, 0x22, 0xc3, 0x28, 0x22, 0x7d]);
+const badUtf8 = await worker.fetch(apiRequest(cookie, invalidUtf8), env);
+assert.equal(badUtf8.status, 400);
+assert.match((await badUtf8.json()).error, /UTF-8/);
+
+// 11: no AI call by default.
+const disabled = await worker.fetch(apiRequest(cookie, JSON.stringify({prompt:'Zdravo'})), env);
+assert.equal(disabled.status, 503);
+assert.match((await disabled.json()).error, /AI je isključen/);
+
+// 12–13: debug error details redact provider secrets.
+const originalFetch = globalThis.fetch;
+const originalDebug = console.debug;
+const debugLines = [];
+console.debug = (...args) => debugLines.push(args.join(' '));
+globalThis.fetch = async (url) => {
+  if (String(url).includes('openrouter.ai')) return new Response(JSON.stringify({error:'api_key: "secret with spaces" Authorization: Bearer abc123XYZ'}), {status:401});
+  throw new Error('Unexpected fetch in test');
+};
+try {
+  const debugEnv = makeEnv({ AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', DEBUG_PROVIDER_ERRORS:'true', OPENROUTER_KEY:'test-key-not-real' });
+  const { cookie: debugCookie } = await getSession(debugEnv);
+  const debugResponse = await worker.fetch(apiRequest(debugCookie, JSON.stringify({prompt:'Zdravo'})), debugEnv);
+  assert.equal(debugResponse.status, 503);
+  const logs = debugLines.join('\n');
+  assert.doesNotMatch(logs, /secret with spaces|abc123XYZ|test-key-not-real/);
+  assert.match(logs, /\[redacted\]/);
+} finally { globalThis.fetch = originalFetch; console.debug = originalDebug; }
+
+// 14–15: upstream 429 yields Retry-After; successful fallback is exercised with mocked responses.
+const originalFetch2 = globalThis.fetch;
+let openRouterCalls = 0;
+globalThis.fetch = async (url) => {
+  if (String(url).includes('openrouter.ai')) {
+    openRouterCalls++;
+    return new Response(JSON.stringify({error:'rate limit'}), {status:429});
+  }
+  throw new Error('Unexpected provider URL');
+};
+try {
+  const limitedEnv = makeEnv({ AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', OPENROUTER_KEY:'test-key' });
+  const { cookie: limitedCookie } = await getSession(limitedEnv);
+  const limited = await worker.fetch(apiRequest(limitedCookie, JSON.stringify({prompt:'Zdravo'})), limitedEnv);
+  assert.equal(limited.status, 503);
+  assert.equal(limited.headers.get('Retry-After'), '3600');
+  assert.equal(openRouterCalls, 1);
+} finally { globalThis.fetch = originalFetch2; }
+
+// 16: local origins only work with explicit opt-in.
+const localEnv = makeEnv({ ALLOW_LOCAL_ORIGINS:'true' });
+const localResponse = await worker.fetch(new Request('http://localhost:8787/api/chat', {
+  method:'OPTIONS', headers:{Origin:'http://localhost:8787'}
+}), localEnv);
+assert.equal(localResponse.status, 204);
+
+// 17: fallback proceeds from a rate-limited Gemini candidate to a mocked OpenRouter success.
+const originalFetch3 = globalThis.fetch;
+const fallbackCalls = [];
+globalThis.fetch = async (url) => {
+  const target = String(url);
+  fallbackCalls.push(target);
+  if (target.includes('generativelanguage.googleapis.com')) {
+    return new Response(JSON.stringify({error:{message:'rate limited'}}), {status:429});
+  }
+  if (target.includes('openrouter.ai')) {
+    return new Response(JSON.stringify({choices:[{message:{content:'Odgovor iz rezervnog provajdera.'}}]}), {status:200, headers:{'Content-Type':'application/json'}});
+  }
+  throw new Error('Unexpected provider URL: ' + target);
+};
+try {
+  const fallbackEnv = makeEnv({ AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', GEMINI_KEY_1:'test-gemini-key', OPENROUTER_KEY:'test-openrouter-key' });
+  const { cookie: fallbackCookie } = await getSession(fallbackEnv);
+  const fallbackResponse = await worker.fetch(apiRequest(fallbackCookie, JSON.stringify({prompt:'Zdravo'})), fallbackEnv);
+  assert.equal(fallbackResponse.status, 200);
+  assert.equal((await fallbackResponse.json()).reply, 'Odgovor iz rezervnog provajdera.');
+  assert.equal(fallbackCalls.length, 2, 'Gemini failure is followed by OpenRouter fallback');
+} finally { globalThis.fetch = originalFetch3; }
+
+// 18: history compression uses the bounded validated history and persists only the summary + new turn.
+const originalFetch4 = globalThis.fetch;
+globalThis.fetch = async (url) => {
+  if (String(url).includes('openrouter.ai')) {
+    return new Response(JSON.stringify({choices:[{message:{content:'Nastavak razgovora.'}}]}), {status:200, headers:{'Content-Type':'application/json'}});
+  }
+  throw new Error('Unexpected provider URL');
+};
+try {
+  const historyEnv = makeEnv({
+    AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', WORKERS_AI_ENABLED:'true',
+    OPENROUTER_KEY:'test-openrouter-key',
+    AI: { async run(_model, payload) {
+      assert.ok(payload.messages[1].content.includes('starija poruka 1'));
+      return {response:'Korisnik radi na projektu. Sačuvati kontekst i odluke.'};
+    } },
+  });
+  const { cookie: historyCookie } = await getSession(historyEnv);
+  const sessionId = historyCookie.split('=')[1];
+  historyEnv.KV_MEMORY.data.set(`memory:${sessionId}`, JSON.stringify({
+    summary:null, estimatedTokensSaved:0, compressions:0,
+    messages:Array.from({length:8}, (_, i) => ({role:i % 2 ? 'assistant':'user', content:`starija poruka ${i + 1}`})),
+  }));
+  const historyResponse = await worker.fetch(apiRequest(historyCookie, JSON.stringify({prompt:'Novi zahtev'})), historyEnv);
+  assert.equal(historyResponse.status, 200);
+  const historyBody = await historyResponse.json();
+  assert.equal(historyBody.stats.hasSummary, true);
+  assert.equal(historyBody.stats.compressions, 1);
+  const savedMemory = JSON.parse(historyEnv.KV_MEMORY.data.get(`memory:${sessionId}`));
+  assert.equal(savedMemory.messages.length, 2);
+  assert.match(savedMemory.summary, /Sačuvati kontekst/);
+} finally { globalThis.fetch = originalFetch4; }
+
+// 19: transient provider failures receive a conservative 120-second retry hint.
+const originalFetch5 = globalThis.fetch;
+globalThis.fetch = async (url) => {
+  if (String(url).includes('openrouter.ai')) return new Response(JSON.stringify({error:'temporary outage'}), {status:503});
+  throw new Error('Unexpected provider URL');
+};
+try {
+  const transientEnv = makeEnv({ AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', OPENROUTER_KEY:'test-key-transient' });
+  const { cookie: transientCookie } = await getSession(transientEnv);
+  const transient = await worker.fetch(apiRequest(transientCookie, JSON.stringify({prompt:'Zdravo'})), transientEnv);
+  assert.equal(transient.status, 503);
+  assert.equal(transient.headers.get('Retry-After'), '120');
+} finally { globalThis.fetch = originalFetch5; }
+
+// 20: rejected preflight responses are explicitly non-cacheable.
+const rejectedPreflight = await worker.fetch(new Request('https://ceoai.dev/api/chat', {
+  method:'OPTIONS', headers:{Origin:'https://evil.example'}
+}), env);
+assert.equal(rejectedPreflight.status, 403);
+assert.equal(rejectedPreflight.headers.get('Cache-Control'), 'no-store');
+
+// 21: credential redaction uses field boundaries and does not redact ordinary prose like "monkey".
+const originalFetch6 = globalThis.fetch;
+const originalDebug2 = console.debug;
+const debugLines2 = [];
+console.debug = (...args) => debugLines2.push(args.join(' '));
+globalThis.fetch = async (url) => {
+  if (String(url).includes('openrouter.ai')) return new Response(JSON.stringify({error:'monkey key not found; api_key="value with spaces"'}), {status:401});
+  throw new Error('Unexpected provider URL');
+};
+try {
+  const env2 = makeEnv({ AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', DEBUG_PROVIDER_ERRORS:'true', OPENROUTER_KEY:'test-key-2' });
+  const {cookie: cookie2} = await getSession(env2);
+  await worker.fetch(apiRequest(cookie2, JSON.stringify({prompt:'Zdravo'})), env2);
+  const lines = debugLines2.join('\n');
+  assert.match(lines, /monkey key not found/);
+  assert.doesNotMatch(lines, /value with spaces/);
+} finally { globalThis.fetch = originalFetch6; console.debug = originalDebug2; }
+
+// 22: compression truncation is logged as metadata only, without logging the conversation text.
+const originalFetch7 = globalThis.fetch;
+const originalWarn = console.warn;
+const warningLines = [];
+console.warn = (...args) => warningLines.push(args.join(' '));
+globalThis.fetch = async (url) => {
+  if (String(url).includes('openrouter.ai')) return new Response(JSON.stringify({choices:[{message:{content:'Odgovor.'}}]}), {status:200, headers:{'Content-Type':'application/json'}});
+  throw new Error('Unexpected provider URL');
+};
+try {
+  const env3 = makeEnv({
+    AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', WORKERS_AI_ENABLED:'true', OPENROUTER_KEY:'test-key-3',
+    AI: { async run(_model, payload) { assert.equal(payload.messages[1].content.length, 24000); return {response:'Sažetak.'}; } },
+  });
+  const {cookie: cookie3} = await getSession(env3);
+  const sid = cookie3.split('=')[1];
+  env3.KV_MEMORY.data.set(`memory:${sid}`, JSON.stringify({summary:null,estimatedTokensSaved:0,compressions:0,messages:Array.from({length:8},(_,i)=>({role:i%2?'assistant':'user',content:`private-marker-${i}-`+'x'.repeat(4000)}))}));
+  const result = await worker.fetch(apiRequest(cookie3, JSON.stringify({prompt:'Nastavi'})), env3);
+  assert.equal(result.status, 200);
+  const logs = warningLines.join('\n');
+  assert.match(logs, /History compression input truncated: \d+ chars to 24000/);
+  assert.doesNotMatch(logs, /private-marker/);
+} finally { globalThis.fetch = originalFetch7; console.warn = originalWarn; }
+
+// 23–24: whitespace-only ALLOWED_ORIGINS uses the documented canonical-domain default.
+const whitespaceOriginsEnv = makeEnv({ ALLOWED_ORIGINS:'   ,   ' });
+const whitespaceAllowed = await worker.fetch(new Request('https://ceoai.dev/api/chat', {
+  method:'OPTIONS', headers:{Origin:'https://ceoai.dev'}
+}), whitespaceOriginsEnv);
+assert.equal(whitespaceAllowed.status, 204);
+const whitespaceRejected = await worker.fetch(new Request('https://ceoai.dev/api/chat', {
+  method:'OPTIONS', headers:{Origin:'https://evil.example'}
+}), whitespaceOriginsEnv);
+assert.equal(whitespaceRejected.status, 403);
+
+// 25: providers already in cooldown produce a specific, non-misleading rate-limit message.
+const cooldownEnv = makeEnv({ AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', OPENROUTER_KEY:'test-cooldown-key' });
+const {cookie: cooldownCookie} = await getSession(cooldownEnv);
+cooldownEnv.KV_MEMORY.data.set('cooldown:openrouter-1', '1');
+const cooldownResponse = await worker.fetch(apiRequest(cooldownCookie, JSON.stringify({prompt:'Zdravo'})), cooldownEnv);
+assert.equal(cooldownResponse.status, 503);
+assert.match((await cooldownResponse.json()).error, /ograničenje/);
+assert.equal(cooldownResponse.headers.get('Retry-After'), '120');
+
+// 26: Cyrillic sequence words activate the complex-provider fallback path.
+const originalFetch8 = globalThis.fetch;
+const cyrillicCalls = [];
+globalThis.fetch = async (url) => {
+  const target = String(url); cyrillicCalls.push(target);
+  if (target.includes('openrouter.ai')) return new Response(JSON.stringify({error:'temporary failure'}), {status:503});
+  if (target.includes('api.deepseek.com')) return new Response(JSON.stringify({choices:[{message:{content:'Složeni odgovor.'}}]}), {status:200, headers:{'Content-Type':'application/json'}});
+  throw new Error('Unexpected provider URL: ' + target);
+};
+try {
+  const cyrillicEnv = makeEnv({ AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', OPENROUTER_KEY:'test-openrouter-key', DEEPSEEK_KEY:'test-deepseek-key' });
+  const {cookie: cyrillicCookie} = await getSession(cyrillicEnv);
+  const cyrillicResponse = await worker.fetch(apiRequest(cyrillicCookie, JSON.stringify({prompt:'прво обради податке, затим провери резултат'})), cyrillicEnv);
+  assert.equal(cyrillicResponse.status, 200);
+  assert.ok(cyrillicCalls.some(url => url.includes('api.deepseek.com')), 'Cyrillic sequence should select a complex provider');
+} finally { globalThis.fetch = originalFetch8; }
+
+// 27–29: GLM Flash primary key is used through the Z.ai OpenAI-compatible endpoint.
+const originalFetchGlm = globalThis.fetch;
+const glmCalls = [];
+globalThis.fetch = async (url, options = {}) => {
+  const target = String(url);
+  if (!target.includes("api.z.ai/api/paas/v4/chat/completions")) throw new Error("Unexpected provider URL: " + target);
+  glmCalls.push({ url: target, authorization: options.headers?.Authorization, body: JSON.parse(options.body || "{}") });
+  return new Response(JSON.stringify({choices:[{message:{content:"GLM Flash radi."}}]}), {status:200, headers:{"Content-Type":"application/json"}});
+};
+try {
+  const glmEnv = makeEnv({AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true", ZAI_GLM_FLASH_KEY_1:"test-glm-key-1"});
+  const {cookie: glmCookie} = await getSession(glmEnv);
+  const glmResponse = await worker.fetch(apiRequest(glmCookie, JSON.stringify({prompt:"Zdravo"})), glmEnv);
+  assert.equal(glmResponse.status, 200);
+  assert.equal((await glmResponse.json()).reply, "GLM Flash radi.");
+  assert.equal(glmCalls.length, 1);
+  assert.equal(glmCalls[0].authorization, "Bearer test-glm-key-1");
+  assert.equal(glmCalls[0].body.model, "glm-4.5-flash");
+} finally { globalThis.fetch = originalFetchGlm; }
+
+// 30–31: a failing GLM primary key falls back to the second key without parallel requests.
+const originalFetchGlmFallback = globalThis.fetch;
+const glmFallbackCalls = [];
+globalThis.fetch = async (url, options = {}) => {
+  const target = String(url);
+  if (!target.includes("api.z.ai/api/paas/v4/chat/completions")) throw new Error("Unexpected provider URL: " + target);
+  const authorization = options.headers?.Authorization;
+  glmFallbackCalls.push(authorization);
+  if (authorization === "Bearer test-glm-key-1") return new Response(JSON.stringify({error:"rate limited"}), {status:429});
+  if (authorization === "Bearer test-glm-key-2") return new Response(JSON.stringify({choices:[{message:{content:"GLM rezervni ključ radi."}}]}), {status:200, headers:{"Content-Type":"application/json"}});
+  throw new Error("Unexpected GLM authorization header");
+};
+try {
+  const glmFallbackEnv = makeEnv({AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true", ZAI_GLM_FLASH_KEY_1:"test-glm-key-1", ZAI_GLM_FLASH_KEY_2:"test-glm-key-2"});
+  const {cookie: glmFallbackCookie} = await getSession(glmFallbackEnv);
+  const glmFallbackResponse = await worker.fetch(apiRequest(glmFallbackCookie, JSON.stringify({prompt:"Zdravo"})), glmFallbackEnv);
+  assert.equal(glmFallbackResponse.status, 200);
+  assert.equal((await glmFallbackResponse.json()).reply, "GLM rezervni ključ radi.");
+  assert.deepEqual(glmFallbackCalls, ["Bearer test-glm-key-1", "Bearer test-glm-key-2"]);
+} finally { globalThis.fetch = originalFetchGlmFallback; }
+
+// 32: provider failures do not leak the configured GLM keys in the public response.
+const originalFetchGlmError = globalThis.fetch;
+globalThis.fetch = async (_url, options = {}) => new Response(JSON.stringify({error:"invalid api key"}), {status:401});
+try {
+  const glmErrorEnv = makeEnv({AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true", ZAI_GLM_FLASH_KEY_1:"test-glm-secret", DEBUG_PROVIDER_ERRORS:"true"});
+  const {cookie: glmErrorCookie} = await getSession(glmErrorEnv);
+  const glmErrorResponse = await worker.fetch(apiRequest(glmErrorCookie, JSON.stringify({prompt:"Zdravo"})), glmErrorEnv);
+  const body = await glmErrorResponse.text();
+  assert.equal(glmErrorResponse.status, 503);
+  assert.doesNotMatch(body, /test-glm-secret/);
+} finally { globalThis.fetch = originalFetchGlmError; }
+
+// 33–34: explicit GLM-only mode never falls back to configured non-GLM providers.
+const originalFetchGlmOnly = globalThis.fetch;
+const glmOnlyCalls = [];
+globalThis.fetch = async (url, options = {}) => {
+  const target = String(url);
+  glmOnlyCalls.push(target);
+  if (!target.includes("api.z.ai/api/paas/v4/chat/completions")) {
+    throw new Error("GLM-only mode attempted a non-GLM provider: " + target);
+  }
+  if (options.headers?.Authorization === "Bearer test-glm-only-primary") {
+    return new Response(JSON.stringify({error:"temporary failure"}), {status:503});
+  }
+  if (options.headers?.Authorization === "Bearer test-glm-only-secondary") {
+    return new Response(JSON.stringify({choices:[{message:{content:"Samo GLM rezervni ključ."}}]}), {status:200, headers:{"Content-Type":"application/json"}});
+  }
+  throw new Error("Unexpected GLM key in GLM-only test");
+};
+try {
+  const glmOnlyEnv = makeEnv({
+    AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true", ZAI_GLM_FLASH_ONLY:"true",
+    ZAI_GLM_FLASH_KEY_1:"test-glm-only-primary", ZAI_GLM_FLASH_KEY_2:"test-glm-only-secondary",
+    GEMINI_KEY_1:"must-not-be-called", OPENROUTER_KEY:"must-not-be-called", DEEPSEEK_KEY:"must-not-be-called",
+  });
+  const {cookie: glmOnlyCookie} = await getSession(glmOnlyEnv);
+  const glmOnlyResponse = await worker.fetch(apiRequest(glmOnlyCookie, JSON.stringify({prompt:"прво обради податке, затим провери резултат"})), glmOnlyEnv);
+  assert.equal(glmOnlyResponse.status, 200);
+  assert.equal((await glmOnlyResponse.json()).reply, "Samo GLM rezervni ključ.");
+  assert.deepEqual(glmOnlyCalls, [
+    "https://api.z.ai/api/paas/v4/chat/completions",
+    "https://api.z.ai/api/paas/v4/chat/completions",
+  ]);
+} finally { globalThis.fetch = originalFetchGlmOnly; }
+
+;
+
+
+// ===== V5.0 additional tests =====
+
+// V5-1: coding intent prefers DeepSeek when available (capability ranking).
+const originalFetchRank = globalThis.fetch;
+const rankCalls = [];
+globalThis.fetch = async (url, options = {}) => {
+  const target = String(url);
+  rankCalls.push(target);
+  if (target.includes("api.deepseek.com")) {
+    return new Response(JSON.stringify({choices:[{message:{content:"DeepSeek coding odgovor"}}]}), {status:200, headers:{"Content-Type":"application/json"}});
+  }
+  if (target.includes("generativelanguage.googleapis.com")) {
+    return new Response(JSON.stringify({candidates:[{content:{parts:[{text:"Gemini fallback"}]}}]}), {status:200, headers:{"Content-Type":"application/json"}});
+  }
+  throw new Error("Unexpected provider in ranking test: " + target);
+};
+try {
+  const rankEnv = makeEnv({
+    AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true",
+    DEEPSEEK_KEY:"test-deepseek",
+    GEMINI_KEY_1:"test-gemini",
+  });
+  const {cookie: rankCookie} = await getSession(rankEnv);
+  const rankResponse = await worker.fetch(apiRequest(rankCookie, JSON.stringify({prompt:"Refaktorisi ovu funkciju i ispravi bug u TypeScript kodu"})), rankEnv);
+  assert.equal(rankResponse.status, 200);
+  assert.equal((await rankResponse.json()).reply, "DeepSeek coding odgovor");
+  assert.ok(rankCalls[0].includes("api.deepseek.com"), "coding intent should try DeepSeek first");
+} finally { globalThis.fetch = originalFetchRank; }
+
+// V5-2: xAI is excluded unless XAI_FREE_CONFIRMED=true.
+const originalFetchXai = globalThis.fetch;
+const xaiCalls = [];
+globalThis.fetch = async (url, options = {}) => {
+  xaiCalls.push(String(url));
+  if (String(url).includes("api.x.ai")) throw new Error("xAI must not be called without free confirmation");
+  if (String(url).includes("generativelanguage.googleapis.com")) {
+    return new Response(JSON.stringify({candidates:[{content:{parts:[{text:"Gemini ok"}]}}]}), {status:200, headers:{"Content-Type":"application/json"}});
+  }
+  throw new Error("Unexpected: " + url);
+};
+try {
+  const xaiEnv = makeEnv({
+    AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true",
+    XAI_KEY:"must-not-call",
+    // XAI_FREE_CONFIRMED intentionally unset
+    GEMINI_KEY_1:"test-gemini",
+  });
+  const {cookie: xaiCookie} = await getSession(xaiEnv);
+  const xaiResponse = await worker.fetch(apiRequest(xaiCookie, JSON.stringify({prompt:"Analiziraj strategiju i trade-off"})), xaiEnv);
+  assert.equal(xaiResponse.status, 200);
+  assert.equal((await xaiResponse.json()).reply, "Gemini ok");
+  assert.equal(xaiCalls.filter(u => u.includes("api.x.ai")).length, 0);
+} finally { globalThis.fetch = originalFetchXai; }
+
+// V5-3: xAI is included when free confirmed and ranks high for reasoning.
+const originalFetchXaiOn = globalThis.fetch;
+const xaiOnCalls = [];
+globalThis.fetch = async (url, options = {}) => {
+  xaiOnCalls.push(String(url));
+  if (String(url).includes("api.x.ai")) {
+    return new Response(JSON.stringify({choices:[{message:{content:"Grok reasoning"}}]}), {status:200, headers:{"Content-Type":"application/json"}});
+  }
+  throw new Error("Expected xAI first for reasoning: " + url);
+};
+try {
+  const xaiOnEnv = makeEnv({
+    AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true",
+    XAI_KEY:"test-xai", XAI_FREE_CONFIRMED:"true",
+    GEMINI_KEY_1:"test-gemini",
+  });
+  const {cookie: xaiOnCookie} = await getSession(xaiOnEnv);
+  const xaiOnResponse = await worker.fetch(apiRequest(xaiOnCookie, JSON.stringify({prompt:"Analiziraj strategiju i trade-off odluka"})), xaiOnEnv);
+  assert.equal(xaiOnResponse.status, 200);
+  assert.equal((await xaiOnResponse.json()).reply, "Grok reasoning");
+  assert.ok(xaiOnCalls[0].includes("api.x.ai"));
+} finally { globalThis.fetch = originalFetchXaiOn; }
+
+// V5-4: Mistral free model allowlist rejects unknown models (falls back to default open-mistral-nemo in pool build — key present means candidate exists).
+const originalFetchMistral = globalThis.fetch;
+const mistralCalls = [];
+globalThis.fetch = async (url, options = {}) => {
+  mistralCalls.push(String(url));
+  const body = options.body ? JSON.parse(options.body) : {};
+  if (String(url).includes("api.mistral.ai")) {
+    assert.equal(body.model, "open-mistral-nemo"); // invalid model name should fall back
+    return new Response(JSON.stringify({choices:[{message:{content:"Mistral odgovor"}}]}), {status:200, headers:{"Content-Type":"application/json"}});
+  }
+  if (String(url).includes("generativelanguage.googleapis.com")) {
+    return new Response(JSON.stringify({candidates:[{content:{parts:[{text:"Gemini"}]}}]}), {status:200, headers:{"Content-Type":"application/json"}});
+  }
+  throw new Error("Unexpected: " + url);
+};
+try {
+  const mistralEnv = makeEnv({
+    AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true",
+    MISTRAL_KEY:"test-mistral", MISTRAL_MODEL:"definitely-not-a-free-model",
+    GEMINI_KEY_1:"test-gemini",
+  });
+  const {cookie: mCookie} = await getSession(mistralEnv);
+  // coding-ish prompt so mistral can rank competitively
+  const mResponse = await worker.fetch(apiRequest(mCookie, JSON.stringify({prompt:"Implementiraj helper funkciju u Pythonu"})), mistralEnv);
+  assert.equal(mResponse.status, 200);
+  // Either mistral or gemini may win depending on score; if mistral called, model must be allowlisted default.
+  if (mistralCalls.some(u => u.includes("api.mistral.ai"))) {
+    assert.equal((await mResponse.json()).reply, "Mistral odgovor");
+  }
+} finally { globalThis.fetch = originalFetchMistral; }
+
+// V5-5: NVIDIA excluded without NVIDIA_FREE_CONFIRMED.
+const originalFetchNv = globalThis.fetch;
+const nvCalls = [];
+globalThis.fetch = async (url) => {
+  nvCalls.push(String(url));
+  if (String(url).includes("integrate.api.nvidia.com")) throw new Error("NVIDIA must not be called");
+  if (String(url).includes("api.deepseek.com")) {
+    return new Response(JSON.stringify({choices:[{message:{content:"DeepSeek"}}]}), {status:200, headers:{"Content-Type":"application/json"}});
+  }
+  throw new Error("Unexpected: " + url);
+};
+try {
+  const nvEnv = makeEnv({
+    AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true",
+    NVIDIA_KEY:"must-not-call", DEEPSEEK_KEY:"test-ds",
+  });
+  const {cookie: nvCookie} = await getSession(nvEnv);
+  const nvResponse = await worker.fetch(apiRequest(nvCookie, JSON.stringify({prompt:"Napisи TypeScript klasu sa testovima"})), nvEnv);
+  assert.equal(nvResponse.status, 200);
+  assert.equal(nvCalls.filter(u => u.includes("nvidia.com")).length, 0);
+} finally { globalThis.fetch = originalFetchNv; }
+
+// V5-6: research intent with URL attempts Jina Reader (mocked).
+const originalFetchJina = globalThis.fetch;
+const jinaCalls = [];
+globalThis.fetch = async (url, options = {}) => {
+  const target = String(url);
+  jinaCalls.push(target);
+  if (target.startsWith("https://r.jina.ai/")) {
+    return new Response("Naslov stranice\n\nOvo je test sadrzaj sa Jina free readera.", {status:200, headers:{"Content-Type":"text/plain"}});
+  }
+  if (target.includes("generativelanguage.googleapis.com")) {
+    const body = options.body ? JSON.parse(options.body) : {};
+    const sys = body.systemInstruction?.parts?.[0]?.text || "";
+    assert.match(sys, /jina|ISTRAŽIVAČKI KONTEKST|test sadrzaj/i);
+    return new Response(JSON.stringify({candidates:[{content:{parts:[{text:"Sumirano sa Jina kontekstom"}]}}]}), {status:200, headers:{"Content-Type":"application/json"}});
+  }
+  throw new Error("Unexpected: " + target);
+};
+try {
+  const jinaEnv = makeEnv({
+    AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true",
+    GEMINI_KEY_1:"test-gemini",
+  });
+  const {cookie: jCookie} = await getSession(jinaEnv);
+  const jResponse = await worker.fetch(apiRequest(jCookie, JSON.stringify({prompt:"Pročitaj i sumiraj https://example.com/page"})), jinaEnv);
+  assert.equal(jResponse.status, 200);
+  assert.equal((await jResponse.json()).reply, "Sumirano sa Jina kontekstom");
+  assert.ok(jinaCalls.some(u => u.startsWith("https://r.jina.ai/https://example.com/page")));
+} finally { globalThis.fetch = originalFetchJina; }
+
+// V5-7: RATE_LIMITER still fail-closed (regression).
+{
+  const noLimiterEnv = makeEnv({ RATE_LIMITER: undefined, AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', GEMINI_KEY_1:'k' });
+  const { cookie: strictCookie2 } = await getSession(noLimiterEnv);
+  const strictResponse2 = await worker.fetch(apiRequest(strictCookie2, JSON.stringify({prompt:'Zdravo'})), noLimiterEnv);
+  assert.equal(strictResponse2.status, 503);
+  assert.match((await strictResponse2.json()).error, /Zaštita od preopterećenja|RATE|preopterećenja|limit/i);
+}
+
+// V5-8: HF excluded without HF_FREE_CONFIRMED.
+const originalFetchHf = globalThis.fetch;
+const hfCalls = [];
+globalThis.fetch = async (url) => {
+  hfCalls.push(String(url));
+  if (String(url).includes("huggingface.co")) throw new Error("HF must not be called");
+  if (String(url).includes("generativelanguage.googleapis.com")) {
+    return new Response(JSON.stringify({candidates:[{content:{parts:[{text:"Gemini"}]}}]}), {status:200, headers:{"Content-Type":"application/json"}});
+  }
+  throw new Error("Unexpected: " + url);
+};
+try {
+  const hfEnv = makeEnv({
+    AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true",
+    HF_TOKEN:"must-not-call", GEMINI_KEY_1:"test-gemini",
+  });
+  const {cookie: hfCookie} = await getSession(hfEnv);
+  const hfResponse = await worker.fetch(apiRequest(hfCookie, JSON.stringify({prompt:"Zdravo"})), hfEnv);
+  assert.equal(hfResponse.status, 200);
+  assert.equal(hfCalls.filter(u => u.includes("huggingface")).length, 0);
+} finally { globalThis.fetch = originalFetchHf; }
+
+
+
+
+// V5-9: quota exhaustion on first provider → automatic failover to second.
+const originalFetchQuota = globalThis.fetch;
+const quotaCalls = [];
+globalThis.fetch = async (url, options = {}) => {
+  const target = String(url);
+  quotaCalls.push(target);
+  if (target.includes("api.deepseek.com")) {
+    return new Response(JSON.stringify({ error: { message: "You exceeded your current quota for this month" } }), {
+      status: 429, headers: { "Content-Type": "application/json" },
+    });
+  }
+  if (target.includes("generativelanguage.googleapis.com")) {
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "Gemini preuzeo posle kvote" }] } }] }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  }
+  throw new Error("Unexpected: " + target);
+};
+try {
+  const quotaEnv = makeEnv({
+    AI_ENABLED: "true", EXTERNAL_AI_ENABLED: "true",
+    DEEPSEEK_KEY: "test-ds-quota",
+    GEMINI_KEY_1: "test-gemini-fallback",
+  });
+  const { cookie: qCookie } = await getSession(quotaEnv);
+  const qResponse = await worker.fetch(
+    apiRequest(qCookie, JSON.stringify({ prompt: "Implementiraj Python skriptu za parsiranje CSV" })),
+    quotaEnv
+  );
+  assert.equal(qResponse.status, 200);
+  const qBody = await qResponse.json();
+  assert.equal(qBody.reply, "Gemini preuzeo posle kvote");
+  assert.ok(quotaCalls.some(u => u.includes("api.deepseek.com")));
+  assert.ok(quotaCalls.some(u => u.includes("generativelanguage.googleapis.com")));
+  // DeepSeek should now be in quota cooldown
+  assert.ok(await quotaEnv.KV_MEMORY.get("cooldown:deepseek-1"));
+} finally { globalThis.fetch = originalFetchQuota; }
+
+// V5-10: search failover — Tavily quota → Google CSE takes over.
+const originalFetchSearch = globalThis.fetch;
+const searchCalls = [];
+globalThis.fetch = async (url, options = {}) => {
+  const target = String(url);
+  searchCalls.push(target);
+  if (target.includes("api.tavily.com")) {
+    return new Response(JSON.stringify({ detail: "Free tier daily quota exceeded" }), {
+      status: 429, headers: { "Content-Type": "application/json" },
+    });
+  }
+  if (target.includes("googleapis.com/customsearch")) {
+    return new Response(JSON.stringify({
+      items: [{ title: "Rezultat CSE", link: "https://example.com/cse", snippet: "CSE snippet" }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }
+  if (target.includes("generativelanguage.googleapis.com")) {
+    const body = options.body ? JSON.parse(options.body) : {};
+    const sys = JSON.stringify(body);
+    assert.match(sys, /google-cse|CSE snippet|Rezultat CSE/i);
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "Odgovor uz CSE kontekst" }] } }] }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  }
+  throw new Error("Unexpected search URL: " + target);
+};
+try {
+  const searchEnv = makeEnv({
+    AI_ENABLED: "true", EXTERNAL_AI_ENABLED: "true",
+    GEMINI_KEY_1: "test-gemini",
+    TAVILY_KEY: "test-tavily", TAVILY_FREE_CONFIRMED: "true",
+    GOOGLE_CSE_KEY: "test-cse-key", GOOGLE_CSE_CX: "test-cx", GOOGLE_CSE_FREE_CONFIRMED: "true",
+  });
+  const { cookie: sCookie } = await getSession(searchEnv);
+  const sResponse = await worker.fetch(
+    apiRequest(sCookie, JSON.stringify({ prompt: "Pretraži najnovije vesti o Cloudflare Workers" })),
+    searchEnv
+  );
+  assert.equal(sResponse.status, 200);
+  assert.equal((await sResponse.json()).reply, "Odgovor uz CSE kontekst");
+  assert.ok(searchCalls.some(u => u.includes("api.tavily.com")));
+  assert.ok(searchCalls.some(u => u.includes("googleapis.com/customsearch")));
+} finally { globalThis.fetch = originalFetchSearch; }
+
+
+
+
+// V5-11: Firecrawl free → used for URL scrape before Tavily.
+const originalFetchFc = globalThis.fetch;
+const fcCalls = [];
+globalThis.fetch = async (url, options = {}) => {
+  const target = String(url);
+  fcCalls.push(target);
+  if (target.includes("api.firecrawl.dev")) {
+    return new Response(JSON.stringify({
+      data: { markdown: "# Firecrawl page\n\nSadrzaj sa Firecrawl free scrape." },
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }
+  if (target.includes("generativelanguage.googleapis.com")) {
+    const body = options.body ? JSON.parse(options.body) : {};
+    assert.match(JSON.stringify(body), /Firecrawl|firecrawl/i);
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "Uz Firecrawl kontekst" }] } }] }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  }
+  throw new Error("Unexpected: " + target);
+};
+try {
+  const fcEnv = makeEnv({
+    AI_ENABLED: "true", EXTERNAL_AI_ENABLED: "true",
+    GEMINI_KEY_1: "test-gemini",
+    FIRECRAWL_KEY: "test-fc", FIRECRAWL_FREE_CONFIRMED: "true",
+  });
+  const { cookie: fcCookie } = await getSession(fcEnv);
+  const fcResponse = await worker.fetch(
+    apiRequest(fcCookie, JSON.stringify({ prompt: "Pročitaj i sumiraj https://example.com/docs" })),
+    fcEnv
+  );
+  assert.equal(fcResponse.status, 200);
+  assert.equal((await fcResponse.json()).reply, "Uz Firecrawl kontekst");
+  assert.ok(fcCalls.some(u => u.includes("api.firecrawl.dev")));
+} finally { globalThis.fetch = originalFetchFc; }
+
+// V5-12: DuckDuckGo last-resort when no other search keys configured.
+const originalFetchDdg = globalThis.fetch;
+const ddgCalls = [];
+globalThis.fetch = async (url, options = {}) => {
+  const target = String(url);
+  ddgCalls.push(target);
+  if (target.includes("api.duckduckgo.com")) {
+    return new Response(JSON.stringify({
+      AbstractText: "DuckDuckGo sažetak o Cloudflare Workers.",
+      AbstractURL: "https://example.com/ddg",
+      RelatedTopics: [{ Text: "Workers su serverless na edge.", FirstURL: "https://example.com/1" }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }
+  if (target.includes("generativelanguage.googleapis.com")) {
+    const body = options.body ? JSON.parse(options.body) : {};
+    assert.match(JSON.stringify(body), /DuckDuckGo|duckduckgo|Cloudflare Workers/i);
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "Odgovor uz DDG" }] } }] }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  }
+  // Jina may be attempted for non-URL research - allow fail
+  if (target.startsWith("https://r.jina.ai/")) {
+    return new Response("not found", { status: 404 });
+  }
+  throw new Error("Unexpected: " + target);
+};
+try {
+  const ddgEnv = makeEnv({
+    AI_ENABLED: "true", EXTERNAL_AI_ENABLED: "true",
+    GEMINI_KEY_1: "test-gemini",
+    // no other search keys
+  });
+  const { cookie: ddgCookie } = await getSession(ddgEnv);
+  const ddgResponse = await worker.fetch(
+    apiRequest(ddgCookie, JSON.stringify({ prompt: "Pretraži šta su Cloudflare Workers" })),
+    ddgEnv
+  );
+  assert.equal(ddgResponse.status, 200);
+  assert.equal((await ddgResponse.json()).reply, "Odgovor uz DDG");
+  assert.ok(ddgCalls.some(u => u.includes("api.duckduckgo.com")));
+} finally { globalThis.fetch = originalFetchDdg; }
+
+console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecrawl + DuckDuckGo)");
