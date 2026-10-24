@@ -45,9 +45,9 @@ The RATE_LIMITER namespace_id must be a positive integer unique within this
 Cloudflare account; the chosen value has not been verified against other Workers.
 Cloudflare's Rate Limiting binding supports only 10- or 60-second windows, not an
 hourly window. The current binding therefore allows up to 20 calls per 60 seconds
-per Cloudflare location (approximate, not a strict global cap). The source's
-local fallback counter uses a one-hour window, but it is not used while the
-required RATE_LIMITER binding is present. Do not describe the deployed binding
-as a 20-per-hour limit.
+per Cloudflare location (approximate, not a strict global cap). The selected
+namespace_id is "2026102401"; ensure no other Worker in this account uses it.
+The source's local fallback counter is not used while the required RATE_LIMITER
+binding is present. Do not describe the deployed binding as a 20-per-hour limit.
 
 No Worker was deployed and no provider keys or secrets were added.
