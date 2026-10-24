@@ -41,9 +41,13 @@ origin, disabled AI flags, KV_MEMORY, and RATE_LIMITER.
 IMPORTANT: deployment is NOT ready until the placeholder
 REPLACE_WITH_REAL_KV_NAMESPACE_ID in wrangler.toml is replaced with the actual
 KV namespace ID from this Cloudflare account. Do not deploy with the placeholder.
-The RATE_LIMITER namespace_id must also be unique in this account; verify it
-before deployment. Its current configuration limits 20 requests per 60 seconds
-per Cloudflare location. The application message currently describes an hourly
-limit, so that wording should be reconciled before production use.
+The RATE_LIMITER namespace_id must be a positive integer unique within this
+Cloudflare account; the chosen value has not been verified against other Workers.
+Cloudflare's Rate Limiting binding supports only 10- or 60-second windows, not an
+hourly window. The current binding therefore allows up to 20 calls per 60 seconds
+per Cloudflare location (approximate, not a strict global cap). The source's
+local fallback counter uses a one-hour window, but it is not used while the
+required RATE_LIMITER binding is present. Do not describe the deployed binding
+as a 20-per-hour limit.
 
 No Worker was deployed and no provider keys or secrets were added.
