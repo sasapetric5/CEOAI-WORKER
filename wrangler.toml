@@ -17,10 +17,10 @@ binding = "KV_MEMORY"
 id = "b0837272625647779b705adccc79972b"
 
 # Cloudflare rate-limit binding. namespace_id must be a positive integer unique
-# within this Cloudflare account. Verify uniqueness before deployment.
+# within this Cloudflare account. Chosen as a dedicated account-local ID; ensure no other Worker uses this ID before deployment.
 [[ratelimits]]
 name = "RATE_LIMITER"
-namespace_id = "84261024"
+namespace_id = "2026102401"
 
 [ratelimits.simple]
 limit = 20
