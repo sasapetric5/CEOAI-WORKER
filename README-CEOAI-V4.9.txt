@@ -32,3 +32,18 @@ Production security configuration
 Validation limits
 -----------------
 The included tests run locally against mocked providers. They do not validate Cloudflare production bindings, real provider availability/quotas, browser behavior, or live deployment. Do not treat passing local tests alone as production certification. No deployment or Cloudflare/GitHub configuration changes are performed by this package.
+
+Cloudflare deployment configuration
+-----------------------------------
+The repository now includes wrangler.toml for the Worker entry point, canonical
+origin, disabled AI flags, KV_MEMORY, and RATE_LIMITER.
+
+IMPORTANT: deployment is NOT ready until the placeholder
+REPLACE_WITH_REAL_KV_NAMESPACE_ID in wrangler.toml is replaced with the actual
+KV namespace ID from this Cloudflare account. Do not deploy with the placeholder.
+The RATE_LIMITER namespace_id must also be unique in this account; verify it
+before deployment. Its current configuration limits 20 requests per 60 seconds
+per Cloudflare location. The application message currently describes an hourly
+limit, so that wording should be reconciled before production use.
+
+No Worker was deployed and no provider keys or secrets were added.
