@@ -317,4 +317,37 @@ try {
   assert.doesNotMatch(body, /test-glm-secret/);
 } finally { globalThis.fetch = originalFetchGlmError; }
 
-console.log("PASS: 32 CEOAI V4.9 smoke/security assertions");
+// 33–34: explicit GLM-only mode never falls back to configured non-GLM providers.
+const originalFetchGlmOnly = globalThis.fetch;
+const glmOnlyCalls = [];
+globalThis.fetch = async (url, options = {}) => {
+  const target = String(url);
+  glmOnlyCalls.push(target);
+  if (!target.includes("api.z.ai/api/paas/v4/chat/completions")) {
+    throw new Error("GLM-only mode attempted a non-GLM provider: " + target);
+  }
+  if (options.headers?.Authorization === "Bearer test-glm-only-primary") {
+    return new Response(JSON.stringify({error:"temporary failure"}), {status:503});
+  }
+  if (options.headers?.Authorization === "Bearer test-glm-only-secondary") {
+    return new Response(JSON.stringify({choices:[{message:{content:"Samo GLM rezervni ključ."}}]}), {status:200, headers:{"Content-Type":"application/json"}});
+  }
+  throw new Error("Unexpected GLM key in GLM-only test");
+};
+try {
+  const glmOnlyEnv = makeEnv({
+    AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true", ZAI_GLM_FLASH_ONLY:"true",
+    ZAI_GLM_FLASH_KEY_1:"test-glm-only-primary", ZAI_GLM_FLASH_KEY_2:"test-glm-only-secondary",
+    GEMINI_KEY_1:"must-not-be-called", OPENROUTER_KEY:"must-not-be-called", DEEPSEEK_KEY:"must-not-be-called",
+  });
+  const {cookie: glmOnlyCookie} = await getSession(glmOnlyEnv);
+  const glmOnlyResponse = await worker.fetch(apiRequest(glmOnlyCookie, JSON.stringify({prompt:"прво обради податке, затим провери резултат"})), glmOnlyEnv);
+  assert.equal(glmOnlyResponse.status, 200);
+  assert.equal((await glmOnlyResponse.json()).reply, "Samo GLM rezervni ključ.");
+  assert.deepEqual(glmOnlyCalls, [
+    "https://api.z.ai/api/paas/v4/chat/completions",
+    "https://api.z.ai/api/paas/v4/chat/completions",
+  ]);
+} finally { globalThis.fetch = originalFetchGlmOnly; }
+
+console.log("PASS: 34 CEOAI V4.9 smoke/security assertions");
