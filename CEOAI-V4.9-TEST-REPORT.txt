@@ -1,0 +1,26 @@
+CEOAI V4.9 — LOCAL TEST REPORT
+==============================
+
+Environment
+-----------
+Node.js v22.16.0
+Tests use mocked fetch/provider responses; no real provider calls are intended.
+
+Results
+-------
+PASS — node --check ceoai-index-v4.9.js
+PASS — node test-ceoai-v4.9.mjs
+PASS — 26 smoke/security assertions (test suite completion marker)
+PASS — deployment source and test ES-module source are byte-identical
+PASS — ZIP archive integrity verified
+
+New V4.9 coverage
+-----------------
+- Whitespace-only ALLOWED_ORIGINS resolves to the documented canonical-domain default.
+- A non-allowlisted origin remains rejected under that configuration.
+- A provider already in cooldown results in a rate-limit/cooldown-specific user message and Retry-After: 120.
+- Cyrillic sequencing words ("прво ... затим ...") select the complex-provider fallback path.
+
+Scope and limitations
+---------------------
+These are local regression tests, not a production security audit. They do not test actual Cloudflare Workers/KV/rate-limiter bindings, browser rendering/CSP in a real browser, real external provider quotas, account billing controls, DNS, or a deployed environment. Confirm bindings and environment variables in Cloudflare before deployment. No deployment was performed.
