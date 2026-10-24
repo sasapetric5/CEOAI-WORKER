@@ -4,13 +4,13 @@ name = "ceoai-worker"
 main = "ceoai-index-v4.9.mjs"
 compatibility_date = "2026-10-24"
 workers_dev = true
+# Preserve Worker variables configured in Cloudflare Dashboard during code deployments.
+# Keep dashboard configuration authoritative until provider settings are explicitly validated.
+keep_vars = true
 
 [vars]
 ALLOWED_ORIGINS = "https://ceoai.dev"
 DEBUG_PROVIDER_ERRORS = "false"
-AI_ENABLED = "false"
-EXTERNAL_AI_ENABLED = "false"
-WORKERS_AI_ENABLED = "false"
 
 [[kv_namespaces]]
 binding = "KV_MEMORY"
