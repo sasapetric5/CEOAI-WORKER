@@ -447,6 +447,16 @@ export default {
     const originAllowed = isAllowedOrigin(origin, requestAllowedOrigins);
     const isApi = url.pathname === "/api/chat";
 
+    // Safe diagnostics: never log prompts, cookies, IP addresses, origins, or secret values.
+    if (isApi) {
+      console.info("CEOAI_DIAG request_received", JSON.stringify({
+        method: request.method,
+        originAllowed,
+        aiEnabled: env.AI_ENABLED === "true",
+        externalAiEnabled: env.EXTERNAL_AI_ENABLED === "true",
+      }));
+    }
+
     if (!env.KV_MEMORY) {
       console.error("Missing KV_MEMORY binding");
       return new Response("Server misconfiguration.", {
@@ -661,7 +671,22 @@ export default {
       const candidates = env.ZAI_GLM_FLASH_ONLY === "true"
         ? pool.filter(p => p.provider === "glm-flash")
         : pool.filter(p => p.tier === intent || p.tier === "fast");
+      console.info("CEOAI_DIAG provider_pool", JSON.stringify({
+        glmOnly: env.ZAI_GLM_FLASH_ONLY === "true",
+        hasGlmKey1: typeof env.ZAI_GLM_FLASH_KEY_1 === "string" && Boolean(env.ZAI_GLM_FLASH_KEY_1.trim()),
+        hasGlmKey2: typeof env.ZAI_GLM_FLASH_KEY_2 === "string" && Boolean(env.ZAI_GLM_FLASH_KEY_2.trim()),
+        configuredProviderCount: pool.length,
+        candidateCount: candidates.length,
+        intent,
+      }));
       if (!candidates.length) {
+        console.warn("CEOAI_DIAG no_provider_candidates", JSON.stringify({
+          glmOnly: env.ZAI_GLM_FLASH_ONLY === "true",
+          hasGlmKey1: typeof env.ZAI_GLM_FLASH_KEY_1 === "string" && Boolean(env.ZAI_GLM_FLASH_KEY_1.trim()),
+          hasGlmKey2: typeof env.ZAI_GLM_FLASH_KEY_2 === "string" && Boolean(env.ZAI_GLM_FLASH_KEY_2.trim()),
+          configuredProviderCount: pool.length,
+          intent,
+        }));
         return json({ success: false, error: "Nema konfigurisanog provajdera. Nije moguće poslati zahtev." }, 503, corsHeaders(origin));
       }
 
