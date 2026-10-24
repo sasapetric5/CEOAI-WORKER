@@ -38,9 +38,9 @@ Cloudflare deployment configuration
 The repository now includes wrangler.toml for the Worker entry point, canonical
 origin, disabled AI flags, KV_MEMORY, and RATE_LIMITER.
 
-IMPORTANT: deployment is NOT ready until the placeholder
-REPLACE_WITH_REAL_KV_NAMESPACE_ID in wrangler.toml is replaced with the actual
-KV namespace ID from this Cloudflare account. Do not deploy with the placeholder.
+The KV_MEMORY placeholder has been replaced with the CEOAI_MEMORY namespace ID
+provided from the Cloudflare dashboard. This binding has been written to the
+repository, but live deployment validation has not yet been performed.
 The RATE_LIMITER namespace_id must be a positive integer unique within this
 Cloudflare account; the chosen value has not been verified against other Workers.
 Cloudflare's Rate Limiting binding supports only 10- or 60-second windows, not an
