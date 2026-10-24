@@ -1,7 +1,7 @@
 # CEOAI V4.9 — Cloudflare Workers configuration
 # Dedicated CEOAI memory namespace; do not reuse the ContentCraft API_KEYS namespace.
 name = "ceoai-worker"
-main = "ceoai-index-v4.9.js"
+main = "ceoai-index-v4.9.mjs"
 compatibility_date = "2026-10-24"
 workers_dev = true
 
