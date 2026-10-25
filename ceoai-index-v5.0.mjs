@@ -18,6 +18,7 @@ const MAX_SUMMARY_CHARS = 4000;
 const MAX_HISTORY_MESSAGES = 16;
 const MAX_HISTORY_INPUT_MESSAGES = 64;
 const MAX_REPLY_CHARS = 12000;
+import { handleOpenAIChatCompletions } from "./src/openai-compat.mjs";
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
 // Longer cooldown when a provider signals daily/monthly free-quota exhaustion (not a short burst limit).
@@ -801,6 +802,8 @@ export default {
         status: 500, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
       });
     }
+
+    if (url.pathname === "/v1/chat/completions") return handleOpenAIChatCompletions(request, env);
 
     if (request.method === "OPTIONS" && isApi) {
       if (!originAllowed) return new Response(null, { status: 403, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } });
