@@ -8,3 +8,21 @@ test("AI remains fail-closed until both owner flags are true",async()=>{const r=
 test("validates roles, streaming and tools before provider calls",async()=>{const e=env();const a=await handleOpenAIChatCompletions(req({messages:[{role:"developer",content:"no"}]}),e);assert.equal(a.status,400);const b=await handleOpenAIChatCompletions(req({stream:true,messages:[{role:"user",content:"hi"}]}),e);assert.equal((await b.json()).error.code,"streaming_not_supported_yet");const c=await handleOpenAIChatCompletions(req({tools:[],messages:[{role:"user",content:"hi"}]}),e);assert.equal((await c.json()).error.code,"tools_not_supported_yet")});
 test("OpenRouter :free produces standard chat.completion response",async()=>{const old=globalThis.fetch;globalThis.fetch=async(url,options)=>{assert.equal(String(url),"https://openrouter.ai/api/v1/chat/completions");assert.equal(JSON.parse(options.body).model,"meta-llama/llama-3-8b-instruct:free");return new Response(JSON.stringify({choices:[{message:{content:"Gateway works"}}]}),{status:200})};try{const r=await handleOpenAIChatCompletions(req({model:"ceoai-auto",messages:[{role:"user",content:"Hi"}]}),env({OPENROUTER_KEY:"test-key"}));assert.equal(r.status,200);const d=await r.json();assert.equal(d.object,"chat.completion");assert.equal(d.choices[0].message.content,"Gateway works");assert.equal(r.headers.get("cache-control"),"no-store")}finally{globalThis.fetch=old}});
 test("Gemini is excluded until free tier is explicitly confirmed",async()=>{const old=globalThis.fetch;let calls=0;globalThis.fetch=async()=>{calls++;throw Error("unexpected")};try{const r=await handleOpenAIChatCompletions(req({messages:[{role:"user",content:"Hi"}]}),env({GEMINI_KEY_1:"test-gemini-key"}));assert.equal(r.status,503);assert.equal((await r.json()).error.code,"no_free_provider");assert.equal(calls,0)}finally{globalThis.fetch=old}});
+
+test("Worker rutuira /v1/chat/completions do gateway modula", async () => {
+  const worker = (await import("../ceoai-index-v5.0.mjs")).default;
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ choices: [{ message: { content: "Worker route OK" } }] }), { status: 200 });
+  try {
+    const e = env({ OPENROUTER_KEY: "test-key" });
+    const response = await worker.fetch(new Request("https://ceoai.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: "Bearer test-secret-with-at-least-16", "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "ceoai-auto", messages: [{ role: "user", content: "Hi" }] }),
+    }), e);
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.object, "chat.completion");
+    assert.equal(data.choices[0].message.content, "Worker route OK");
+  } finally { globalThis.fetch = oldFetch; }
+});
