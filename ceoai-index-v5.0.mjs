@@ -341,6 +341,25 @@ async function readProviderError(response, provider) {
 
 async function executeModel(provider, messages, timeoutMs = PROVIDER_TIMEOUT_MS) {
   let response;
+  if (provider.provider === "workers-ai") {
+    if (!provider.enabled || !provider.env?.AI || provider.env.WORKERS_AI_ENABLED !== "true" ||
+        provider.env.WORKERS_AI_FREE_CONFIRMED !== "true") {
+      throw new Error("Workers AI nije eksplicitno potvrđen kao besplatan");
+    }
+    let timeout;
+    let result;
+    try {
+      result = await Promise.race([
+        provider.env.AI.run(provider.model, { messages }),
+        new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error("Workers AI timeout")), timeoutMs); }),
+      ]);
+    } finally {
+      clearTimeout(timeout);
+    }
+    const answer = typeof result?.response === "string" ? result.response.trim() : "";
+    if (!answer) throw new Error("Workers AI je vratio prazan odgovor");
+    return answer.slice(0, MAX_REPLY_CHARS);
+  }
   if (provider.provider === "gemini") {
     const systemText = messages.filter(m => m.role === "system").map(m => m.content).join("\n\n");
     const turns = messages.filter(m => m.role !== "system");
@@ -760,7 +779,7 @@ async function readBodyLimited(request, maxBytes) {
 async function compressHistory(env, oldSummary, oldMessages) {
   // Defense in depth: compression must obey the same explicit AI opt-in contract.
   if (env.AI_ENABLED !== "true" || env.EXTERNAL_AI_ENABLED !== "true" ||
-      !env.AI || env.WORKERS_AI_ENABLED !== "true") return null;
+      !env.AI || env.WORKERS_AI_ENABLED !== "true" || env.WORKERS_AI_FREE_CONFIRMED !== "true") return null;
   const unboundedSource = [
     oldSummary ? `PRETHODNI SAŽETAK:\n${oldSummary}` : "",
     ...oldMessages.map(m => `${m.role.toUpperCase()}: ${m.content}`),
@@ -1038,6 +1057,8 @@ export default {
       // Free-only pool: potentially billable providers require explicit account-level free-quota confirmation.
       // API keys alone never authorize a provider call; runtime quota errors still trigger cooldown and fallback.
       const pool = [
+        // Cloudflare Workers AI is a shared-pool candidate only after explicit free-tier confirmation.
+        { id: "workers-ai-1", provider: "workers-ai", model: MODEL, key: "", enabled: Boolean(env.AI) && env.WORKERS_AI_ENABLED === "true" && env.WORKERS_AI_FREE_CONFIRMED === "true", env, tier: "fast" },
         { id: "glm-flash-1", provider: "glm-flash", model: glmFlashModel, key: validFreeConfirmedFlag(env, "ZAI_GLM_FLASH_FREE_CONFIRMED") ? env.ZAI_GLM_FLASH_KEY_1 : "", tier: "fast" },
         { id: "glm-flash-2", provider: "glm-flash", model: glmFlashModel, key: validFreeConfirmedFlag(env, "ZAI_GLM_FLASH_FREE_CONFIRMED") ? env.ZAI_GLM_FLASH_KEY_2 : "", tier: "fast" },
         { id: "gemini-1", provider: "gemini", model: "gemini-1.5-flash", key: validFreeConfirmedFlag(env, "GEMINI_FREE_CONFIRMED") ? (env.GEMINI_API_KEY_PRIMARY || env.GEMINI_KEY_1) : "", tier: "fast" },
@@ -1063,7 +1084,7 @@ export default {
         ...(validFreeConfirmedFlag(env, "HF_FREE_CONFIRMED") && typeof env.HF_TOKEN === "string" && env.HF_TOKEN.trim()
           ? [{ id: "hf-1", provider: "huggingface", model: hfModel, key: env.HF_TOKEN, tier: "fast" }]
           : []),
-      ].filter(p => typeof p.key === "string" && p.key.trim());
+      ].filter(p => p.provider === "workers-ai" ? p.enabled : (typeof p.key === "string" && p.key.trim()));
 
       // Explicit GLM-only mode: no other provider may be called.
       let candidates = env.ZAI_GLM_FLASH_ONLY === "true"
