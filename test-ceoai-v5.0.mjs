@@ -709,4 +709,21 @@ try {
   assert.ok(ddgCalls.some(u => u.includes("api.duckduckgo.com")));
 } finally { globalThis.fetch = originalFetchDdg; }
 
+// V5.1: Gemini credentials are sent in a header and are never placed in the URL.
+const originalFetchGeminiHeader = globalThis.fetch;
+let geminiHeaderCall;
+globalThis.fetch = async (url, options = {}) => {
+  geminiHeaderCall = { url: String(url), headers: options.headers };
+  return new Response(JSON.stringify({candidates:[{content:{parts:[{text:"Gemini header auth OK"}]}}]}), {status:200, headers:{"Content-Type":"application/json"}});
+};
+try {
+  const geminiHeaderEnv = makeEnv({AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true", GEMINI_KEY_1:"test-gemini-header-key"});
+  const {cookie: geminiHeaderCookie} = await getSession(geminiHeaderEnv);
+  const geminiHeaderResponse = await worker.fetch(apiRequest(geminiHeaderCookie, JSON.stringify({prompt:"Zdravo"})), geminiHeaderEnv);
+  assert.equal(geminiHeaderResponse.status, 200);
+  assert.ok(geminiHeaderCall.url.includes("generativelanguage.googleapis.com"));
+  assert.ok(!geminiHeaderCall.url.includes("test-gemini-header-key"));
+  assert.equal(geminiHeaderCall.headers["x-goog-api-key"], "test-gemini-header-key");
+} finally { globalThis.fetch = originalFetchGeminiHeader; }
+
 console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecrawl + DuckDuckGo)");
