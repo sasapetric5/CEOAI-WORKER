@@ -73,7 +73,7 @@ globalThis.fetch = async (url) => {
   throw new Error('Unexpected fetch in test');
 };
 try {
-  const debugEnv = makeEnv({ AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', DEBUG_PROVIDER_ERRORS:'true', OPENROUTER_KEY:'test-key-not-real' });
+  const debugEnv = makeEnv({ AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', DEBUG_PROVIDER_ERRORS:'true', OPENROUTER_API_KEY:'test-key-not-real' });
   const { cookie: debugCookie } = await getSession(debugEnv);
   const debugResponse = await worker.fetch(apiRequest(debugCookie, JSON.stringify({prompt:'Zdravo'})), debugEnv);
   assert.equal(debugResponse.status, 503);
@@ -93,7 +93,7 @@ globalThis.fetch = async (url) => {
   throw new Error('Unexpected provider URL');
 };
 try {
-  const limitedEnv = makeEnv({ AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', OPENROUTER_KEY:'test-key' });
+  const limitedEnv = makeEnv({ AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', OPENROUTER_API_KEY:'test-key' });
   const { cookie: limitedCookie } = await getSession(limitedEnv);
   const limited = await worker.fetch(apiRequest(limitedCookie, JSON.stringify({prompt:'Zdravo'})), limitedEnv);
   assert.equal(limited.status, 503);
@@ -717,7 +717,7 @@ globalThis.fetch = async (url, options = {}) => {
   return new Response(JSON.stringify({candidates:[{content:{parts:[{text:"Gemini header auth OK"}]}}]}), {status:200, headers:{"Content-Type":"application/json"}});
 };
 try {
-  const geminiHeaderEnv = makeEnv({AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true", GEMINI_KEY_1:"test-gemini-header-key"});
+  const geminiHeaderEnv = makeEnv({AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true", GEMINI_API_KEY_PRIMARY:"test-gemini-header-key"});
   const {cookie: geminiHeaderCookie} = await getSession(geminiHeaderEnv);
   const geminiHeaderResponse = await worker.fetch(apiRequest(geminiHeaderCookie, JSON.stringify({prompt:"Zdravo"})), geminiHeaderEnv);
   assert.equal(geminiHeaderResponse.status, 200);
