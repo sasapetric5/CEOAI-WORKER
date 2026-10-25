@@ -625,6 +625,32 @@ try {
 } finally { globalThis.fetch = originalFetchQuota; }
 
 
+
+ // V5-9c: monthly quota reports a 30-day retry window when no fallback is configured.
+const originalFetchMonthlyQuota = globalThis.fetch;
+globalThis.fetch = async (url) => {
+  if (String(url).includes("api.deepseek.com")) {
+    return new Response(JSON.stringify({ error: { message: "You exceeded your current quota for this month" } }), {
+      status: 429, headers: { "Content-Type": "application/json" },
+    });
+  }
+  throw new Error("Unexpected provider in monthly quota test: " + url);
+};
+try {
+  const monthlyQuotaEnv = makeEnv({
+    AI_ENABLED: "true", EXTERNAL_AI_ENABLED: "true",
+    DEEPSEEK_KEY: "test-ds-monthly-quota",
+    GEMINI_KEY_1: "",
+  });
+  const { cookie: monthlyQuotaCookie } = await getSession(monthlyQuotaEnv);
+  const monthlyQuotaResponse = await worker.fetch(
+    apiRequest(monthlyQuotaCookie, JSON.stringify({ prompt: "Refaktorisi Python kod i ispravi bug" })),
+    monthlyQuotaEnv
+  );
+  assert.equal(monthlyQuotaResponse.status, 503);
+  assert.equal(monthlyQuotaResponse.headers.get("Retry-After"), String(60 * 60 * 24 * 30));
+} finally { globalThis.fetch = originalFetchMonthlyQuota; }
+
 // V5-9b: daily quota reports a one-day retry window when no other provider is available.
 const originalFetchDailyQuota = globalThis.fetch;
 globalThis.fetch = async (url) => {
