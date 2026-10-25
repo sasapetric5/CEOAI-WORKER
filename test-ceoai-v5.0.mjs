@@ -14,6 +14,8 @@ class MemoryKV {
 const makeEnv = (overrides = {}) => ({
   KV_MEMORY: new MemoryKV(),
   RATE_LIMITER: { async limit() { return { success: true }; } },
+  // Legacy integration tests exercise provider routing with an explicitly approved test-only free-tier fixture.
+  GEMINI_FREE_CONFIRMED: "true",
   ...overrides,
 });
 const getSession = async (env, origin = 'https://ceoai.dev') => {
