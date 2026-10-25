@@ -676,6 +676,43 @@ try {
   assert.equal(dailyQuotaResponse.headers.get("Retry-After"), String(60 * 60 * 24));
 } finally { globalThis.fetch = originalFetchDailyQuota; }
 
+
+ // V5-9d: explicitly confirmed Workers AI participates in the shared provider pool.
+let workersAiCalls = 0;
+const workersAiEnv = makeEnv({
+  AI_ENABLED: "true", EXTERNAL_AI_ENABLED: "true",
+  WORKERS_AI_ENABLED: "true", WORKERS_AI_FREE_CONFIRMED: "true",
+  AI: { async run(model, input) {
+    workersAiCalls += 1;
+    assert.equal(model, "@cf/meta/llama-3-8b-instruct");
+    assert.ok(Array.isArray(input.messages));
+    return { response: "Workers AI odgovor iz testnog bindinga" };
+  } },
+});
+const { cookie: workersAiCookie } = await getSession(workersAiEnv);
+const workersAiResponse = await worker.fetch(
+  apiRequest(workersAiCookie, JSON.stringify({ prompt: "Zdravo, odgovori kratko" })),
+  workersAiEnv
+);
+assert.equal(workersAiResponse.status, 200);
+assert.equal((await workersAiResponse.json()).reply, "Workers AI odgovor iz testnog bindinga");
+assert.equal(workersAiCalls, 1);
+
+// V5-9e: Workers AI binding alone is not enough; explicit free-tier confirmation is mandatory.
+let unconfirmedWorkersAiCalls = 0;
+const unconfirmedWorkersAiEnv = makeEnv({
+  AI_ENABLED: "true", EXTERNAL_AI_ENABLED: "true",
+  WORKERS_AI_ENABLED: "true", WORKERS_AI_FREE_CONFIRMED: "false",
+  AI: { async run() { unconfirmedWorkersAiCalls += 1; return { response: "should never run" }; } },
+});
+const { cookie: unconfirmedWorkersAiCookie } = await getSession(unconfirmedWorkersAiEnv);
+const unconfirmedWorkersAiResponse = await worker.fetch(
+  apiRequest(unconfirmedWorkersAiCookie, JSON.stringify({ prompt: "Zdravo" })),
+  unconfirmedWorkersAiEnv
+);
+assert.equal(unconfirmedWorkersAiResponse.status, 503);
+assert.equal(unconfirmedWorkersAiCalls, 0);
+
 // V5-10: search failover — Tavily quota → Google CSE takes over.
 const originalFetchSearch = globalThis.fetch;
 const searchCalls = [];
