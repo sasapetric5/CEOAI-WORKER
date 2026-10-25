@@ -1021,26 +1021,25 @@ export default {
       const hfModel = typeof env.HF_MODEL === "string" && /^[A-Za-z0-9._\/-]{1,120}$/.test(env.HF_MODEL.trim())
         ? env.HF_MODEL.trim() : "Qwen/Qwen2.5-7B-Instruct";
 
-      // Free-only pool: the operator supplies credentials they independently verified as free.
-      // A configured key is eligible; runtime quota errors trigger cooldown and fallback.
-      // A key alone does not prove billing is disabled on the provider account.
+      // Free-only pool: potentially billable providers require explicit account-level free-quota confirmation.
+      // API keys alone never authorize a provider call; runtime quota errors still trigger cooldown and fallback.
       const pool = [
-        { id: "glm-flash-1", provider: "glm-flash", model: glmFlashModel, key: env.ZAI_GLM_FLASH_KEY_1, tier: "fast" },
-        { id: "glm-flash-2", provider: "glm-flash", model: glmFlashModel, key: env.ZAI_GLM_FLASH_KEY_2, tier: "fast" },
-        { id: "gemini-1", provider: "gemini", model: "gemini-1.5-flash", key: env.GEMINI_API_KEY_PRIMARY || env.GEMINI_KEY_1, tier: "fast" },
-        { id: "gemini-2", provider: "gemini", model: "gemini-1.5-flash", key: env.GEMINI_API_KEY_SECONDARY || env.GEMINI_KEY_2, tier: "fast" },
-        { id: "gemini-3", provider: "gemini", model: "gemini-1.5-flash", key: env.GEMINI_API_KEY_TERTIARY || env.GEMINI_KEY_3, tier: "fast" },
+        { id: "glm-flash-1", provider: "glm-flash", model: glmFlashModel, key: validFreeConfirmedFlag(env, "ZAI_GLM_FLASH_FREE_CONFIRMED") ? env.ZAI_GLM_FLASH_KEY_1 : "", tier: "fast" },
+        { id: "glm-flash-2", provider: "glm-flash", model: glmFlashModel, key: validFreeConfirmedFlag(env, "ZAI_GLM_FLASH_FREE_CONFIRMED") ? env.ZAI_GLM_FLASH_KEY_2 : "", tier: "fast" },
+        { id: "gemini-1", provider: "gemini", model: "gemini-1.5-flash", key: validFreeConfirmedFlag(env, "GEMINI_FREE_CONFIRMED") ? (env.GEMINI_API_KEY_PRIMARY || env.GEMINI_KEY_1) : "", tier: "fast" },
+        { id: "gemini-2", provider: "gemini", model: "gemini-1.5-flash", key: validFreeConfirmedFlag(env, "GEMINI_FREE_CONFIRMED") ? (env.GEMINI_API_KEY_SECONDARY || env.GEMINI_KEY_2) : "", tier: "fast" },
+        { id: "gemini-3", provider: "gemini", model: "gemini-1.5-flash", key: validFreeConfirmedFlag(env, "GEMINI_FREE_CONFIRMED") ? (env.GEMINI_API_KEY_TERTIARY || env.GEMINI_KEY_3) : "", tier: "fast" },
         { id: "openrouter-1", provider: "openrouter", model: "meta-llama/llama-3-8b-instruct:free", key: (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY), tier: "fast" },
-        ...(typeof (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY) === "string" && (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY).trim()
+        ...(validFreeConfirmedFlag(env, "DEEPSEEK_FREE_CONFIRMED") && typeof (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY) === "string" && (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY).trim()
           ? [{ id: "deepseek-1", provider: "deepseek", model: "deepseek-chat", key: (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY), tier: "complex" }]
           : []),
         ...(validOpenRouterFreeModel(configuredComplexModel) && typeof (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY) === "string" && (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY).trim()
           ? [{ id: "openrouter-complex-free", provider: "openrouter", model: configuredComplexModel, key: (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY), tier: "complex" }]
           : []),
-        ...(typeof (env.MISTRAL_API_KEY || env.MISTRAL_KEY) === "string" && (env.MISTRAL_API_KEY || env.MISTRAL_KEY).trim()
+        ...(validFreeConfirmedFlag(env, "MISTRAL_FREE_CONFIRMED") && typeof (env.MISTRAL_API_KEY || env.MISTRAL_KEY) === "string" && (env.MISTRAL_API_KEY || env.MISTRAL_KEY).trim()
           ? [{ id: "mistral-1", provider: "mistral", model: mistralModel, key: (env.MISTRAL_API_KEY || env.MISTRAL_KEY), tier: "complex" }]
           : []),
-        // Keep extra opt-in gates for providers outside the explicitly approved Gemini/GLM/DeepSeek/Mistral set.
+        // xAI, NVIDIA, and Hugging Face also require their own explicit free-quota confirmation.
         ...(validFreeConfirmedFlag(env, "XAI_FREE_CONFIRMED") && typeof env.XAI_KEY === "string" && env.XAI_KEY.trim()
           ? [{ id: "xai-1", provider: "xai", model: xaiModel, key: env.XAI_KEY, tier: "complex" }]
           : []),
