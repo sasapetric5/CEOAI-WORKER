@@ -1023,18 +1023,24 @@ export default {
 
       // Free-only pool. Providers that can bill require an explicit *_FREE_CONFIRMED=true flag.
       const pool = [
-        { id: "glm-flash-1", provider: "glm-flash", model: glmFlashModel, key: env.ZAI_GLM_FLASH_KEY_1, tier: "fast" },
-        { id: "glm-flash-2", provider: "glm-flash", model: glmFlashModel, key: env.ZAI_GLM_FLASH_KEY_2, tier: "fast" },
+        // GLM Flash keys are excluded unless the operator confirms this account/model has free quota.
+        ...(validFreeConfirmedFlag(env, "ZAI_GLM_FLASH_FREE_CONFIRMED") ? [
+          { id: "glm-flash-1", provider: "glm-flash", model: glmFlashModel, key: env.ZAI_GLM_FLASH_KEY_1, tier: "fast" },
+          { id: "glm-flash-2", provider: "glm-flash", model: glmFlashModel, key: env.ZAI_GLM_FLASH_KEY_2, tier: "fast" },
+        ] : []),
         { id: "gemini-1", provider: "gemini", model: "gemini-1.5-flash", key: env.GEMINI_FREE_CONFIRMED === "true" ? (env.GEMINI_API_KEY_PRIMARY || env.GEMINI_KEY_1) : "", tier: "fast" },
         { id: "gemini-2", provider: "gemini", model: "gemini-1.5-flash", key: env.GEMINI_FREE_CONFIRMED === "true" ? (env.GEMINI_API_KEY_SECONDARY || env.GEMINI_KEY_2) : "", tier: "fast" },
         { id: "gemini-3", provider: "gemini", model: "gemini-1.5-flash", key: env.GEMINI_FREE_CONFIRMED === "true" ? (env.GEMINI_API_KEY_TERTIARY || env.GEMINI_KEY_3) : "", tier: "fast" },
         { id: "openrouter-1", provider: "openrouter", model: "meta-llama/llama-3-8b-instruct:free", key: (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY), tier: "fast" },
-        // DeepSeek API keys may access billable usage; require explicit free-quota confirmation.\n        ...(validFreeConfirmedFlag(env, "DEEPSEEK_FREE_CONFIRMED") && typeof (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY) === "string" && (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY).trim()\n          ? [{ id: "deepseek-1", provider: "deepseek", model: "deepseek-chat", key: (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY), tier: "complex" }]\n          : []),
+        // DeepSeek API keys may access billable usage; require explicit free-quota confirmation.
+        ...(validFreeConfirmedFlag(env, "DEEPSEEK_FREE_CONFIRMED") && typeof (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY) === "string" && (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY).trim()
+          ? [{ id: "deepseek-1", provider: "deepseek", model: "deepseek-chat", key: (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY), tier: "complex" }]
+          : []),
         ...(validOpenRouterFreeModel(configuredComplexModel) && typeof (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY) === "string" && (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY).trim()
           ? [{ id: "openrouter-complex-free", provider: "openrouter", model: configuredComplexModel, key: (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY), tier: "complex" }]
           : []),
-        // Mistral free models only (allowlisted).
-        ...(typeof (env.MISTRAL_API_KEY || env.MISTRAL_KEY) === "string" && (env.MISTRAL_API_KEY || env.MISTRAL_KEY).trim()
+        // Allowlisted model IDs do not prove account quota is free; require explicit operator confirmation.
+        ...(validFreeConfirmedFlag(env, "MISTRAL_FREE_CONFIRMED") && typeof (env.MISTRAL_API_KEY || env.MISTRAL_KEY) === "string" && (env.MISTRAL_API_KEY || env.MISTRAL_KEY).trim()
           ? [{ id: "mistral-1", provider: "mistral", model: mistralModel, key: (env.MISTRAL_API_KEY || env.MISTRAL_KEY), tier: "complex" }]
           : []),
         // xAI only when operator explicitly confirms free quota on the account.
