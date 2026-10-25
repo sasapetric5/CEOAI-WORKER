@@ -1021,38 +1021,32 @@ export default {
       const hfModel = typeof env.HF_MODEL === "string" && /^[A-Za-z0-9._\/-]{1,120}$/.test(env.HF_MODEL.trim())
         ? env.HF_MODEL.trim() : "Qwen/Qwen2.5-7B-Instruct";
 
-      // Free-only pool. Providers that can bill require an explicit *_FREE_CONFIRMED=true flag.
+      // Free-only pool: the operator supplies credentials they independently verified as free.
+      // A configured key is eligible; runtime quota errors trigger cooldown and fallback.
+      // A key alone does not prove billing is disabled on the provider account.
       const pool = [
-        // GLM Flash keys are excluded unless the operator confirms this account/model has free quota.
-        ...(validFreeConfirmedFlag(env, "ZAI_GLM_FLASH_FREE_CONFIRMED") ? [
-          { id: "glm-flash-1", provider: "glm-flash", model: glmFlashModel, key: env.ZAI_GLM_FLASH_KEY_1, tier: "fast" },
-          { id: "glm-flash-2", provider: "glm-flash", model: glmFlashModel, key: env.ZAI_GLM_FLASH_KEY_2, tier: "fast" },
-        ] : []),
-        { id: "gemini-1", provider: "gemini", model: "gemini-1.5-flash", key: env.GEMINI_FREE_CONFIRMED === "true" ? (env.GEMINI_API_KEY_PRIMARY || env.GEMINI_KEY_1) : "", tier: "fast" },
-        { id: "gemini-2", provider: "gemini", model: "gemini-1.5-flash", key: env.GEMINI_FREE_CONFIRMED === "true" ? (env.GEMINI_API_KEY_SECONDARY || env.GEMINI_KEY_2) : "", tier: "fast" },
-        { id: "gemini-3", provider: "gemini", model: "gemini-1.5-flash", key: env.GEMINI_FREE_CONFIRMED === "true" ? (env.GEMINI_API_KEY_TERTIARY || env.GEMINI_KEY_3) : "", tier: "fast" },
+        { id: "glm-flash-1", provider: "glm-flash", model: glmFlashModel, key: env.ZAI_GLM_FLASH_KEY_1, tier: "fast" },
+        { id: "glm-flash-2", provider: "glm-flash", model: glmFlashModel, key: env.ZAI_GLM_FLASH_KEY_2, tier: "fast" },
+        { id: "gemini-1", provider: "gemini", model: "gemini-1.5-flash", key: env.GEMINI_API_KEY_PRIMARY || env.GEMINI_KEY_1, tier: "fast" },
+        { id: "gemini-2", provider: "gemini", model: "gemini-1.5-flash", key: env.GEMINI_API_KEY_SECONDARY || env.GEMINI_KEY_2, tier: "fast" },
+        { id: "gemini-3", provider: "gemini", model: "gemini-1.5-flash", key: env.GEMINI_API_KEY_TERTIARY || env.GEMINI_KEY_3, tier: "fast" },
         { id: "openrouter-1", provider: "openrouter", model: "meta-llama/llama-3-8b-instruct:free", key: (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY), tier: "fast" },
-        // DeepSeek API keys may access billable usage; require explicit free-quota confirmation.
-        ...(validFreeConfirmedFlag(env, "DEEPSEEK_FREE_CONFIRMED") && typeof (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY) === "string" && (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY).trim()
+        ...(typeof (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY) === "string" && (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY).trim()
           ? [{ id: "deepseek-1", provider: "deepseek", model: "deepseek-chat", key: (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY), tier: "complex" }]
           : []),
         ...(validOpenRouterFreeModel(configuredComplexModel) && typeof (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY) === "string" && (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY).trim()
           ? [{ id: "openrouter-complex-free", provider: "openrouter", model: configuredComplexModel, key: (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY), tier: "complex" }]
           : []),
-        // Allowlisted model IDs do not prove account quota is free; require explicit operator confirmation.
-        ...(validFreeConfirmedFlag(env, "MISTRAL_FREE_CONFIRMED") && typeof (env.MISTRAL_API_KEY || env.MISTRAL_KEY) === "string" && (env.MISTRAL_API_KEY || env.MISTRAL_KEY).trim()
+        ...(typeof (env.MISTRAL_API_KEY || env.MISTRAL_KEY) === "string" && (env.MISTRAL_API_KEY || env.MISTRAL_KEY).trim()
           ? [{ id: "mistral-1", provider: "mistral", model: mistralModel, key: (env.MISTRAL_API_KEY || env.MISTRAL_KEY), tier: "complex" }]
           : []),
-        // xAI only when operator explicitly confirms free quota on the account.
-        ...(validFreeConfirmedFlag(env, "XAI_FREE_CONFIRMED") && typeof env.XAI_KEY === "string" && env.XAI_KEY.trim()
+        ...(typeof env.XAI_KEY === "string" && env.XAI_KEY.trim()
           ? [{ id: "xai-1", provider: "xai", model: xaiModel, key: env.XAI_KEY, tier: "complex" }]
           : []),
-        // NVIDIA Build only when free quota is confirmed.
-        ...(validFreeConfirmedFlag(env, "NVIDIA_FREE_CONFIRMED") && typeof env.NVIDIA_KEY === "string" && env.NVIDIA_KEY.trim()
+        ...(typeof env.NVIDIA_KEY === "string" && env.NVIDIA_KEY.trim()
           ? [{ id: "nvidia-1", provider: "nvidia", model: nvidiaModel, key: env.NVIDIA_KEY, tier: "complex" }]
           : []),
-        // Hugging Face Inference only when free credit is confirmed (not paid excess).
-        ...(validFreeConfirmedFlag(env, "HF_FREE_CONFIRMED") && typeof env.HF_TOKEN === "string" && env.HF_TOKEN.trim()
+        ...(typeof env.HF_TOKEN === "string" && env.HF_TOKEN.trim()
           ? [{ id: "hf-1", provider: "huggingface", model: hfModel, key: env.HF_TOKEN, tier: "fast" }]
           : []),
       ].filter(p => typeof p.key === "string" && p.key.trim());
