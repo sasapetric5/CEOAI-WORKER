@@ -1025,9 +1025,9 @@ export default {
       const pool = [
         { id: "glm-flash-1", provider: "glm-flash", model: glmFlashModel, key: env.ZAI_GLM_FLASH_KEY_1, tier: "fast" },
         { id: "glm-flash-2", provider: "glm-flash", model: glmFlashModel, key: env.ZAI_GLM_FLASH_KEY_2, tier: "fast" },
-        { id: "gemini-1", provider: "gemini", model: "gemini-1.5-flash", key: env.GEMINI_FREE_CONFIRMED === "true" ? (env.GEMINI_API_KEY_PRIMARY || env.GEMINI_KEY_1), tier: "fast" },
-        { id: "gemini-2", provider: "gemini", model: "gemini-1.5-flash", key: env.GEMINI_FREE_CONFIRMED === "true" ? (env.GEMINI_API_KEY_SECONDARY || env.GEMINI_KEY_2), tier: "fast" },
-        { id: "gemini-3", provider: "gemini", model: "gemini-1.5-flash", key: env.GEMINI_FREE_CONFIRMED === "true" ? (env.GEMINI_API_KEY_TERTIARY || env.GEMINI_KEY_3), tier: "fast" },
+        { id: "gemini-1", provider: "gemini", model: "gemini-1.5-flash", key: env.GEMINI_FREE_CONFIRMED === "true" ? (env.GEMINI_API_KEY_PRIMARY || env.GEMINI_KEY_1) : "", tier: "fast" },
+        { id: "gemini-2", provider: "gemini", model: "gemini-1.5-flash", key: env.GEMINI_FREE_CONFIRMED === "true" ? (env.GEMINI_API_KEY_SECONDARY || env.GEMINI_KEY_2) : "", tier: "fast" },
+        { id: "gemini-3", provider: "gemini", model: "gemini-1.5-flash", key: env.GEMINI_FREE_CONFIRMED === "true" ? (env.GEMINI_API_KEY_TERTIARY || env.GEMINI_KEY_3) : "", tier: "fast" },
         { id: "openrouter-1", provider: "openrouter", model: "meta-llama/llama-3-8b-instruct:free", key: (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY), tier: "fast" },
         { id: "deepseek-1", provider: "deepseek", model: "deepseek-chat", key: (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY), tier: "complex" },
         ...(validOpenRouterFreeModel(configuredComplexModel) && typeof (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY) === "string" && (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY).trim()
