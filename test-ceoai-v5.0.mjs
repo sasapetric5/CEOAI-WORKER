@@ -180,12 +180,19 @@ globalThis.fetch = async (url) => {
   throw new Error('Unexpected provider URL');
 };
 try {
+  let historyAiCalls = 0;
   const historyEnv = makeEnv({
     AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', WORKERS_AI_ENABLED:'true', WORKERS_AI_FREE_CONFIRMED:'true',
     OPENROUTER_KEY:'test-openrouter-key',
     AI: { async run(_model, payload) {
-      assert.ok(payload.messages[1].content.includes('starija poruka 1'));
-      return {response:'Korisnik radi na projektu. Sačuvati kontekst i odluke.'};
+      historyAiCalls += 1;
+      if (historyAiCalls === 1) {
+        // First Workers AI call is the compression request; the later call answers the user.
+        assert.equal(payload.messages[0].role, 'system');
+        assert.ok(payload.messages[1].content.includes('starija poruka 1'));
+        return {response:'Korisnik radi na projektu. Sačuvati kontekst i odluke.'};
+      }
+      return {response:'Odgovor iz Workers AI.'};
     } },
   });
   const { cookie: historyCookie } = await getSession(historyEnv);
@@ -255,7 +262,13 @@ globalThis.fetch = async (url) => {
 try {
   const env3 = makeEnv({
     AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', WORKERS_AI_ENABLED:'true', WORKERS_AI_FREE_CONFIRMED:'true', OPENROUTER_KEY:'test-key-3',
-    AI: { async run(_model, payload) { assert.equal(payload.messages[1].content.length, 24000); return {response:'Sažetak.'}; } },
+    AI: { async run(_model, payload) {
+      if (payload.messages[0]?.role === 'system') {
+        assert.equal(payload.messages[1].content.length, 24000);
+        return {response:'Sažetak.'};
+      }
+      return {response:'Odgovor nakon sažimanja.'};
+    } },
   });
   const {cookie: cookie3} = await getSession(env3);
   const sid = cookie3.split('=')[1];
