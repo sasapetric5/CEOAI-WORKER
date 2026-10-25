@@ -624,6 +624,32 @@ try {
   assert.ok(await quotaEnv.KV_MEMORY.get("cooldown:deepseek-1"));
 } finally { globalThis.fetch = originalFetchQuota; }
 
+
+// V5-9b: daily quota reports a one-day retry window when no other provider is available.
+const originalFetchDailyQuota = globalThis.fetch;
+globalThis.fetch = async (url) => {
+  if (String(url).includes("api.deepseek.com")) {
+    return new Response(JSON.stringify({ error: { message: "Daily free tier quota exceeded" } }), {
+      status: 429, headers: { "Content-Type": "application/json" },
+    });
+  }
+  throw new Error("Unexpected provider in daily quota test: " + url);
+};
+try {
+  const dailyQuotaEnv = makeEnv({
+    AI_ENABLED: "true", EXTERNAL_AI_ENABLED: "true",
+    DEEPSEEK_KEY: "test-ds-daily-quota",
+    GEMINI_KEY_1: "",
+  });
+  const { cookie: dailyQuotaCookie } = await getSession(dailyQuotaEnv);
+  const dailyQuotaResponse = await worker.fetch(
+    apiRequest(dailyQuotaCookie, JSON.stringify({ prompt: "Refaktorisi Python kod i ispravi bug" })),
+    dailyQuotaEnv
+  );
+  assert.equal(dailyQuotaResponse.status, 503);
+  assert.equal(dailyQuotaResponse.headers.get("Retry-After"), String(60 * 60 * 24));
+} finally { globalThis.fetch = originalFetchDailyQuota; }
+
 // V5-10: search failover — Tavily quota → Google CSE takes over.
 const originalFetchSearch = globalThis.fetch;
 const searchCalls = [];
