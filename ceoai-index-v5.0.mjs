@@ -1029,7 +1029,7 @@ export default {
         { id: "gemini-2", provider: "gemini", model: "gemini-1.5-flash", key: env.GEMINI_FREE_CONFIRMED === "true" ? (env.GEMINI_API_KEY_SECONDARY || env.GEMINI_KEY_2) : "", tier: "fast" },
         { id: "gemini-3", provider: "gemini", model: "gemini-1.5-flash", key: env.GEMINI_FREE_CONFIRMED === "true" ? (env.GEMINI_API_KEY_TERTIARY || env.GEMINI_KEY_3) : "", tier: "fast" },
         { id: "openrouter-1", provider: "openrouter", model: "meta-llama/llama-3-8b-instruct:free", key: (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY), tier: "fast" },
-        { id: "deepseek-1", provider: "deepseek", model: "deepseek-chat", key: (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY), tier: "complex" },
+        // DeepSeek API keys may access billable usage; require explicit free-quota confirmation.\n        ...(validFreeConfirmedFlag(env, "DEEPSEEK_FREE_CONFIRMED") && typeof (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY) === "string" && (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY).trim()\n          ? [{ id: "deepseek-1", provider: "deepseek", model: "deepseek-chat", key: (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY), tier: "complex" }]\n          : []),
         ...(validOpenRouterFreeModel(configuredComplexModel) && typeof (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY) === "string" && (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY).trim()
           ? [{ id: "openrouter-complex-free", provider: "openrouter", model: configuredComplexModel, key: (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY), tier: "complex" }]
           : []),
