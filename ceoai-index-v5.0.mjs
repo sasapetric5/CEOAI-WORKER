@@ -1040,13 +1040,14 @@ export default {
         ...(typeof (env.MISTRAL_API_KEY || env.MISTRAL_KEY) === "string" && (env.MISTRAL_API_KEY || env.MISTRAL_KEY).trim()
           ? [{ id: "mistral-1", provider: "mistral", model: mistralModel, key: (env.MISTRAL_API_KEY || env.MISTRAL_KEY), tier: "complex" }]
           : []),
-        ...(typeof env.XAI_KEY === "string" && env.XAI_KEY.trim()
+        // Keep extra opt-in gates for providers outside the explicitly approved Gemini/GLM/DeepSeek/Mistral set.
+        ...(validFreeConfirmedFlag(env, "XAI_FREE_CONFIRMED") && typeof env.XAI_KEY === "string" && env.XAI_KEY.trim()
           ? [{ id: "xai-1", provider: "xai", model: xaiModel, key: env.XAI_KEY, tier: "complex" }]
           : []),
-        ...(typeof env.NVIDIA_KEY === "string" && env.NVIDIA_KEY.trim()
+        ...(validFreeConfirmedFlag(env, "NVIDIA_FREE_CONFIRMED") && typeof env.NVIDIA_KEY === "string" && env.NVIDIA_KEY.trim()
           ? [{ id: "nvidia-1", provider: "nvidia", model: nvidiaModel, key: env.NVIDIA_KEY, tier: "complex" }]
           : []),
-        ...(typeof env.HF_TOKEN === "string" && env.HF_TOKEN.trim()
+        ...(validFreeConfirmedFlag(env, "HF_FREE_CONFIRMED") && typeof env.HF_TOKEN === "string" && env.HF_TOKEN.trim()
           ? [{ id: "hf-1", provider: "huggingface", model: hfModel, key: env.HF_TOKEN, tier: "fast" }]
           : []),
       ].filter(p => typeof p.key === "string" && p.key.trim());
