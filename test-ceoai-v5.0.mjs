@@ -65,6 +65,41 @@ const disabled = await worker.fetch(apiRequest(cookie, JSON.stringify({prompt:'Z
 assert.equal(disabled.status, 503);
 assert.match((await disabled.json()).error, /AI je isključen/);
 
+// Free-only safety policy: keys alone must not enable potentially billable providers.
+{
+  const policyFetchCalls = [];
+  const originalPolicyFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    policyFetchCalls.push(String(url));
+    throw new Error("Unexpected network call in free-only policy test");
+  };
+  try {
+    const policyEnv = makeEnv({
+      AI_ENABLED: "true",
+      EXTERNAL_AI_ENABLED: "true",
+      GEMINI_FREE_CONFIRMED: "false",
+      ZAI_GLM_FLASH_FREE_CONFIRMED: "false",
+      DEEPSEEK_FREE_CONFIRMED: "false",
+      MISTRAL_FREE_CONFIRMED: "false",
+      GEMINI_API_KEY_PRIMARY: "test-gemini-policy-key",
+      ZAI_GLM_FLASH_KEY_1: "test-glm-policy-key",
+      DEEPSEEK_API_KEY: "test-deepseek-policy-key",
+      MISTRAL_API_KEY: "test-mistral-policy-key",
+    });
+    const { cookie: policyCookie } = await getSession(policyEnv);
+    const policyResponse = await worker.fetch(
+      apiRequest(policyCookie, JSON.stringify({ prompt: "Zdravo" })),
+      policyEnv
+    );
+    assert.equal(policyResponse.status, 503, "no provider should be eligible without free-quota confirmation");
+    assert.match((await policyResponse.json()).error, /Nema konfigurisanog provajdera/);
+    assert.equal(policyFetchCalls.length, 0, "must not contact a potentially billable provider");
+  } finally {
+    globalThis.fetch = originalPolicyFetch;
+  }
+}
+
+
 // 12–13: debug error details redact provider secrets.
 const originalFetch = globalThis.fetch;
 const originalDebug = console.debug;
