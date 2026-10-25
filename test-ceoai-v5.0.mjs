@@ -181,7 +181,7 @@ globalThis.fetch = async (url) => {
 };
 try {
   const historyEnv = makeEnv({
-    AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', WORKERS_AI_ENABLED:'true',
+    AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', WORKERS_AI_ENABLED:'true', WORKERS_AI_FREE_CONFIRMED:'true',
     OPENROUTER_KEY:'test-openrouter-key',
     AI: { async run(_model, payload) {
       assert.ok(payload.messages[1].content.includes('starija poruka 1'));
