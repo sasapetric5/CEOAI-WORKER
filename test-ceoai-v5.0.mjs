@@ -254,7 +254,7 @@ globalThis.fetch = async (url) => {
 };
 try {
   const env3 = makeEnv({
-    AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', WORKERS_AI_ENABLED:'true', OPENROUTER_KEY:'test-key-3',
+    AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', WORKERS_AI_ENABLED:'true', WORKERS_AI_FREE_CONFIRMED:'true', OPENROUTER_KEY:'test-key-3',
     AI: { async run(_model, payload) { assert.equal(payload.messages[1].content.length, 24000); return {response:'Sažetak.'}; } },
   });
   const {cookie: cookie3} = await getSession(env3);
