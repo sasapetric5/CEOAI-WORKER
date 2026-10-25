@@ -69,43 +69,38 @@ const disabled = await worker.fetch(apiRequest(cookie, JSON.stringify({prompt:'Z
 assert.equal(disabled.status, 503);
 assert.match((await disabled.json()).error, /AI je isključen/);
 
-// Provider eligibility: configured keys need no redundant *_FREE_CONFIRMED flags.
+// Free-only safety policy: keys alone must not enable potentially billable providers.
 {
   const calls = [];
   const original = globalThis.fetch;
   globalThis.fetch = async (url) => {
-    const target = String(url);
-    calls.push(target);
-    if (target.includes("generativelanguage.googleapis.com")) {
-      return new Response(JSON.stringify({candidates:[{content:{parts:[{text:"Gemini eligible without extra flag"}]}}]}), {status:200, headers:{"Content-Type":"application/json"}});
-    }
-    if (target.includes("api.z.ai")) {
-      return new Response(JSON.stringify({choices:[{message:{content:"GLM eligible without extra flag"}}]}), {status:200, headers:{"Content-Type":"application/json"}});
-    }
-    if (target.includes("api.deepseek.com")) {
-      return new Response(JSON.stringify({choices:[{message:{content:"DeepSeek eligible without extra flag"}}]}), {status:200, headers:{"Content-Type":"application/json"}});
-    }
-    if (target.includes("api.mistral.ai")) {
-      return new Response(JSON.stringify({choices:[{message:{content:"Mistral eligible without extra flag"}}]}), {status:200, headers:{"Content-Type":"application/json"}});
-    }
-    throw new Error("Unexpected provider URL: " + target);
+    calls.push(String(url));
+    throw new Error("Unexpected network call in free-only policy test");
   };
   try {
     const policyEnv = makeEnv({
-      AI_ENABLED: "true", EXTERNAL_AI_ENABLED: "true",
-      GEMINI_FREE_CONFIRMED: "false", ZAI_GLM_FLASH_FREE_CONFIRMED: "false",
-      DEEPSEEK_FREE_CONFIRMED: "false", MISTRAL_FREE_CONFIRMED: "false",
+      AI_ENABLED: "true",
+      EXTERNAL_AI_ENABLED: "true",
+      GEMINI_FREE_CONFIRMED: "false",
+      ZAI_GLM_FLASH_FREE_CONFIRMED: "false",
+      DEEPSEEK_FREE_CONFIRMED: "false",
+      MISTRAL_FREE_CONFIRMED: "false",
       GEMINI_API_KEY_PRIMARY: "test-gemini-policy-key",
       ZAI_GLM_FLASH_KEY_1: "test-glm-policy-key",
       DEEPSEEK_API_KEY: "test-deepseek-policy-key",
       MISTRAL_API_KEY: "test-mistral-policy-key",
     });
     const { cookie: policyCookie } = await getSession(policyEnv);
-    const response = await worker.fetch(apiRequest(policyCookie, JSON.stringify({prompt:"Zdravo"})), policyEnv);
-    assert.equal(response.status, 200, "configured provider keys are eligible even when legacy flags are false");
-    assert.ok(calls.length > 0, "at least one configured provider should be attempted");
-    assert.match((await response.json()).reply, /eligible without extra flag/);
-  } finally { globalThis.fetch = original; }
+    const response = await worker.fetch(
+      apiRequest(policyCookie, JSON.stringify({ prompt: "Zdravo" })),
+      policyEnv
+    );
+    assert.equal(response.status, 503, "no provider should be eligible without free-quota confirmation");
+    assert.match((await response.json()).error, /Nema konfigurisanog provajdera/);
+    assert.equal(calls.length, 0, "must not contact a potentially billable provider");
+  } finally {
+    globalThis.fetch = original;
+  }
 }
 
 // 12–13: debug error details redact provider secrets.
