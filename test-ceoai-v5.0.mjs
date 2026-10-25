@@ -726,4 +726,27 @@ try {
   assert.equal(geminiHeaderCall.headers["x-goog-api-key"], "test-gemini-header-key");
 } finally { globalThis.fetch = originalFetchGeminiHeader; }
 
+// V5.1: overflowed history remains usable when optional compression is unavailable.
+const originalFetchHistoryOverflow = globalThis.fetch;
+globalThis.fetch = async (url) => {
+  if (String(url).includes("openrouter.ai")) {
+    return new Response(JSON.stringify({choices:[{message:{content:"Nastavak posle istorije."}}]}), {status:200, headers:{"Content-Type":"application/json"}});
+  }
+  throw new Error("Unexpected provider URL in history overflow test: " + String(url));
+};
+try {
+  const overflowEnv = makeEnv({AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true", OPENROUTER_KEY:"test-openrouter-overflow"});
+  const {cookie: overflowCookie} = await getSession(overflowEnv);
+  const overflowSid = overflowCookie.split("=")[1];
+  overflowEnv.KV_MEMORY.data.set(`memory:${overflowSid}`, JSON.stringify({
+    summary:null, estimatedTokensSaved:0, compressions:0,
+    messages:Array.from({length:16}, (_, i) => ({role:i % 2 ? "assistant" : "user", content:`stored turn ${i + 1}`})),
+  }));
+  const overflowResponse = await worker.fetch(apiRequest(overflowCookie, JSON.stringify({prompt:"Trenutni zahtev mora ostati"})), overflowEnv);
+  assert.equal(overflowResponse.status, 200);
+  const overflowMemory = JSON.parse(overflowEnv.KV_MEMORY.data.get(`memory:${overflowSid}`));
+  assert.ok(overflowMemory.messages.length <= 16);
+  assert.equal(overflowMemory.messages.at(-2).content, "Trenutni zahtev mora ostati");
+} finally { globalThis.fetch = originalFetchHistoryOverflow; }
+
 console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecrawl + DuckDuckGo)");
