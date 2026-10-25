@@ -451,10 +451,10 @@ function isQuotaError(error) {
 
 function quotaCooldownTTL(error) {
   const msg = String(error?.message || "") + " " + String(error?.providerDetail || "");
-  if (/monthly|per\\s+month|this\\s+month|month(?:ly)?\\s+(?:quota|limit|usage)/i.test(msg)) {
+  if (/monthly|per\s+month|this\s+month|month(?:ly)?\s+(?:quota|limit|usage)/i.test(msg)) {
     return MONTHLY_QUOTA_COOLDOWN_TTL;
   }
-  if (/daily|per\\s+day|today|day(?:ly)?\\s+(?:quota|limit|usage)/i.test(msg)) {
+  if (/daily|per\s+day|today|day(?:ly)?\s+(?:quota|limit|usage)/i.test(msg)) {
     return DAILY_QUOTA_COOLDOWN_TTL;
   }
   return QUOTA_COOLDOWN_TTL;
