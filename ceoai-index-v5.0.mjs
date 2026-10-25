@@ -21,8 +21,10 @@ const MAX_REPLY_CHARS = 12000;
 import { handleOpenAIChatCompletions } from "./src/openai-compat.mjs";
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
-// Longer cooldown when a provider signals daily/monthly free-quota exhaustion (not a short burst limit).
-const QUOTA_COOLDOWN_TTL = 60 * 60 * 6; // 6 hours — conservative stand-in for daily reset windows
+// Quota cooldowns differ by provider signal: monthly exhaustion must not be retried every few hours.
+const QUOTA_COOLDOWN_TTL = 60 * 60 * 6; // 6 hours when the reset period is unknown
+const DAILY_QUOTA_COOLDOWN_TTL = 60 * 60 * 24;
+const MONTHLY_QUOTA_COOLDOWN_TTL = 60 * 60 * 24 * 30;
 const SEARCH_TIMEOUT_MS = 12000;
 const MODEL = "@cf/meta/llama-3-8b-instruct";
 let warnedMissingRateLimiter = false;
@@ -444,6 +446,18 @@ function isQuotaError(error) {
     return /quota|daily|monthly|resource.?exhausted|billing|exceeded|insufficient_quota|free.?tier|usage.?limit|tokens?.?per/i.test(msg);
   }
   return /insufficient_quota|resource_exhausted|you exceeded your current quota/i.test(msg);
+}
+
+
+function quotaCooldownTTL(error) {
+  const msg = String(error?.message || "") + " " + String(error?.providerDetail || "");
+  if (/monthly|per\\s+month|this\\s+month|month(?:ly)?\\s+(?:quota|limit|usage)/i.test(msg)) {
+    return MONTHLY_QUOTA_COOLDOWN_TTL;
+  }
+  if (/daily|per\\s+day|today|day(?:ly)?\\s+(?:quota|limit|usage)/i.test(msg)) {
+    return DAILY_QUOTA_COOLDOWN_TTL;
+  }
+  return QUOTA_COOLDOWN_TTL;
 }
 
 async function fetchSearchTavily(env, query) {
@@ -1088,6 +1102,7 @@ export default {
       let sawRateLimit = false;
       let sawQuotaExhaustion = false;
       let sawCooldownSkip = false;
+      let quotaRetryAfter = QUOTA_COOLDOWN_TTL;
       let usedProviderId = null;
       // Sequential failover: on quota/rate-limit the provider is cooled down and the next
       // ranked free candidate automatically takes over within the same request.
@@ -1119,8 +1134,9 @@ export default {
           if (quotaHit || lastStatus === 429) {
             sawRateLimit = true;
             if (quotaHit) sawQuotaExhaustion = true;
-            // Daily/monthly free-quota exhaustion → longer cooldown; short burst → standard TTL.
-            const ttl = quotaHit ? QUOTA_COOLDOWN_TTL : COOLDOWN_TTL;
+            // Respect daily/monthly reset signals; unknown quota windows use a conservative cooldown.
+            const ttl = quotaHit ? quotaCooldownTTL(error) : COOLDOWN_TTL;
+            if (quotaHit) quotaRetryAfter = Math.max(quotaRetryAfter, ttl);
             try { await env.KV_MEMORY.put(cooldownKey, quotaHit ? "quota" : "1", { expirationTtl: ttl }); } catch {}
             console.info("CEOAI_DIAG provider_failover", JSON.stringify({
               from: candidate.id,
@@ -1141,7 +1157,7 @@ export default {
             : "AI provajderi trenutno nisu dostupni. Istorija razgovora nije promenjena.";
         return json({ success: false, error: message }, 503, {
           ...corsHeaders(origin),
-          "Retry-After": sawQuotaExhaustion ? String(QUOTA_COOLDOWN_TTL) : (sawRateLimit ? String(COOLDOWN_TTL) : "120"),
+          "Retry-After": sawQuotaExhaustion ? String(quotaRetryAfter) : (sawRateLimit ? String(COOLDOWN_TTL) : "120"),
         });
       }
 
