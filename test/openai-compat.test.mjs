@@ -286,3 +286,49 @@ test("provider HTTP error details and tokens are never returned to API clients",
   } finally { globalThis.fetch = oldFetch; }
 });
 
+// Batch provider fallback regressions: malformed and empty provider output, cooldown, and retry policy.
+test("rejects empty provider content without returning an empty success", async () => {
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ choices: [{ message: { content: "  " } }] }), { status: 200 });
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), env({ OPENROUTER_KEY: "test-key" }));
+    assert.equal(r.status, 503);
+    assert.equal((await r.json()).error.code, "providers_unavailable");
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("rejects malformed provider JSON without leaking parser details", async () => {
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response("{not-json", { status: 200 });
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), env({ OPENROUTER_KEY: "test-key" }));
+    assert.equal(r.status, 503);
+    const body = await r.text();
+    assert.match(body, /providers_unavailable/);
+    assert.doesNotMatch(body, /SyntaxError|not-json/);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("quota cooldown is persisted without storing upstream error body", async () => {
+  const oldFetch = globalThis.fetch; const data = new Map();
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: { message: "private billing diagnostic" } }), { status: 429 });
+  const e = env({ OPENROUTER_KEY: "test-key", KV_MEMORY: { async get(k){return data.get(k)??null}, async put(k,v){data.set(k,v)} } });
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), e);
+    assert.equal(r.status, 503);
+    assert.equal(data.get("gateway:cooldown:openrouter-free"), "1");
+    assert.doesNotMatch([...data.values()].join(" "), /private billing diagnostic/);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("provider Retry-After is bounded to at most one hour in cooldown", async () => {
+  const oldFetch = globalThis.fetch; const expirations = [];
+  globalThis.fetch = async () => new Response("unavailable", { status: 503, headers: { "Retry-After": "99999" } });
+  const e = env({ OPENROUTER_KEY: "test-key", KV_MEMORY: { async get(){return null}, async put(_k,_v,opts){expirations.push(opts.expirationTtl)} } });
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), e);
+    assert.equal(r.status, 503);
+    assert.deepEqual(expirations, [3600]);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
