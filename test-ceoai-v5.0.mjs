@@ -1203,3 +1203,41 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
   }
 }
 
+// Regression: provider failure logs contain identifiers/status only, never raw provider error text.
+{
+  const originalFetch = globalThis.fetch;
+  const originalWarn = console.warn;
+  const warningLines = [];
+  globalThis.fetch = async () => {
+    throw new Error("Authorization: Bearer secret-provider-token-123");
+  };
+  console.warn = (...args) => warningLines.push(args.join(" "));
+  try {
+    const logSafeEnv = makeEnv({
+      AI_ENABLED: "true",
+      EXTERNAL_AI_ENABLED: "true",
+      OPENROUTER_API_KEY: "test-key-log-safety",
+      GEMINI_API_KEY_PRIMARY: "",
+      GEMINI_KEY_1: "",
+      ZAI_GLM_FLASH_KEY_1: "",
+      ZAI_GLM_FLASH_KEY_2: "",
+      DEEPSEEK_API_KEY: "",
+      DEEPSEEK_KEY: "",
+      MISTRAL_API_KEY: "",
+      MISTRAL_KEY: "",
+    });
+    const { cookie: logSafeCookie } = await getSession(logSafeEnv);
+    const response = await worker.fetch(
+      apiRequest(logSafeCookie, JSON.stringify({ prompt: "Zdravo" })),
+      logSafeEnv
+    );
+    assert.equal(response.status, 503);
+    const warnings = warningLines.join("\n");
+    assert.match(warnings, /provider_failed/);
+    assert.doesNotMatch(warnings, /secret-provider-token-123|Authorization: Bearer/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
+  }
+}
+
