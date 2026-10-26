@@ -366,3 +366,148 @@ test("disabled gateway rejects valid requests without provider calls", async () 
   } finally { globalThis.fetch = oldFetch; }
 });
 
+// Security/free-only batch: authorization, fail-closed storage, and request-boundary checks.
+test("missing Authorization header is rejected before provider calls", async () => {
+  const oldFetch = globalThis.fetch; let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error("unexpected provider call"); };
+  try {
+    const r = await handleOpenAIChatCompletions(new Request("https://ceoai.dev/v1/chat/completions", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: [{ role: "user", content: "Hi" }] }),
+    }), env({ OPENROUTER_KEY: "test-key" }));
+    assert.equal(r.status, 401);
+    assert.equal(calls, 0);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("gateway refuses a too-short configured server secret", async () => {
+  const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), env({
+    GATEWAY_SECRET: "short", OPENROUTER_KEY: "test-key",
+  }));
+  assert.equal(r.status, 401);
+  assert.equal((await r.json()).error.code, "unauthorized");
+});
+
+test("Bearer authorization scheme is required", async () => {
+  const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }, {
+    headers: { Authorization: "Basic dGVzdA==" },
+  }), env({ OPENROUTER_KEY: "test-key" }));
+  assert.equal(r.status, 401);
+  assert.equal((await r.json()).error.code, "unauthorized");
+});
+
+test("gateway fails closed when the KV binding is absent", async () => {
+  const oldFetch = globalThis.fetch; let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error("unexpected provider call"); };
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), env({
+      KV_MEMORY: undefined, OPENROUTER_KEY: "test-key",
+    }));
+    assert.equal(r.status, 503);
+    assert.equal((await r.json()).error.code, "storage_unavailable");
+    assert.equal(calls, 0);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("gateway fails closed when KV get is not callable", async () => {
+  const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), env({
+    KV_MEMORY: { async put() {} }, OPENROUTER_KEY: "test-key",
+  }));
+  assert.equal(r.status, 503);
+  assert.equal((await r.json()).error.code, "storage_unavailable");
+});
+
+test("missing free provider configuration returns a generic error without network access", async () => {
+  const oldFetch = globalThis.fetch; let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error("unexpected provider call"); };
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), env({
+      OPENROUTER_KEY: "", GEMINI_KEY_1: "", WORKERS_AI_ENABLED: "true",
+    }));
+    assert.equal(r.status, 503);
+    assert.equal((await r.json()).error.code, "no_free_provider");
+    assert.equal(calls, 0);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("tool_choice is rejected even when tools is omitted", async () => {
+  const oldFetch = globalThis.fetch; let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error("unexpected provider call"); };
+  try {
+    const r = await handleOpenAIChatCompletions(req({
+      tool_choice: "auto", messages: [{ role: "user", content: "Hi" }],
+    }), env({ OPENROUTER_KEY: "test-key" }));
+    assert.equal(r.status, 400);
+    assert.equal((await r.json()).error.code, "tools_not_supported_yet");
+    assert.equal(calls, 0);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("empty message content is rejected before provider calls", async () => {
+  const oldFetch = globalThis.fetch; let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error("unexpected provider call"); };
+  try {
+    const r = await handleOpenAIChatCompletions(req({
+      messages: [{ role: "user", content: "   " }],
+    }), env({ OPENROUTER_KEY: "test-key" }));
+    assert.equal(r.status, 400);
+    assert.equal((await r.json()).error.code, "invalid_message");
+    assert.equal(calls, 0);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("oversized individual message is rejected before provider calls", async () => {
+  const oldFetch = globalThis.fetch; let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error("unexpected provider call"); };
+  try {
+    const r = await handleOpenAIChatCompletions(req({
+      messages: [{ role: "user", content: "x".repeat(8001) }],
+    }), env({ OPENROUTER_KEY: "test-key" }));
+    assert.equal(r.status, 400);
+    assert.equal((await r.json()).error.code, "message_too_long");
+    assert.equal(calls, 0);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("total message character budget is enforced before provider calls", async () => {
+  const oldFetch = globalThis.fetch; let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error("unexpected provider call"); };
+  try {
+    const r = await handleOpenAIChatCompletions(req({
+      messages: [
+        { role: "user", content: "a".repeat(7000) },
+        { role: "assistant", content: "b".repeat(7000) },
+        { role: "user", content: "c" },
+      ],
+    }), env({ OPENROUTER_KEY: "test-key" }));
+    assert.equal(r.status, 400);
+    assert.equal((await r.json()).error.code, "request_too_large");
+    assert.equal(calls, 0);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("max_tokens lower bound is clamped to one", async () => {
+  const oldFetch = globalThis.fetch; let payload;
+  globalThis.fetch = async (_url, options) => {
+    payload = JSON.parse(options.body);
+    return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), { status: 200 });
+  };
+  try {
+    const r = await handleOpenAIChatCompletions(req({
+      max_tokens: -100, messages: [{ role: "user", content: "Hi" }],
+    }), env({ OPENROUTER_KEY: "test-key" }));
+    assert.equal(r.status, 200);
+    assert.equal(payload.max_tokens, 1);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("API responses never echo the configured gateway secret", async () => {
+  const secret = "test-secret-with-at-least-16";
+  const r = await handleOpenAIChatCompletions(req({
+    model: "paid model with spaces", messages: [{ role: "user", content: "Hi" }],
+  }), env({ GATEWAY_SECRET: secret, OPENROUTER_KEY: "test-key" }));
+  const body = await r.text();
+  assert.doesNotMatch(body, new RegExp(secret));
+  assert.doesNotMatch(body, /test-key/);
+});
+
