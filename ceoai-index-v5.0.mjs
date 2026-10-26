@@ -354,7 +354,7 @@ async function executeModel(provider, messages, timeoutMs = PROVIDER_TIMEOUT_MS)
     let result;
     try {
       result = await Promise.race([
-        provider.env.AI.run(provider.model, { messages }),
+        provider.env.AI.run(provider.model, { messages }, { rejectIfBusy: true }),
         new Promise((_, reject) => { timeout = setTimeout(() => reject(new Error("Workers AI timeout")), timeoutMs); }),
       ]);
     } finally {
