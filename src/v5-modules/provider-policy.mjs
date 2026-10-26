@@ -6,13 +6,13 @@ export function parseRetryAfterSeconds(value, nowMs = Date.now(), maxSeconds = M
   if (value === null || value === undefined) return null;
   const raw = String(value).trim();
   if (!raw) return null;
-  if (/^\d+$/.test(raw)) {
+  if (/^[0-9]+$/.test(raw)) {
     const seconds = Number(raw);
     if (!Number.isSafeInteger(seconds) || seconds < 0) return null;
     return Math.min(seconds, maxSeconds);
   }
   // Date.parse accepts non-HTTP strings such as "-1"; require an HTTP-date shape first.
-  if (!/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), \\d{2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \\d{4} \\d{2}:\\d{2}:\\d{2} GMT$/.test(raw)) return null;
+  if (!/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), [0-9]{2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) [0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2} GMT$/.test(raw)) return null;
   const at = Date.parse(raw);
   if (!Number.isFinite(at)) return null;
   const seconds = Math.ceil((at - nowMs) / 1000);
