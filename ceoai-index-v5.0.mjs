@@ -740,6 +740,48 @@ async function fetchSearchBing(env, query) {
   } catch { return null; }
 }
 
+async function fetchSearchConsole(env, query) {
+  // Search Console is a site-owned analytics data source, not a general web search API.
+  const siteUrl = typeof env.GSC_SITE_URL === "string" ? env.GSC_SITE_URL.trim() : "";
+  const token = typeof env.GSC_ACCESS_TOKEN === "string" ? env.GSC_ACCESS_TOKEN.trim() : "";
+  if (!siteUrl || !token || env.GSC_ENABLED !== "true" ||
+      env.GSC_FREE_CONFIRMED !== "true") return null;
+  let parsedSite;
+  try {
+    parsedSite = new URL(siteUrl);
+    if (!["https:", "http:"].includes(parsedSite.protocol) || parsedSite.username || parsedSite.password) return null;
+  } catch { return null; }
+  if (await isInCooldown(env, "search-gsc")) return null;
+  try {
+    const endpoint = "https://www.googleapis.com/webmasters/v3/sites/" +
+      encodeURIComponent(siteUrl) + "/searchAnalytics/query";
+    const response = await withTimeoutFetch(endpoint, {
+      method: "POST",
+      headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify({
+        startDate: env.GSC_START_DATE || new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10),
+        endDate: env.GSC_END_DATE || new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10),
+        dimensions: ["query", "page"], rowLimit: 5,
+        dimensionFilterGroups: [{ filters: [{ dimension: "query", operator: "contains", expression: String(query || "").slice(0, 100) }] }]
+      })
+    }, SEARCH_TIMEOUT_MS);
+    if (!response.ok) {
+      if (response.status === 429 || response.status >= 500) await markCooldown(env, "search-gsc", COOLDOWN_TTL);
+      return null;
+    }
+    const data = await response.json();
+    const rows = Array.isArray(data?.rows) ? data.rows : [];
+    if (!rows.length) return null;
+    return rows.slice(0, 5).map((r, i) => {
+      const keys = Array.isArray(r.keys) ? r.keys : [];
+      return (i + 1) + ". Upit: " + String(keys[0] || "").slice(0, 160) +
+        "\n   Stranica: " + String(keys[1] || "").slice(0, 200) +
+        "\n   Klikovi: " + Number(r.clicks || 0) + "; prikazi: " + Number(r.impressions || 0) +
+        "; CTR: " + Number(r.ctr || 0).toFixed(4) + "; pozicija: " + Number(r.position || 0).toFixed(1);
+    }).join("\n\n").slice(0, 5000);
+  } catch { return null; }
+}
+
 async function fetchSearchSerpApi(env, query) {
   // SerpAPI has its own quota/billing rules; never call unless free use is explicitly confirmed.
   if (typeof env.SERPAPI_KEY !== "string" || !env.SERPAPI_KEY.trim() ||
@@ -797,19 +839,23 @@ async function enrichWithSearchFailover(env, prompt) {
   const exa = await fetchSearchExa(env, query);
   if (exa) return { text: exa, source: "exa" };
 
-  // 6) SearXNG — configured self-hosted meta-search instance.
+  // Google Search Console provides verified-property performance data, not general web search.
+  const gsc = await fetchSearchConsole(env, query);
+  if (gsc) return { text: gsc, source: "google-search-console" };
+
+  // 7) SearXNG — configured self-hosted meta-search instance.
   const searxng = await fetchSearchSearxng(env, query);
   if (searxng) return { text: searxng, source: "searxng" };
 
-  // 7) SerpAPI — only when the operator explicitly confirms free quota.
+  // 8) SerpAPI — only when the operator explicitly confirms free quota.
   const serpapi = await fetchSearchSerpApi(env, query);
   if (serpapi) return { text: serpapi, source: "serpapi" };
 
-  // 8) Bing-compatible endpoint — configurable because Microsoft's legacy Bing Search API was retired.
+  // 9) Bing-compatible endpoint — configurable because Microsoft's legacy Bing Search API was retired.
   const bing = await fetchSearchBing(env, query);
   if (bing) return { text: bing, source: "bing" };
 
-  // 9) DuckDuckGo Instant Answer — last-resort, no key.
+  // 10) DuckDuckGo Instant Answer — last-resort, no key.
   const ddg = await fetchSearchDuckDuckGo(env, query);
   if (ddg) return { text: ddg, source: "duckduckgo" };
 
