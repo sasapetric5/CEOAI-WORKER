@@ -3,9 +3,11 @@ name: CEOAI Worker verification
 on:
   push:
     branches:
+      - main
       - v5.0
   pull_request:
     branches:
+      - main
       - v5.0
   workflow_dispatch:
 
