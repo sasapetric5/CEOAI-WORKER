@@ -225,3 +225,64 @@ test("client-supplied provider credentials are ignored", async () => {
     assert.equal(observedAuth.includes("client-controlled-secret"), false);
   } finally { globalThis.fetch = oldFetch; }
 });
+
+// Batch gateway validation regressions: message bounds, model allowlist, token clamp, and sanitized failures.
+test("requires at least one user message before provider selection", async () => {
+  const oldFetch = globalThis.fetch; let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error("unexpected"); };
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "assistant", content: "hello" }] }), env({ OPENROUTER_KEY: "test-key" }));
+    assert.equal(r.status, 400);
+    assert.equal((await r.json()).error.code, "user_message_required");
+    assert.equal(calls, 0);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("rejects more than 16 messages before provider calls", async () => {
+  const oldFetch = globalThis.fetch; let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error("unexpected"); };
+  try {
+    const messages = Array.from({ length: 17 }, (_, i) => ({ role: i % 2 ? "assistant" : "user", content: "m" + i }));
+    const r = await handleOpenAIChatCompletions(req({ messages }), env({ OPENROUTER_KEY: "test-key" }));
+    assert.equal(r.status, 400);
+    assert.equal((await r.json()).error.code, "invalid_messages");
+    assert.equal(calls, 0);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("refuses a client-selected non-free model instead of routing to it", async () => {
+  const oldFetch = globalThis.fetch; let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error("unexpected"); };
+  try {
+    const r = await handleOpenAIChatCompletions(req({ model: "vendor/paid-model", messages: [{ role: "user", content: "Hi" }] }), env({ OPENROUTER_KEY: "test-key" }));
+    assert.equal(r.status, 503);
+    assert.equal((await r.json()).error.code, "no_free_provider");
+    assert.equal(calls, 0);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("clamps requested max_tokens to 2048 before sending provider request", async () => {
+  const oldFetch = globalThis.fetch; let payload;
+  globalThis.fetch = async (_url, options) => {
+    payload = JSON.parse(options.body);
+    return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), { status: 200 });
+  };
+  try {
+    const r = await handleOpenAIChatCompletions(req({ max_tokens: 999999, messages: [{ role: "user", content: "Hi" }] }), env({ OPENROUTER_KEY: "test-key" }));
+    assert.equal(r.status, 200);
+    assert.equal(payload.max_tokens, 2048);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("provider HTTP error details and tokens are never returned to API clients", async () => {
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response("Authorization: Bearer private-upstream-token", { status: 500 });
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), env({ OPENROUTER_KEY: "test-key" }));
+    assert.equal(r.status, 503);
+    const body = await r.text();
+    assert.doesNotMatch(body, /private-upstream-token|Authorization: Bearer/);
+    assert.match(body, /providers_unavailable/);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
