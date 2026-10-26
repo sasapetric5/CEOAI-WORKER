@@ -1286,3 +1286,45 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
   }
 }
 
+
+
+// V5 reliability regression: two failed primary keys must fall through to the next provider.
+{
+  const original = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const target = String(url);
+    calls.push(target);
+    if (target.includes('generativelanguage.googleapis.com')) {
+      if (calls.filter(value => value.includes('generativelanguage.googleapis.com')).length === 1) {
+        return new Response(JSON.stringify({error:{message:'temporary rate limit'}}), {status:429, headers:{'Retry-After':'90'}});
+      }
+      return new Response(JSON.stringify({error:{message:'temporary upstream failure'}}), {status:503});
+    }
+    if (target.includes('openrouter.ai')) {
+      return new Response(JSON.stringify({choices:[{message:{content:'Treći pokušaj je uspeo.'}}]}), {status:200, headers:{'Content-Type':'application/json'}});
+    }
+    throw new Error('Unexpected provider URL: ' + target);
+  };
+  try {
+    const chainEnv = makeEnv({
+      AI_ENABLED:'true',
+      EXTERNAL_AI_ENABLED:'true',
+      GEMINI_API_KEY_PRIMARY:'test-gemini-primary',
+      GEMINI_API_KEY_SECONDARY:'test-gemini-secondary',
+      OPENROUTER_API_KEY:'test-openrouter-chain',
+    });
+    const {cookie: chainCookie} = await getSession(chainEnv);
+    const response = await worker.fetch(apiRequest(chainCookie, JSON.stringify({prompt:'Zdravo'})), chainEnv);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).reply, 'Treći pokušaj je uspeo.');
+    assert.equal(calls.length, 3, 'both Gemini keys fail before OpenRouter succeeds');
+    assert.ok(calls[0].includes('generativelanguage.googleapis.com'));
+    assert.ok(calls[1].includes('generativelanguage.googleapis.com'));
+    assert.ok(calls[2].includes('openrouter.ai'));
+    assert.ok(await chainEnv.KV_MEMORY.get('cooldown:gemini-1'), 'first failed key should enter cooldown');
+    assert.ok(await chainEnv.KV_MEMORY.get('cooldown:gemini-2'), 'second failed key should enter cooldown');
+  } finally {
+    globalThis.fetch = original;
+  }
+}
