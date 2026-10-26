@@ -187,7 +187,8 @@ try {
   const historyEnv = makeEnv({
     AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', WORKERS_AI_ENABLED:'true', WORKERS_AI_FREE_CONFIRMED:'true', OPENROUTER_FREE_CONFIRMED:'true',
     OPENROUTER_KEY:'test-openrouter-key',
-    AI: { async run(_model, payload) {
+    AI: { async run(_model, payload, options) {
+      assert.deepEqual(options, { rejectIfBusy: true }, 'Workers AI should fail fast when capacity is unavailable');
       historyAiCalls += 1;
       const isCompression = payload.messages?.[0]?.content?.includes('Sažmi razgovor na srpskom');
       if (isCompression) {
