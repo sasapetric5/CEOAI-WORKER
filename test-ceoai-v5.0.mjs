@@ -761,6 +761,17 @@ try {
   assert.ok(quotaCalls.some(u => u.includes("generativelanguage.googleapis.com")));
   // DeepSeek should now be in quota cooldown
   assert.ok(await quotaEnv.KV_MEMORY.get("cooldown:deepseek-1"));
+  const deepSeekCallsAfterQuota = quotaCalls.filter(u => u.includes("api.deepseek.com")).length;
+  const secondQuotaRequest = await worker.fetch(
+    apiRequest(qCookie, JSON.stringify({ prompt: "Ponovi zadatak nakon iscrpljene kvote" })),
+    quotaEnv
+  );
+  assert.equal(secondQuotaRequest.status, 200, "fallback should keep serving while quota-limited provider is cooled down");
+  assert.equal(
+    quotaCalls.filter(u => u.includes("api.deepseek.com")).length,
+    deepSeekCallsAfterQuota,
+    "quota-exhausted provider must not be called again on the next request",
+  );
 } finally { globalThis.fetch = originalFetchQuota; }
 
 
