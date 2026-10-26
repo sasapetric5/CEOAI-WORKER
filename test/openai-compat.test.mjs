@@ -65,3 +65,86 @@ test("Gemini provider is excluded when free-only policy is explicitly disabled",
     assert.equal(calls, 0);
   } finally { globalThis.fetch = oldFetch; }
 });
+
+
+test("rejects GET requests without contacting a provider", async () => {
+  const oldFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error("unexpected provider call"); };
+  try {
+    const r = await handleOpenAIChatCompletions(req({}, { method: "GET" }), env({ OPENROUTER_KEY: "test-key" }));
+    assert.equal(r.status, 405);
+    assert.equal(r.headers.get("allow"), "POST");
+    assert.equal(calls, 0);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("rejects malformed JSON before provider selection", async () => {
+  const oldFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error("unexpected provider call"); };
+  try {
+    const r = await handleOpenAIChatCompletions(new Request("https://ceoai.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: "Bearer test-secret-with-at-least-16", "Content-Type": "application/json" },
+      body: "{broken-json",
+    }), env({ OPENROUTER_KEY: "test-key" }));
+    assert.equal(r.status, 400);
+    assert.equal((await r.json()).error.code, "invalid_json");
+    assert.equal(calls, 0);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("rejects oversized request bodies with 413", async () => {
+  const body = JSON.stringify({ messages: [{ role: "user", content: "x".repeat(17000) }] });
+  const r = await handleOpenAIChatCompletions(new Request("https://ceoai.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: "Bearer test-secret-with-at-least-16", "Content-Type": "application/json" },
+    body,
+  }), env({ OPENROUTER_KEY: "test-key" }));
+  assert.equal(r.status, 413);
+  assert.equal((await r.json()).error.code, "request_too_large");
+});
+
+test("skips a provider in cooldown and does not send a request to it", async () => {
+  const oldFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error("unexpected provider call"); };
+  const data = new Map([["gateway:cooldown:openrouter-free", "1"]]);
+  const e = env({
+    OPENROUTER_KEY: "test-key",
+    KV_MEMORY: {
+      async get(k) { return data.get(k) ?? null; },
+      async put(k, v) { data.set(k, v); },
+    },
+  });
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), e);
+    assert.equal(r.status, 503);
+    assert.equal((await r.json()).error.code, "providers_unavailable");
+    assert.equal(calls, 0);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("provider quota errors set cooldown and return a retry hint when no fallback exists", async () => {
+  const oldFetch = globalThis.fetch;
+  const data = new Map();
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: { message: "quota exhausted" } }), {
+    status: 429, headers: { "Content-Type": "application/json" },
+  });
+  const e = env({
+    OPENROUTER_KEY: "test-key",
+    KV_MEMORY: {
+      async get(k) { return data.get(k) ?? null; },
+      async put(k, v, options) { data.set(k, v); data.set(k + ":ttl", options?.expirationTtl); },
+    },
+  });
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), e);
+    assert.equal(r.status, 503);
+    assert.equal(r.headers.get("retry-after"), "60");
+    assert.equal((await r.json()).error.code, "free_quota_exhausted");
+    assert.equal(data.get("gateway:cooldown:openrouter-free"), "1");
+    assert.ok(data.get("gateway:cooldown:openrouter-free:ttl") >= 60);
+  } finally { globalThis.fetch = oldFetch; }
+});
