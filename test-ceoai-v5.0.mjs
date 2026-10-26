@@ -325,7 +325,7 @@ try {
     assert.equal((await second.json()).reply, 'Rezervni model je odgovorio.');
     assert.equal(geminiAttempts, 1, 'provider in cooldown must be skipped');
 
-    await recoveryEnv.KV_MEMORY.delete('cooldown:gemini-1');
+    recoveryEnv.KV_MEMORY.data.delete('cooldown:gemini-1');
     const third = await request();
     assert.equal(third.status, 200);
     assert.equal((await third.json()).reply, 'Gemini se oporavio.');
