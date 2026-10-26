@@ -275,7 +275,7 @@ try {
   const {cookie: retryCapCookie} = await getSession(retryCapEnv);
   const first = await worker.fetch(apiRequest(retryCapCookie, JSON.stringify({prompt:'Proveri ograničenje Retry-After'})), retryCapEnv);
   assert.equal(first.status, 503);
-  assert.equal(first.headers.get('Retry-After'), '86400', 'Retry-After must not exceed the 24-hour policy cap');
+  assert.equal(first.headers.get('Retry-After'), '3600', 'public retry guidance stays conservative even when the internal cooldown is longer');
   assert.equal(retryCapCalls, 1);
   const second = await worker.fetch(apiRequest(retryCapCookie, JSON.stringify({prompt:'Proveri cooldown'})), retryCapEnv);
   assert.equal(second.status, 503);
