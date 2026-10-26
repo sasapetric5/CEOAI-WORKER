@@ -135,3 +135,43 @@ test("memory reset rejects when KV binding is missing", async () => {
   assert.equal((await response.json()).success, false);
 });
 
+// Batch isolation and malformed-cookie regressions.
+test("different session IDs use independent lock keys", async () => {
+  const { kv } = setup();
+  const other = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+  let releaseFirst;
+  const first = withSessionLock(kv, SID, () => new Promise(resolve => { releaseFirst = resolve; }));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const second = await withSessionLock(kv, other, async () => "other-session");
+  assert.deepEqual(second, { busy: false, value: "other-session" });
+  assert.deepEqual(await withSessionLock(kv, SID, async () => "must-not-run"), { busy: true });
+  releaseFirst("first-session");
+  assert.deepEqual(await first, { busy: false, value: "first-session" });
+});
+
+test("session lock remains usable when cleanup KV read fails", async () => {
+  const { kv } = setup();
+  let reads = 0;
+  const originalGet = kv.get.bind(kv);
+  kv.get = async key => {
+    reads++;
+    if (key.startsWith("lock:") && reads >= 3) throw new Error("cleanup read failed");
+    return originalGet(key);
+  };
+  const result = await withSessionLock(kv, SID, async () => "completed");
+  assert.deepEqual(result, { busy: false, value: "completed" });
+  assert.equal(kv.data.has(`lock:${SID}`), true, "failed cleanup leaves the expiring lock rather than failing completed work");
+});
+
+test("duplicate session cookies with an invalid first value are rejected", () => {
+  const req = request({ Cookie: `ceoai_session=bad; ceoai_session=${SID}` });
+  assert.equal(readSessionId(req), null);
+});
+
+test("memory reset rejects an origin that differs by trailing slash", async () => {
+  const { kv, env } = setup();
+  const response = await handleMemoryReset(request({ Origin: `${ORIGIN}/`, Cookie: `ceoai_session=${SID}` }), env);
+  assert.equal(response.status, 403);
+  assert.equal(kv.data.has(`memory:${SID}`), true);
+});
+
