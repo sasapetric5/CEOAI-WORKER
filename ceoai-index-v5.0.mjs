@@ -1314,9 +1314,9 @@ export default {
           }
           if (cooldown) {
             // Preserve daily/monthly quota reset detection; otherwise honor bounded Retry-After.
-            const ttl = quotaHit ? quotaCooldownTTL(error)
-              : lastStatus === 429 ? Math.max(cooldown.ttl, Number(error?.retryAfterSeconds) || 0)
-              : cooldown.ttl;
+            // providerFailureCooldown already applies the hard Retry-After ceiling.
+            // Never re-introduce an untrusted raw hint after policy validation.
+            const ttl = quotaHit ? quotaCooldownTTL(error) : cooldown.ttl;
             if (quotaHit) quotaRetryAfter = Math.max(quotaRetryAfter, ttl);
             try { await env.KV_MEMORY.put(cooldownKey, quotaHit ? "quota" : "1", { expirationTtl: ttl }); } catch {}
             console.info("CEOAI_DIAG provider_failover", JSON.stringify({
