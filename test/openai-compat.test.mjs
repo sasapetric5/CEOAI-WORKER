@@ -511,3 +511,182 @@ test("API responses never echo the configured gateway secret", async () => {
   assert.doesNotMatch(body, /test-key/);
 });
 
+// AI router/recovery batch: deterministic mocked provider failures and fallback behavior.
+test("falls back from OpenRouter 5xx to explicitly confirmed free Gemini", async () => {
+  const oldFetch = globalThis.fetch; const stored = new Map(); const seen = [];
+  globalThis.fetch = async (url, options) => {
+    seen.push(String(url));
+    if (String(url).includes("openrouter.ai")) return new Response("upstream unavailable", { status: 503 });
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "fallback-ok" }] } }] }), { status: 200 });
+  };
+  const e = env({
+    OPENROUTER_KEY: "test-openrouter-key",
+    GEMINI_KEY_1: "test-gemini-key",
+    GEMINI_FREE_CONFIRMED: "true",
+    GEMINI_FREE_ONLY: "true",
+    KV_MEMORY: { async get(k) { return stored.get(k) ?? null; }, async put(k,v,o) { stored.set(k,v); stored.set(k+":ttl",o?.expirationTtl); } },
+  });
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), e);
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).choices[0].message.content, "fallback-ok");
+    assert.equal(seen.length, 2);
+    assert.match(seen[0], /openrouter\.ai/);
+    assert.match(seen[1], /generativelanguage\.googleapis\.com/);
+    assert.equal(stored.get("gateway:cooldown:openrouter-free"), "1");
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("falls back after a simulated network error from the first provider", async () => {
+  const oldFetch = globalThis.fetch; let calls = 0;
+  globalThis.fetch = async url => {
+    calls++;
+    if (String(url).includes("openrouter.ai")) throw new TypeError("simulated network failure");
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "recovered" }] } }] }), { status: 200 });
+  };
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), env({
+      OPENROUTER_KEY: "test-openrouter-key", GEMINI_KEY_1: "test-gemini-key",
+      GEMINI_FREE_CONFIRMED: "true", GEMINI_FREE_ONLY: "true",
+    }));
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).choices[0].message.content, "recovered");
+    assert.equal(calls, 2);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("falls back when the first provider returns malformed successful JSON", async () => {
+  const oldFetch = globalThis.fetch; let calls = 0;
+  globalThis.fetch = async url => {
+    calls++;
+    if (String(url).includes("openrouter.ai")) return new Response("{bad-json", { status: 200 });
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "second-provider-ok" }] } }] }), { status: 200 });
+  };
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), env({
+      OPENROUTER_KEY: "test-openrouter-key", GEMINI_KEY_1: "test-gemini-key",
+      GEMINI_FREE_CONFIRMED: "true", GEMINI_FREE_ONLY: "true",
+    }));
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).choices[0].message.content, "second-provider-ok");
+    assert.equal(calls, 2);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("does not call providers when cooldown KV read fails", async () => {
+  const oldFetch = globalThis.fetch; let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error("must not call provider"); };
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), env({
+      OPENROUTER_KEY: "test-key",
+      KV_MEMORY: { async get() { throw new Error("KV read failed"); }, async put() {} },
+    }));
+    assert.equal(r.status, 503);
+    assert.equal((await r.json()).error.code, "storage_unavailable");
+    assert.equal(calls, 0);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("cooldown write failure does not expose upstream details or break fallback", async () => {
+  const oldFetch = globalThis.fetch; let calls = 0;
+  globalThis.fetch = async url => {
+    calls++;
+    if (String(url).includes("openrouter.ai")) return new Response("private upstream diagnostic", { status: 503 });
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "fallback-survived" }] } }] }), { status: 200 });
+  };
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), env({
+      OPENROUTER_KEY: "test-openrouter-key", GEMINI_KEY_1: "test-gemini-key",
+      GEMINI_FREE_CONFIRMED: "true", GEMINI_FREE_ONLY: "true",
+      KV_MEMORY: { async get() { return null; }, async put() { throw new Error("KV write failed"); } },
+    }));
+    assert.equal(r.status, 200);
+    const body = await r.text();
+    assert.match(body, /fallback-survived/);
+    assert.doesNotMatch(body, /private upstream diagnostic|KV write failed/);
+    assert.equal(calls, 2);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("skips cooling OpenRouter and successfully uses eligible Gemini fallback", async () => {
+  const oldFetch = globalThis.fetch; let calls = 0;
+  const stored = new Map([["gateway:cooldown:openrouter-free", "1"]]);
+  globalThis.fetch = async url => {
+    calls++;
+    assert.match(String(url), /generativelanguage\.googleapis\.com/);
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "cooldown-fallback" }] } }] }), { status: 200 });
+  };
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), env({
+      OPENROUTER_KEY: "test-openrouter-key", GEMINI_KEY_1: "test-gemini-key",
+      GEMINI_FREE_CONFIRMED: "true", GEMINI_FREE_ONLY: "true",
+      KV_MEMORY: { async get(k) { return stored.get(k) ?? null; }, async put(k,v) { stored.set(k,v); } },
+    }));
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).choices[0].message.content, "cooldown-fallback");
+    assert.equal(calls, 1);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("malformed Gemini response falls through to a generic unavailable response", async () => {
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ candidates: [] }), { status: 200 });
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), env({
+      GEMINI_KEY_1: "test-gemini-key", GEMINI_FREE_CONFIRMED: "true", GEMINI_FREE_ONLY: "true",
+    }));
+    assert.equal(r.status, 503);
+    const body = await r.text();
+    assert.match(body, /providers_unavailable/);
+    assert.doesNotMatch(body, /candidate|parts|test-gemini-key/i);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("provider quota failure is surfaced with a generic quota code, not raw provider text", async () => {
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ error: { message: "private billing account detail" } }), { status: 402 });
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), env({ OPENROUTER_KEY: "test-key" }));
+    assert.equal(r.status, 503);
+    const body = await r.text();
+    assert.match(body, /free_quota_exhausted/);
+    assert.doesNotMatch(body, /private billing account detail|test-key/);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("non-retryable provider 4xx still permits fallback to another eligible provider", async () => {
+  const oldFetch = globalThis.fetch; let calls = 0;
+  globalThis.fetch = async url => {
+    calls++;
+    if (String(url).includes("openrouter.ai")) return new Response("bad request", { status: 400 });
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "recovered-from-4xx" }] } }] }), { status: 200 });
+  };
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), env({
+      OPENROUTER_KEY: "test-openrouter-key", GEMINI_KEY_1: "test-gemini-key",
+      GEMINI_FREE_CONFIRMED: "true", GEMINI_FREE_ONLY: "true",
+    }));
+    assert.equal(r.status, 200);
+    assert.equal((await r.json()).choices[0].message.content, "recovered-from-4xx");
+    assert.equal(calls, 2);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("all eligible providers failing returns stable generic 503 response", async () => {
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async url => {
+    if (String(url).includes("openrouter.ai")) return new Response("private openrouter error", { status: 500 });
+    return new Response(JSON.stringify({ error: { message: "private Gemini error" } }), { status: 500 });
+  };
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), env({
+      OPENROUTER_KEY: "test-openrouter-key", GEMINI_KEY_1: "test-gemini-key",
+      GEMINI_FREE_CONFIRMED: "true", GEMINI_FREE_ONLY: "true",
+    }));
+    assert.equal(r.status, 503);
+    const body = await r.text();
+    assert.match(body, /providers_unavailable/);
+    assert.doesNotMatch(body, /private openrouter error|private Gemini error/);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
