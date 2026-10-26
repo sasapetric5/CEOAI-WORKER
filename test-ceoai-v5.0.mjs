@@ -1531,4 +1531,63 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
     Date.now = originalNow;
   }
 }
+ 
+// V5 reliability: a timed-out primary request must be aborted and safely fall back once.
+{
+  const originalFetch = globalThis.fetch;
+  const originalSetTimeout = globalThis.setTimeout;
+  const originalClearTimeout = globalThis.clearTimeout;
+  const calls = [];
+  let providerTimers = 0;
+  globalThis.setTimeout = (callback, delay, ...args) => {
+    if (Number(delay) >= 20000 && providerTimers === 0) {
+      providerTimers += 1;
+      const fakeTimer = { fakeProviderTimeout: true };
+      queueMicrotask(() => callback(...args));
+      return fakeTimer;
+    }
+    return originalSetTimeout(callback, delay, ...args);
+  };
+  globalThis.clearTimeout = (timer) => {
+    if (timer?.fakeProviderTimeout) return;
+    return originalClearTimeout(timer);
+  };
+  globalThis.fetch = async (url, options = {}) => {
+    const target = String(url);
+    calls.push(target);
+    if (target.includes('generativelanguage.googleapis.com')) {
+      assert.ok(options.signal instanceof AbortSignal, 'primary fetch must receive AbortSignal');
+      await new Promise(resolve => options.signal.addEventListener('abort', resolve, {once:true}));
+      assert.equal(options.signal.aborted, true, 'provider deadline must abort the primary request');
+      const error = new Error('aborted: internal-test-token-must-not-leak');
+      error.name = 'AbortError';
+      throw error;
+    }
+    if (target.includes('openrouter.ai')) {
+      return new Response(JSON.stringify({choices:[{message:{content:'Fallback nakon timeout prekida.'}}]}), {
+        status:200, headers:{'Content-Type':'application/json'},
+      });
+    }
+    throw new Error('Unexpected provider URL: ' + target);
+  };
+  try {
+    const timeoutEnv = makeEnv({
+      AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true',
+      GEMINI_API_KEY_PRIMARY:'test-gemini-timeout',
+      OPENROUTER_API_KEY:'test-openrouter-timeout',
+    });
+    const {cookie: timeoutCookie} = await getSession(timeoutEnv);
+    const response = await worker.fetch(apiRequest(timeoutCookie, JSON.stringify({prompt:'Testiraj prekid timeout-a'})), timeoutEnv);
+    assert.equal(response.status, 200);
+    const body = await response.text();
+    assert.match(body, /Fallback nakon timeout prekida/);
+    assert.doesNotMatch(body, /internal-test-token-must-not-leak|AbortError/);
+    assert.equal(calls.length, 2, 'timeout must trigger one fallback, not repeated primary attempts');
+    assert.equal(providerTimers, 1, 'only the primary provider should be forced to time out');
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.setTimeout = originalSetTimeout;
+    globalThis.clearTimeout = originalClearTimeout;
+  }
+}
 
