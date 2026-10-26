@@ -1296,7 +1296,7 @@ export default {
         } catch (error) {
           lastStatus = Number(error?.status) || 0;
           const msg = String(error?.message || "");
-          console.warn(`Provider ${candidate.id} failed: ${msg.slice(0, 120)}`);
+          console.warn("CEOAI_DIAG provider_failed", JSON.stringify({ provider: candidate.id, status: lastStatus, quota: isQuotaError(error) }));
           if (env.DEBUG_PROVIDER_ERRORS === "true" && error?.providerDetail) {
             console.debug(`Provider ${candidate.id} detail: ${String(error.providerDetail).slice(0, 600)}`);
           }
