@@ -46,3 +46,29 @@ test("cooldown policy rejects unvalidated Retry-After values", () => {
   assert.equal(providerFailureCooldown({ status: 429, retryAfterSeconds: -10 }).ttl, 60);
   assert.equal(providerFailureCooldown({ status: 429, retryAfterSeconds: "999999" }).ttl, 60);
 });
+
+test("Retry-After HTTP dates are capped at the same 24-hour policy limit", () => {
+  const now = Date.parse("2026-01-01T00:00:00Z");
+  assert.equal(
+    parseRetryAfterSeconds("Sat, 03 Jan 2026 00:00:00 GMT", now),
+    MAX_RETRY_AFTER_SECONDS,
+  );
+  assert.equal(
+    parseRetryAfterSeconds("Fri, 02 Jan 2026 00:00:00 GMT", now),
+    MAX_RETRY_AFTER_SECONDS,
+  );
+});
+
+test("Retry-After parsing rejects non-canonical date and numeric formats", () => {
+  const now = Date.parse("2026-01-01T00:00:00Z");
+  for (const value of ["1e3", "+30", "30 seconds", "Thu, 1 Jan 2026 00:02:00 GMT", "Thu, 01 Jan 2026 00:02:00 UTC"]) {
+    assert.equal(parseRetryAfterSeconds(value, now), null, `reject malformed Retry-After: ${value}`);
+  }
+});
+
+test("provider cooldown classification handles boundary status codes conservatively", () => {
+  assert.equal(providerFailureCooldown({ status: 499 }), null);
+  assert.deepEqual(providerFailureCooldown({ status: 500 }), { ttl: 300, reason: "provider_server_error" });
+  assert.deepEqual(providerFailureCooldown({ status: 599 }), { ttl: 300, reason: "provider_server_error" });
+  assert.deepEqual(providerFailureCooldown({ status: 429, retryAfterSeconds: 0 }), { ttl: 60, reason: "rate_limited" });
+});
