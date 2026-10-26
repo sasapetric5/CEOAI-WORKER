@@ -811,3 +811,83 @@ test("upstream response body and authorization token are not reflected in errors
   } finally { globalThis.fetch = oldFetch; }
 });
 
+// Final regression batch: stable behavior across repeated and concurrent gateway requests.
+test("repeated valid requests return independent completion IDs", async () => {
+  const oldFetch = globalThis.fetch; let n = 0;
+  globalThis.fetch = async () => new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), { status: 200 });
+  try {
+    const a = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "A" }] }), env({ OPENROUTER_KEY: "test-key" }));
+    const b = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "B" }] }), env({ OPENROUTER_KEY: "test-key" }));
+    const da = await a.json(); const db = await b.json();
+    assert.equal(a.status, 200); assert.equal(b.status, 200);
+    assert.notEqual(da.id, db.id);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("concurrent valid requests do not mix their user messages", async () => {
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => {
+    const payload = JSON.parse(options.body);
+    const content = payload.messages.at(-1).content;
+    return new Response(JSON.stringify({ choices: [{ message: { content: `reply:${content}` } }] }), { status: 200 });
+  };
+  try {
+    const [a, b, c] = await Promise.all(["alpha", "beta", "gamma"].map(value =>
+      handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: value }] }), env({ OPENROUTER_KEY: "test-key" }))
+    ));
+    const results = await Promise.all([a.json(), b.json(), c.json()]);
+    assert.deepEqual(results.map(x => x.choices[0].message.content), ["reply:alpha", "reply:beta", "reply:gamma"]);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("rejected request does not poison a later valid request", async () => {
+  const oldFetch = globalThis.fetch; let calls = 0;
+  globalThis.fetch = async () => { calls++; return new Response(JSON.stringify({ choices: [{ message: { content: "recovered" } }] }), { status: 200 }); };
+  try {
+    const bad = await handleOpenAIChatCompletions(req({ messages: [] }), env({ OPENROUTER_KEY: "test-key" }));
+    const good = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "valid" }] }), env({ OPENROUTER_KEY: "test-key" }));
+    assert.equal(bad.status, 400);
+    assert.equal(good.status, 200);
+    assert.equal((await good.json()).choices[0].message.content, "recovered");
+    assert.equal(calls, 1);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("successful responses include JSON content type and no-store cache policy", async () => {
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), { status: 200 });
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), env({ OPENROUTER_KEY: "test-key" }));
+    assert.equal(r.status, 200);
+    assert.match(r.headers.get("content-type") || "", /application\/json/i);
+    assert.equal(r.headers.get("cache-control"), "no-store");
+    assert.equal(r.headers.get("x-content-type-options"), "nosniff");
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("upstream timeout-like abort does not expose stack or internal details", async () => {
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async () => { const e = new Error("private timeout internals"); e.name = "AbortError"; throw e; };
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), env({ OPENROUTER_KEY: "test-key" }));
+    assert.equal(r.status, 503);
+    const body = await r.text();
+    assert.match(body, /providers_unavailable/);
+    assert.doesNotMatch(body, /private timeout internals|AbortError|stack/i);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("invalid max_tokens types are normalized to a bounded safe integer", async () => {
+  const oldFetch = globalThis.fetch; let payload;
+  globalThis.fetch = async (_url, options) => {
+    payload = JSON.parse(options.body);
+    return new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), { status: 200 });
+  };
+  try {
+    const r = await handleOpenAIChatCompletions(req({ max_tokens: "999999", messages: [{ role: "user", content: "Hi" }] }), env({ OPENROUTER_KEY: "test-key" }));
+    assert.equal(r.status, 200);
+    assert.ok(Number.isInteger(payload.max_tokens));
+    assert.ok(payload.max_tokens >= 1 && payload.max_tokens <= 2048);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
