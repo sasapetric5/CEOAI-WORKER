@@ -1449,3 +1449,45 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
     globalThis.fetch = original;
   }
 }
+ 
+// V5 reliability: an aborted primary request must fail over without exposing internal details.
+{
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const target = String(url);
+    calls.push(target);
+    if (target.includes('generativelanguage.googleapis.com')) {
+      assert.ok(options.signal instanceof AbortSignal, 'provider fetch must receive an AbortSignal');
+      const error = new Error('request aborted: secret-provider-token-should-not-leak');
+      error.name = 'AbortError';
+      throw error;
+    }
+    if (target.includes('openrouter.ai')) {
+      return new Response(JSON.stringify({choices:[{message:{content:'Rezervni model radi posle prekida primarnog.'}}]}), {
+        status:200, headers:{'Content-Type':'application/json'},
+      });
+    }
+    throw new Error('Unexpected provider URL: ' + target);
+  };
+  try {
+    const abortEnv = makeEnv({
+      AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true',
+      GEMINI_API_KEY_PRIMARY:'test-gemini-abort',
+      OPENROUTER_API_KEY:'test-openrouter-abort',
+    });
+    const {cookie: abortCookie} = await getSession(abortEnv);
+    const response = await worker.fetch(apiRequest(abortCookie, JSON.stringify({prompt:'Proveri fallback nakon prekida'})), abortEnv);
+    assert.equal(response.status, 200);
+    const body = await response.text();
+    assert.match(body, /Rezervni model radi posle prekida primarnog/);
+    assert.doesNotMatch(body, /secret-provider-token-should-not-leak|AbortError/);
+    assert.equal(calls.length, 2, 'aborted primary must yield to the fallback provider');
+    assert.ok(calls[0].includes('generativelanguage.googleapis.com'));
+    assert.ok(calls[1].includes('openrouter.ai'));
+    assert.ok(await abortEnv.KV_MEMORY.get('cooldown:gemini-1'), 'aborted primary should enter network-failure cooldown');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
