@@ -21,6 +21,7 @@ const MAX_REPLY_CHARS = 12000;
 import { handleOpenAIChatCompletions } from "./src/openai-compat.mjs";
 import { prepareConversation, appendReply, withSummary } from "./src/v5-modules/history.mjs";
 import { handleMemoryReset } from "./src/v5-modules/session.mjs";
+import { parseRetryAfterSeconds, providerFailureCooldown } from "./src/v5-modules/provider-policy.mjs";
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
 // Quota cooldowns differ by provider signal: monthly exhaustion must not be retried every few hours.
@@ -326,6 +327,7 @@ async function readProviderError(response, provider) {
   try { detail = (await response.text()).slice(0, 1200); } catch {}
   const error = new Error(`${provider} HTTP ${response.status}`);
   error.status = response.status;
+  error.retryAfterSeconds = parseRetryAfterSeconds(response.headers.get("Retry-After"));
   error.retryable = response.status === 429 || response.status >= 500;
   // Detect free-quota exhaustion (daily/monthly) vs short rate bursts.
   const detailLower = detail.toLowerCase();
@@ -1301,16 +1303,25 @@ export default {
             console.debug(`Provider ${candidate.id} detail: ${String(error.providerDetail).slice(0, 600)}`);
           }
           const quotaHit = isQuotaError(error);
+          const cooldown = providerFailureCooldown({
+            status: lastStatus,
+            quotaExhausted: quotaHit,
+            retryAfterSeconds: error?.retryAfterSeconds,
+          });
           if (quotaHit || lastStatus === 429) {
             sawRateLimit = true;
             if (quotaHit) sawQuotaExhaustion = true;
-            // Respect daily/monthly reset signals; unknown quota windows use a conservative cooldown.
-            const ttl = quotaHit ? quotaCooldownTTL(error) : COOLDOWN_TTL;
+          }
+          if (cooldown) {
+            // Preserve daily/monthly quota reset detection; otherwise honor bounded Retry-After.
+            const ttl = quotaHit ? quotaCooldownTTL(error)
+              : lastStatus === 429 ? Math.max(cooldown.ttl, Number(error?.retryAfterSeconds) || 0)
+              : cooldown.ttl;
             if (quotaHit) quotaRetryAfter = Math.max(quotaRetryAfter, ttl);
             try { await env.KV_MEMORY.put(cooldownKey, quotaHit ? "quota" : "1", { expirationTtl: ttl }); } catch {}
             console.info("CEOAI_DIAG provider_failover", JSON.stringify({
               from: candidate.id,
-              reason: quotaHit ? "quota_exhausted" : "rate_limited",
+              reason: quotaHit ? "quota_exhausted" : cooldown.reason,
               cooldownTtl: ttl,
             }));
           }
