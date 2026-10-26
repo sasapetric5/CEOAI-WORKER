@@ -54,3 +54,20 @@ test("session lock fails closed when KV write fails", async () => {
   await assert.rejects(withSessionLock(kv, SID, async () => { called = true; }), /KV write failed/);
   assert.equal(called, false, "protected callback must not run without an acquired lock");
 });
+
+test("memory reset returns unavailable when session lookup fails", async () => {
+  const { kv, env } = setup();
+  kv.get = async () => { throw new Error("KV read failed"); };
+  const response = await handleMemoryReset(request({ Origin: ORIGIN, Cookie: `ceoai_session=${SID}` }), env);
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).success, false);
+});
+
+test("memory reset reports delete failure without claiming success", async () => {
+  const { kv, env } = setup();
+  kv.delete = async () => { throw new Error("KV delete failed"); };
+  const response = await handleMemoryReset(request({ Origin: ORIGIN, Cookie: `ceoai_session=${SID}` }), env);
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).success, false);
+  assert.equal(kv.data.has(`memory:${SID}`), true);
+});
