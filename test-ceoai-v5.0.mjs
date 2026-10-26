@@ -16,6 +16,8 @@ const makeEnv = (overrides = {}) => ({
   RATE_LIMITER: { async limit() { return { success: true }; } },
   // Legacy integration tests exercise provider routing with an explicitly approved test-only free-tier fixture.
   GEMINI_FREE_CONFIRMED: "true",
+  // OpenRouter calls are allowed in tests only when the free-tier fixture is explicitly enabled.
+  OPENROUTER_FREE_CONFIRMED: "true",
   // Explicit test-only fixture flags; policy tests override these to false.
   ZAI_GLM_FLASH_FREE_CONFIRMED: "true",
   DEEPSEEK_FREE_CONFIRMED: "true",
@@ -82,6 +84,7 @@ assert.match((await disabled.json()).error, /AI je isključen/);
       AI_ENABLED: "true",
       EXTERNAL_AI_ENABLED: "true",
       GEMINI_FREE_CONFIRMED: "false",
+      OPENROUTER_FREE_CONFIRMED: "false",
       ZAI_GLM_FLASH_FREE_CONFIRMED: "false",
       DEEPSEEK_FREE_CONFIRMED: "false",
       MISTRAL_FREE_CONFIRMED: "false",
