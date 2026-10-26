@@ -109,6 +109,8 @@ test("history trimming drops oversized and whitespace-only message content", () 
     { role: "user", content: "x".repeat(50000) },
   ]);
   assert.ok(cleaned.every(m => typeof m.content === "string" && m.content.trim().length > 0));
+  assert.ok(cleaned.every(m => m.content.length <= 8000));
+  assert.equal(cleaned.some(m => m.content === "x".repeat(50000)), false);
   assert.ok(cleaned.length <= MAX_HISTORY_MESSAGES);
 });
 
