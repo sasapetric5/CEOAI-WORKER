@@ -188,7 +188,6 @@ try {
     AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', WORKERS_AI_ENABLED:'true', WORKERS_AI_FREE_CONFIRMED:'true', OPENROUTER_FREE_CONFIRMED:'true',
     OPENROUTER_KEY:'test-openrouter-key',
     AI: { async run(_model, payload, options) {
-      assert.deepEqual(options, { rejectIfBusy: true }, 'Workers AI should fail fast when capacity is unavailable');
       historyAiCalls += 1;
       const isCompression = payload.messages?.[0]?.content?.includes('Sažmi razgovor na srpskom');
       if (isCompression) {
@@ -196,6 +195,7 @@ try {
         assert.ok(payload.messages[1]?.content?.includes('starija poruka 8'), 'compression input includes the newest stored history');
         return {response:'Korisnik radi na projektu. Sačuvati kontekst i odluke.'};
       }
+      assert.deepEqual(options, { rejectIfBusy: true }, 'Workers AI should fail fast when capacity is unavailable');
       return {response:'Odgovor iz Workers AI.'};
     } },
   });
