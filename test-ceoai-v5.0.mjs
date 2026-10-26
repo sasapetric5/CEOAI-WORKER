@@ -363,7 +363,7 @@ const originalDebug2 = console.debug;
 const debugLines2 = [];
 console.debug = (...args) => debugLines2.push(args.join(' '));
 globalThis.fetch = async (url) => {
-  if (String(url).includes('openrouter.ai')) return new Response(JSON.stringify({error:'monkey key not found; api_key="value with spaces"'}), {status:401});
+  if (String(url).includes('openrouter.ai')) return new Response(JSON.stringify({error:'monkey key not found; api_key="value with spaces"; x-api-key="header secret"; refresh_token=refresh-secret-77; Authorization: Bearer bearer-secret-88'}), {status:401});
   throw new Error('Unexpected provider URL');
 };
 try {
@@ -372,7 +372,7 @@ try {
   await worker.fetch(apiRequest(cookie2, JSON.stringify({prompt:'Zdravo'})), env2);
   const lines = debugLines2.join('\n');
   assert.match(lines, /monkey key not found/);
-  assert.doesNotMatch(lines, /value with spaces/);
+  assert.doesNotMatch(lines, /value with spaces|header secret|refresh-secret-77|bearer-secret-88/);
 } finally { globalThis.fetch = originalFetch6; console.debug = originalDebug2; }
 
 // 22: compression truncation is logged as metadata only, without logging the conversation text.
