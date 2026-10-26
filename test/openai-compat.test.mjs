@@ -334,9 +334,14 @@ test("provider Retry-After is bounded to at most one hour in cooldown", async ()
 
 // Batch request boundary regressions: malformed JSON, oversized payload, and disabled gateway.
 test("rejects malformed JSON with a stable error code", async () => {
-  const r = await handleOpenAIChatCompletions(req("{bad-json"), env({ OPENROUTER_KEY: "test-key" }));
+  const malformed = new Request("https://ceoai.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: "Bearer test-secret-with-at-least-16", "Content-Type": "application/json" },
+    body: "{bad-json",
+  });
+  const r = await handleOpenAIChatCompletions(malformed, env({ OPENROUTER_KEY: "test-key" }));
   assert.equal(r.status, 400);
-  assert.equal((await r.json()).error.code, "invalid_json");
+  assert.equal((await r.json()).error.code, "invalid_json_body");
 });
 
 test("rejects oversized request bodies before provider calls", async () => {
