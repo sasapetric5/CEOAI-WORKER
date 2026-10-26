@@ -896,4 +896,76 @@ try {
   assert.equal(overflowMemory.messages.at(-2).content, "Trenutni zahtev mora ostati");
 } finally { globalThis.fetch = originalFetchHistoryOverflow; }
 
+
+// V5-13: SearXNG, Bing-compatible endpoint, SerpAPI and Search Console adapters are wired into research failover.
+for (const adapterCase of [
+  {
+    name: "SearXNG", env: { SEARXNG_ENABLED: "true", SEARXNG_URL: "https://search.example.test" },
+    matches: url => url.startsWith("https://search.example.test/search?"),
+    payload: { results: [{ title: "SearXNG result", url: "https://example.test/searx", content: "SearXNG result content" }] },
+    expected: /SearXNG result/
+  },
+  {
+    name: "Bing-compatible", env: { BING_SEARCH_ENDPOINT: "https://bing.example.test/search", BING_SEARCH_KEY: "test-bing", BING_SEARCH_FREE_CONFIRMED: "true" },
+    matches: url => url.startsWith("https://bing.example.test/search?"),
+    payload: { webPages: { value: [{ name: "Bing result", url: "https://example.test/bing", snippet: "Bing result content" }] } },
+    expected: /Bing result/
+  },
+  {
+    name: "SerpAPI", env: { SERPAPI_KEY: "test-serpapi", SERPAPI_FREE_CONFIRMED: "true" },
+    matches: url => url.startsWith("https://serpapi.com/search.json?"),
+    payload: { organic_results: [{ title: "SerpAPI result", link: "https://example.test/serp", snippet: "SerpAPI result content" }] },
+    expected: /SerpAPI result/
+  },
+  {
+    name: "Google Search Console", env: { GSC_ENABLED: "true", GSC_SITE_URL: "https://example.test/", GSC_ACCESS_TOKEN: "test-gsc-token", GSC_FREE_CONFIRMED: "true", GSC_START_DATE: "2026-10-01", GSC_END_DATE: "2026-10-20" },
+    matches: url => url.includes("www.googleapis.com/webmasters/v3/sites/"),
+    payload: { rows: [{ keys: ["Pretraži CEOAI", "https://example.test/"], clicks: 12, impressions: 120, ctr: 0.1, position: 4.2 }] },
+    expected: /Pretraži CEOAI/
+  }
+]) {
+  const originalAdapterFetch = globalThis.fetch;
+  const adapterCalls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const target = String(url);
+    adapterCalls.push({ url: target, options });
+    if (adapterCase.matches(target)) {
+      if (adapterCase.name === "Google Search Console") {
+        assert.equal(options.method, "POST");
+        assert.equal(options.headers.Authorization, "Bearer test-gsc-token");
+      }
+      if (adapterCase.name === "Bing-compatible") {
+        assert.equal(options.headers["Ocp-Apim-Subscription-Key"], "test-bing");
+      }
+      if (adapterCase.name === "SerpAPI") {
+        assert.equal(new URL(target).searchParams.get("api_key"), "test-serpapi");
+      }
+      return new Response(JSON.stringify(adapterCase.payload), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    throw new Error("Unexpected provider URL in " + adapterCase.name + " test: " + target);
+  };
+  try {
+    const adapterEnv = makeEnv({
+      AI_ENABLED: "true", EXTERNAL_AI_ENABLED: "true",
+      WORKERS_AI_ENABLED: "true", WORKERS_AI_FREE_CONFIRMED: "true",
+      AI: { async run(_model, input) {
+        const context = input.messages.map(message => message.content).join("\n");
+        assert.match(context, adapterCase.expected, adapterCase.name + " results must reach the AI context");
+        return { response: adapterCase.name + " adapter test passed" };
+      } },
+      ...adapterCase.env,
+    });
+    const { cookie: adapterCookie } = await getSession(adapterEnv);
+    const adapterResponse = await worker.fetch(
+      apiRequest(adapterCookie, JSON.stringify({ prompt: "Pretraži rezultate za CEOAI test" })),
+      adapterEnv
+    );
+    assert.equal(adapterResponse.status, 200, adapterCase.name + " should complete research");
+    assert.equal((await adapterResponse.json()).reply, adapterCase.name + " adapter test passed");
+    assert.ok(adapterCalls.some(call => adapterCase.matches(call.url)), adapterCase.name + " adapter must be called");
+  } finally {
+    globalThis.fetch = originalAdapterFetch;
+  }
+}
+
 console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecrawl + DuckDuckGo)");
