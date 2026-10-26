@@ -1,0 +1,34 @@
+name: CEOAI Worker verification
+
+on:
+  push:
+    branches:
+      - main
+      - v5.0
+  pull_request:
+    branches:
+      - main
+      - v5.0
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ceoai-worker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Syntax and regression tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify source syntax and tests
+        run: npm run verify

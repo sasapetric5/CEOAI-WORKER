@@ -1,0 +1,23 @@
+CEOAI V5.0 — LOCAL TEST REPORT
+==============================
+
+Environment
+-----------
+Node.js (local sandbox)
+Tests use mocked fetch/provider responses; no real provider calls are intended.
+
+Results
+-------
+PASS — node --check ceoai-index-v5.0.mjs
+PASS — node test-ceoai-v5.0.mjs
+PASS — V4.9 regression suite retained
+PASS — V5 provider ranking + free gates
+PASS — Quota exhaustion on DeepSeek → automatic Gemini failover (6h cooldown)
+PASS — Search failover: Tavily quota → Google CSE takeover
+PASS — RATE_LIMITER fail-closed regression
+
+Scope and limitations
+---------------------
+Local regression tests, not a production security audit. Confirm free-tier status
+on each provider account before setting *_FREE_CONFIRMED=true. No deployment was
+performed from this package.

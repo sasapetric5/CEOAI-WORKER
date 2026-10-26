@@ -1,14 +1,14 @@
 {
   "name": "ceoai-worker",
-  "version": "4.9.0",
+  "version": "5.0.0",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "check": "node --check ceoai-index-v4.9.mjs",
-    "test": "node test-ceoai-v4.9.mjs",
+    "check": "node --check ceoai-index-v5.0.mjs",
+    "test": "node test-ceoai-v5.0.mjs && node --test test/*.test.mjs",
     "verify": "npm run check && npm test"
   }
 }
