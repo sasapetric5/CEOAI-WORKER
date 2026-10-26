@@ -672,6 +672,104 @@ async function fetchSearchDuckDuckGo(env, query) {
   }
 }
 
+async function fetchSearchSearxng(env, query) {
+  // SearXNG is self-hostable; only use an explicitly configured HTTPS instance.
+  const base = typeof env.SEARXNG_URL === "string" ? env.SEARXNG_URL.trim() : "";
+  if (env.SEARXNG_ENABLED !== "true" || !base) return null;
+  let endpoint;
+  try {
+    endpoint = new URL(base);
+    if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password) return null;
+  } catch { return null; }
+  if (await isInCooldown(env, "search-searxng")) return null;
+  try {
+    endpoint.pathname = endpoint.pathname.replace(/\/+$/, "") + "/search";
+    endpoint.search = "";
+    endpoint.searchParams.set("q", String(query || "").slice(0, 300));
+    endpoint.searchParams.set("format", "json");
+    endpoint.searchParams.set("categories", "general");
+    const response = await withTimeoutFetch(endpoint.toString(), {
+      method: "GET", headers: { "Accept": "application/json", "User-Agent": "CEOAI/5.0" },
+    }, SEARCH_TIMEOUT_MS);
+    if (!response.ok) {
+      if (response.status === 429 || response.status >= 500) {
+        await markCooldown(env, "search-searxng", COOLDOWN_TTL);
+      }
+      return null;
+    }
+    const data = await response.json();
+    const results = Array.isArray(data?.results) ? data.results : [];
+    if (!results.length) return null;
+    return results.slice(0, 5).map((r, i) =>
+      \`\${i + 1}. \${String(r.title || "").slice(0, 120)}\\n   \${String(r.url || "").slice(0, 200)}\\n   \${String(r.content || r.snippet || "").slice(0, 400)}\`
+    ).join("\\n\\n").slice(0, 6000);
+  } catch { return null; }
+}
+
+async function fetchSearchBing(env, query) {
+  // Microsoft's legacy Bing Search APIs were retired in 2025; require a configured compatible endpoint.
+  const endpointValue = typeof env.BING_SEARCH_ENDPOINT === "string" ? env.BING_SEARCH_ENDPOINT.trim() : "";
+  if (!endpointValue || typeof env.BING_SEARCH_KEY !== "string" || !env.BING_SEARCH_KEY.trim() ||
+      env.BING_SEARCH_FREE_CONFIRMED !== "true") return null;
+  let endpoint;
+  try {
+    endpoint = new URL(endpointValue);
+    if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password) return null;
+  } catch { return null; }
+  if (await isInCooldown(env, "search-bing")) return null;
+  try {
+    endpoint.searchParams.set("q", String(query || "").slice(0, 300));
+    endpoint.searchParams.set("count", "5");
+    const response = await withTimeoutFetch(endpoint.toString(), {
+      method: "GET",
+      headers: { "Ocp-Apim-Subscription-Key": env.BING_SEARCH_KEY.trim(), "Accept": "application/json" },
+    }, SEARCH_TIMEOUT_MS);
+    if (!response.ok) {
+      if (response.status === 429 || response.status >= 500) {
+        await markCooldown(env, "search-bing", COOLDOWN_TTL);
+      }
+      return null;
+    }
+    const data = await response.json();
+    const results = Array.isArray(data?.webPages?.value) ? data.webPages.value
+      : Array.isArray(data?.results) ? data.results : [];
+    if (!results.length) return null;
+    return results.slice(0, 5).map((r, i) =>
+      \`\${i + 1}. \${String(r.name || r.title || "").slice(0, 120)}\\n   \${String(r.url || "").slice(0, 200)}\\n   \${String(r.snippet || r.description || "").slice(0, 400)}\`
+    ).join("\\n\\n").slice(0, 6000);
+  } catch { return null; }
+}
+
+async function fetchSearchSerpApi(env, query) {
+  // SerpAPI has its own quota/billing rules; never call unless free use is explicitly confirmed.
+  if (typeof env.SERPAPI_KEY !== "string" || !env.SERPAPI_KEY.trim() ||
+      env.SERPAPI_FREE_CONFIRMED !== "true") return null;
+  if (await isInCooldown(env, "search-serpapi")) return null;
+  try {
+    const endpoint = new URL("https://serpapi.com/search.json");
+    endpoint.searchParams.set("engine", "google");
+    endpoint.searchParams.set("q", String(query || "").slice(0, 300));
+    endpoint.searchParams.set("api_key", env.SERPAPI_KEY.trim());
+    endpoint.searchParams.set("num", "5");
+    const response = await withTimeoutFetch(endpoint.toString(), {
+      method: "GET", headers: { "Accept": "application/json" },
+    }, SEARCH_TIMEOUT_MS);
+    if (!response.ok) {
+      const err = await readProviderError(response, "serpapi");
+      if (isQuotaError(err) || response.status === 429) {
+        await markCooldown(env, "search-serpapi", isQuotaError(err) ? QUOTA_COOLDOWN_TTL : COOLDOWN_TTL);
+      }
+      return null;
+    }
+    const data = await response.json();
+    const results = Array.isArray(data?.organic_results) ? data.organic_results : [];
+    if (!results.length) return null;
+    return results.slice(0, 5).map((r, i) =>
+      \`\${i + 1}. \${String(r.title || "").slice(0, 120)}\\n   \${String(r.link || "").slice(0, 200)}\\n   \${String(r.snippet || "").slice(0, 400)}\`
+    ).join("\\n\\n").slice(0, 6000);
+  } catch { return null; }
+}
+
 async function enrichWithSearchFailover(env, prompt) {
   const query = String(prompt || "").replace(/https?:\/\/[^\s]+/gi, " ").trim().slice(0, 400);
   if (query.length < 3) return { text: "", source: null };
@@ -699,7 +797,19 @@ async function enrichWithSearchFailover(env, prompt) {
   const exa = await fetchSearchExa(env, query);
   if (exa) return { text: exa, source: "exa" };
 
-  // 6) DuckDuckGo Instant Answer — last-resort, no key
+  // 6) SearXNG — configured self-hosted meta-search instance.
+  const searxng = await fetchSearchSearxng(env, query);
+  if (searxng) return { text: searxng, source: "searxng" };
+
+  // 7) SerpAPI — only when the operator explicitly confirms free quota.
+  const serpapi = await fetchSearchSerpApi(env, query);
+  if (serpapi) return { text: serpapi, source: "serpapi" };
+
+  // 8) Bing-compatible endpoint — configurable because Microsoft's legacy Bing Search API was retired.
+  const bing = await fetchSearchBing(env, query);
+  if (bing) return { text: bing, source: "bing" };
+
+  // 9) DuckDuckGo Instant Answer — last-resort, no key.
   const ddg = await fetchSearchDuckDuckGo(env, query);
   if (ddg) return { text: ddg, source: "duckduckgo" };
 
