@@ -254,6 +254,34 @@ try {
   assert.equal(workersBusyFallbackCalls.length, 2, 'the healthy fallback should continue serving requests');
 } finally { globalThis.fetch = originalFetchWorkersBusy; }
 
+// 18b: hostile upstream Retry-After values are capped and the cooled-down provider is skipped.
+const originalFetchRetryCap = globalThis.fetch;
+let retryCapCalls = 0;
+globalThis.fetch = async (url) => {
+  if (String(url).includes('openrouter.ai')) {
+    retryCapCalls += 1;
+    return new Response(JSON.stringify({error:'rate limited'}), {
+      status:429,
+      headers:{'Content-Type':'application/json', 'Retry-After':'999999999999'},
+    });
+  }
+  throw new Error('Unexpected provider URL: ' + String(url));
+};
+try {
+  const retryCapEnv = makeEnv({
+    AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true',
+    OPENROUTER_KEY:'test-openrouter-retry-cap',
+  });
+  const {cookie: retryCapCookie} = await getSession(retryCapEnv);
+  const first = await worker.fetch(apiRequest(retryCapCookie, JSON.stringify({prompt:'Proveri ograničenje Retry-After'})), retryCapEnv);
+  assert.equal(first.status, 503);
+  assert.equal(first.headers.get('Retry-After'), '86400', 'Retry-After must not exceed the 24-hour policy cap');
+  assert.equal(retryCapCalls, 1);
+  const second = await worker.fetch(apiRequest(retryCapCookie, JSON.stringify({prompt:'Proveri cooldown'})), retryCapEnv);
+  assert.equal(second.status, 503);
+  assert.equal(retryCapCalls, 1, 'provider in cooldown must not be called again immediately');
+} finally { globalThis.fetch = originalFetchRetryCap; }
+
 // 19: transient provider failures receive a conservative 120-second retry hint.
 const originalFetch5 = globalThis.fetch;
 globalThis.fetch = async (url) => {
