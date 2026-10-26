@@ -1241,3 +1241,48 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
   }
 }
 
+// Regression: if every eligible provider fails, return a safe 503 and do not persist a phantom assistant turn.
+{
+  const originalFetch = globalThis.fetch;
+  const originalWarn = console.warn;
+  globalThis.fetch = async () => {
+    throw new Error("simulated upstream outage");
+  };
+  console.warn = () => {};
+  try {
+    const allFailEnv = makeEnv({
+      AI_ENABLED: "true",
+      EXTERNAL_AI_ENABLED: "true",
+      OPENROUTER_API_KEY: "test-key-all-providers-fail",
+      GEMINI_API_KEY_PRIMARY: "",
+      GEMINI_KEY_1: "",
+      GEMINI_API_KEY_SECONDARY: "",
+      GEMINI_KEY_2: "",
+      GEMINI_API_KEY_TERTIARY: "",
+      GEMINI_KEY_3: "",
+      ZAI_GLM_FLASH_KEY_1: "",
+      ZAI_GLM_FLASH_KEY_2: "",
+      DEEPSEEK_API_KEY: "",
+      DEEPSEEK_KEY: "",
+      MISTRAL_API_KEY: "",
+      MISTRAL_KEY: "",
+    });
+    const { cookie: allFailCookie } = await getSession(allFailEnv);
+    const sessionId = allFailCookie.split("=")[1];
+    const response = await worker.fetch(
+      apiRequest(allFailCookie, JSON.stringify({ prompt: "Zdravo" })),
+      allFailEnv
+    );
+    assert.equal(response.status, 503);
+    const result = await response.json();
+    assert.equal(result.success, false);
+    assert.match(result.error, /AI provajderi trenutno nisu dostupni/);
+    assert.doesNotMatch(JSON.stringify(result), /simulated upstream outage|test-key-all-providers-fail/);
+    assert.equal(allFailEnv.KV_MEMORY.data.has(`memory:${sessionId}`), false,
+      "failed provider calls must not persist a phantom conversation turn");
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
+  }
+}
+
