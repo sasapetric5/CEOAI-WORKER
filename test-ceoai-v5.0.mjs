@@ -186,18 +186,19 @@ try {
     OPENROUTER_KEY:'test-openrouter-key',
     AI: { async run(_model, payload) {
       historyAiCalls += 1;
-      if (historyAiCalls === 1) {
-        // First Workers AI call is the compression request; the later call answers the user.
-        assert.equal(payload.messages[0].role, 'system');
-        assert.ok(payload.messages[1].content.includes('starija poruka 1'));
+      const isCompression = payload.messages?.[0]?.content?.includes('Sažmi razgovor na srpskom');
+      if (isCompression) {
+        assert.ok(payload.messages[1]?.content?.includes('starija poruka 1'), 'compression input includes the seeded history');
+        assert.ok(payload.messages[1]?.content?.includes('starija poruka 8'), 'compression input includes the newest stored history');
         return {response:'Korisnik radi na projektu. Sačuvati kontekst i odluke.'};
       }
       return {response:'Odgovor iz Workers AI.'};
     } },
   });
   const { cookie: historyCookie } = await getSession(historyEnv);
-  const sessionId = historyCookie.split('=')[1];
-  historyEnv.KV_MEMORY.data.set(`memory:${sessionId}`, JSON.stringify({
+  const sessionId = historyCookie.match(/^ceoai_session=([0-9a-f-]{36})$/i)?.[1];
+  assert.ok(sessionId, 'test session cookie contains a valid session UUID');
+  await historyEnv.KV_MEMORY.put(`memory:${sessionId}`, JSON.stringify({
     summary:null, estimatedTokensSaved:0, compressions:0,
     messages:Array.from({length:8}, (_, i) => ({role:i % 2 ? 'assistant':'user', content:`starija poruka ${i + 1}`})),
   }));
@@ -271,8 +272,9 @@ try {
     } },
   });
   const {cookie: cookie3} = await getSession(env3);
-  const sid = cookie3.split('=')[1];
-  env3.KV_MEMORY.data.set(`memory:${sid}`, JSON.stringify({summary:null,estimatedTokensSaved:0,compressions:0,messages:Array.from({length:8},(_,i)=>({role:i%2?'assistant':'user',content:`private-marker-${i}-`+'x'.repeat(4000)}))}));
+  const sid = cookie3.match(/^ceoai_session=([0-9a-f-]{36})$/i)?.[1];
+  assert.ok(sid, 'test session cookie contains a valid session UUID');
+  await env3.KV_MEMORY.put(`memory:${sid}`, JSON.stringify({summary:null,estimatedTokensSaved:0,compressions:0,messages:Array.from({length:8},(_,i)=>({role:i%2?'assistant':'user',content:`private-marker-${i}-`+'x'.repeat(4000)}))}));
   const result = await worker.fetch(apiRequest(cookie3, JSON.stringify({prompt:'Nastavi'})), env3);
   assert.equal(result.status, 200);
   const logs = warningLines.join('\n');
