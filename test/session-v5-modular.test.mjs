@@ -30,3 +30,27 @@ test("session lock rejects overlapping work and releases after completion", asyn
   assert.deepEqual(await pending, { busy: false, value: "first" });
   assert.deepEqual(await withSessionLock(kv, SID, async () => "again"), { busy: false, value: "again" });
 });
+
+test("session lock releases after callback throws", async () => {
+  const { kv } = setup();
+  await assert.rejects(
+    withSessionLock(kv, SID, async () => { throw new Error("callback failed"); }),
+    /callback failed/
+  );
+  assert.equal(kv.data.has(`lock:${SID}`), false);
+  assert.deepEqual(await withSessionLock(kv, SID, async () => "recovered"), { busy: false, value: "recovered" });
+});
+
+test("session lock fails closed when KV read fails", async () => {
+  const { kv } = setup();
+  kv.get = async () => { throw new Error("KV unavailable"); };
+  await assert.rejects(withSessionLock(kv, SID, async () => "must not run"), /KV unavailable/);
+});
+
+test("session lock fails closed when KV write fails", async () => {
+  const { kv } = setup();
+  kv.put = async () => { throw new Error("KV write failed"); };
+  let called = false;
+  await assert.rejects(withSessionLock(kv, SID, async () => { called = true; }), /KV write failed/);
+  assert.equal(called, false, "protected callback must not run without an acquired lock");
+});
