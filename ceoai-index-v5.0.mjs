@@ -33,6 +33,9 @@ const MODEL = "@cf/meta/llama-3-8b-instruct";
 let warnedMissingRateLimiter = false;
 let warnedOpenRouterModelWithoutKey = false;
 let warnedInvalidOpenRouterModel = false;
+// Best-effort per-isolate guard: concurrent requests skip an already-running provider attempt.
+// KV cooldown remains the cross-request persistence layer; this Set is not distributed coordination.
+const inFlightProviders = new Set();
 
 const HTML_PAGE = `<!doctype html>
 <html lang="sr">
@@ -1289,6 +1292,10 @@ export default {
         }
         if (coolingDown) { sawCooldownSkip = true; continue; }
 
+        // Avoid a same-isolate burst against a provider while its first attempt is unresolved.
+        // This is intentionally best-effort; separate Worker isolates can still race.
+        if (inFlightProviders.has(candidate.id)) { sawCooldownSkip = true; continue; }
+        inFlightProviders.add(candidate.id);
         try {
           reply = await executeModel(candidate, messages, remainingMs);
           if (!reply.trim()) throw new Error("Prazan odgovor");
@@ -1326,6 +1333,8 @@ export default {
             }));
           }
           // Continue to next candidate automatically.
+        } finally {
+          inFlightProviders.delete(candidate.id);
         }
       }
 

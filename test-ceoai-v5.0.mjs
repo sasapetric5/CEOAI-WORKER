@@ -1602,3 +1602,57 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
   }
 }
 
+
+
+// V5 concurrency guard: one same-isolate provider attempt at a time; parallel request safely falls back.
+{
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  let primaryCalls = 0;
+  let fallbackCalls = 0;
+  let releasePrimary;
+  const primaryGate = new Promise(resolve => { releasePrimary = resolve; });
+  const concurrentEnv = makeEnv({
+    AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true',
+    GEMINI_API_KEY_PRIMARY:'test-gemini-concurrent',
+    OPENROUTER_API_KEY:'test-openrouter-concurrent',
+  });
+  const {cookie: firstCookie} = await getSession(concurrentEnv);
+  const {cookie: secondCookie} = await getSession(concurrentEnv);
+  globalThis.fetch = async (url) => {
+    const target = String(url);
+    calls.push(target);
+    if (target.includes('generativelanguage.googleapis.com')) {
+      primaryCalls += 1;
+      await primaryGate;
+      return new Response(JSON.stringify({error:{message:'simulated concurrent outage'}}), {
+        status:503, headers:{'Content-Type':'application/json'},
+      });
+    }
+    if (target.includes('openrouter.ai')) {
+      fallbackCalls += 1;
+      return new Response(JSON.stringify({choices:[{message:{content:'Odgovor sa rezervnog provajdera.'}}]}), {
+        status:200, headers:{'Content-Type':'application/json'},
+      });
+    }
+    throw new Error('Unexpected provider URL: ' + target);
+  };
+  try {
+    const firstRequest = worker.fetch(apiRequest(firstCookie, JSON.stringify({prompt:'Prvi paralelni zahtev'})), concurrentEnv);
+    // Allow first request to enter the mocked primary provider before starting the second.
+    for (let i = 0; i < 30 && primaryCalls === 0; i++) await new Promise(resolve => setImmediate(resolve));
+    assert.equal(primaryCalls, 1, 'first request should enter primary provider');
+    const secondResponse = await worker.fetch(apiRequest(secondCookie, JSON.stringify({prompt:'Drugi paralelni zahtev'})), concurrentEnv);
+    assert.equal(secondResponse.status, 200, 'second request should use safe fallback while primary is in flight');
+    assert.equal(primaryCalls, 1, 'concurrent request must not duplicate the in-flight primary attempt');
+    assert.equal(fallbackCalls, 1, 'second request should use one fallback call');
+    releasePrimary();
+    const firstResponse = await firstRequest;
+    assert.equal(firstResponse.status, 200, 'first request should fall back after the simulated primary outage');
+    assert.equal(primaryCalls, 1, 'only one primary attempt should have been made');
+    assert.equal(fallbackCalls, 2, 'each independent prompt should receive its own fallback response');
+  } finally {
+    releasePrimary();
+    globalThis.fetch = originalFetch;
+  }
+}
