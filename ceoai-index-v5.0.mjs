@@ -701,8 +701,8 @@ async function fetchSearchSearxng(env, query) {
     const results = Array.isArray(data?.results) ? data.results : [];
     if (!results.length) return null;
     return results.slice(0, 5).map((r, i) =>
-      \`\${i + 1}. \${String(r.title || "").slice(0, 120)}\\n   \${String(r.url || "").slice(0, 200)}\\n   \${String(r.content || r.snippet || "").slice(0, 400)}\`
-    ).join("\\n\\n").slice(0, 6000);
+      \`${i + 1}. ${String(r.title || "").slice(0, 120)}\n   ${String(r.url || "").slice(0, 200)}\n   ${String(r.content || r.snippet || "").slice(0, 400)}\`
+    ).join("\n\n").slice(0, 6000);
   } catch { return null; }
 }
 
@@ -735,8 +735,8 @@ async function fetchSearchBing(env, query) {
       : Array.isArray(data?.results) ? data.results : [];
     if (!results.length) return null;
     return results.slice(0, 5).map((r, i) =>
-      \`\${i + 1}. \${String(r.name || r.title || "").slice(0, 120)}\\n   \${String(r.url || "").slice(0, 200)}\\n   \${String(r.snippet || r.description || "").slice(0, 400)}\`
-    ).join("\\n\\n").slice(0, 6000);
+      \`${i + 1}. ${String(r.name || r.title || "").slice(0, 120)}\n   ${String(r.url || "").slice(0, 200)}\n   ${String(r.snippet || r.description || "").slice(0, 400)}\`
+    ).join("\n\n").slice(0, 6000);
   } catch { return null; }
 }
 
@@ -765,8 +765,8 @@ async function fetchSearchSerpApi(env, query) {
     const results = Array.isArray(data?.organic_results) ? data.organic_results : [];
     if (!results.length) return null;
     return results.slice(0, 5).map((r, i) =>
-      \`\${i + 1}. \${String(r.title || "").slice(0, 120)}\\n   \${String(r.link || "").slice(0, 200)}\\n   \${String(r.snippet || "").slice(0, 400)}\`
-    ).join("\\n\\n").slice(0, 6000);
+      \`${i + 1}. ${String(r.title || "").slice(0, 120)}\n   ${String(r.link || "").slice(0, 200)}\n   ${String(r.snippet || "").slice(0, 400)}\`
+    ).join("\n\n").slice(0, 6000);
   } catch { return null; }
 }
 
