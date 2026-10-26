@@ -105,3 +105,33 @@ test("session cookie parser rejects malformed and duplicate-lookalike values", (
   assert.equal(readSessionId(request({ Cookie: "other=value; ceoai_session=bad" })), null);
 });
 
+// Batch lock and reset edge cases: callback result, lock cleanup, and missing session storage.
+test("session lock returns the callback result without leaking internal lock metadata", async () => {
+  const { kv } = setup();
+  const result = await withSessionLock(kv, SID, async () => ({ answer: 42 }));
+  assert.deepEqual(result, { busy: false, value: { answer: 42 } });
+  assert.equal(kv.data.has(`lock:${SID}`), false);
+});
+
+test("session lock releases after callback rejects with a non-Error value", async () => {
+  const { kv } = setup();
+  await assert.rejects(withSessionLock(kv, SID, async () => { throw "rejected"; }), e => e === "rejected");
+  assert.equal(kv.data.has(`lock:${SID}`), false);
+});
+
+test("memory reset rejects when KV session lookup returns missing", async () => {
+  const { kv, env } = setup();
+  kv.data.delete(`session:${SID}`);
+  const response = await handleMemoryReset(request({ Origin: ORIGIN, Cookie: `ceoai_session=${SID}` }), env);
+  assert.equal(response.status, 401);
+  assert.equal(kv.data.has(`memory:${SID}`), true);
+});
+
+test("memory reset rejects when KV binding is missing", async () => {
+  const { env } = setup();
+  env.KV_MEMORY = undefined;
+  const response = await handleMemoryReset(request({ Origin: ORIGIN, Cookie: `ceoai_session=${SID}` }), env);
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).success, false);
+});
+
