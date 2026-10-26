@@ -185,7 +185,7 @@ globalThis.fetch = async (url) => {
 try {
   let historyAiCalls = 0;
   const historyEnv = makeEnv({
-    AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', WORKERS_AI_ENABLED:'true', WORKERS_AI_FREE_CONFIRMED:'true',
+    AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', WORKERS_AI_ENABLED:'true', WORKERS_AI_FREE_CONFIRMED:'true', OPENROUTER_FREE_CONFIRMED:'true',
     OPENROUTER_KEY:'test-openrouter-key',
     AI: { async run(_model, payload) {
       historyAiCalls += 1;
@@ -265,7 +265,7 @@ globalThis.fetch = async (url) => {
 };
 try {
   const env3 = makeEnv({
-    AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', WORKERS_AI_ENABLED:'true', WORKERS_AI_FREE_CONFIRMED:'true', OPENROUTER_KEY:'test-key-3',
+    AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', WORKERS_AI_ENABLED:'true', WORKERS_AI_FREE_CONFIRMED:'true', OPENROUTER_FREE_CONFIRMED:'true', OPENROUTER_KEY:'test-key-3',
     AI: { async run(_model, payload) {
       if (payload.messages?.[0]?.content?.includes('Sažmi razgovor na srpskom')) {
         assert.equal(payload.messages[1]?.content?.length, 24000);
