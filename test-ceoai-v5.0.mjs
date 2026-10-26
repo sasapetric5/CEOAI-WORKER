@@ -969,3 +969,86 @@ for (const adapterCase of [
 }
 
 console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecrawl + DuckDuckGo)");
+
+
+// Cloudflare Workers AI: confirmed free binding is used without external provider calls.
+{
+  const calls = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    throw new Error("Workers AI-only test must not call external providers");
+  };
+  try {
+    const cloudflareEnv = makeEnv({
+      AI_ENABLED: "true",
+      EXTERNAL_AI_ENABLED: "true",
+      WORKERS_AI_ENABLED: "true",
+      WORKERS_AI_FREE_CONFIRMED: "true",
+      AI: {
+        async run(model, input) {
+          assert.equal(model, "@cf/meta/llama-3-8b-instruct");
+          assert.ok(Array.isArray(input.messages));
+          assert.ok(input.messages.some(message => message.role === "user" && message.content === "Odgovori kratko: zdravo"));
+          return { response: "Cloudflare Workers AI radi." };
+        },
+      },
+      GEMINI_API_KEY_PRIMARY: "",
+      GEMINI_KEY_1: "",
+      OPENROUTER_API_KEY: "",
+      OPENROUTER_KEY: "",
+      ZAI_GLM_FLASH_KEY_1: "",
+      ZAI_GLM_FLASH_KEY_2: "",
+      DEEPSEEK_API_KEY: "",
+      DEEPSEEK_KEY: "",
+      MISTRAL_API_KEY: "",
+      MISTRAL_KEY: "",
+    });
+    const { cookie: cfCookie } = await getSession(cloudflareEnv);
+    const response = await worker.fetch(
+      apiRequest(cfCookie, JSON.stringify({ prompt: "Odgovori kratko: zdravo" })),
+      cloudflareEnv
+    );
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).reply, "Cloudflare Workers AI radi.");
+    assert.equal(calls.length, 0, "Workers AI binding should not require external HTTP provider calls");
+  } finally {
+    globalThis.fetch = original;
+  }
+}
+
+// Cloudflare Workers AI: binding and API key alone are insufficient without both explicit opt-ins.
+{
+  let calls = 0;
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => { calls++; throw new Error("unexpected external call"); };
+  try {
+    const cloudflareDisabledEnv = makeEnv({
+      AI_ENABLED: "true",
+      EXTERNAL_AI_ENABLED: "true",
+      WORKERS_AI_ENABLED: "true",
+      WORKERS_AI_FREE_CONFIRMED: "false",
+      AI: { async run() { calls++; return { response: "must not run" }; } },
+      GEMINI_API_KEY_PRIMARY: "",
+      GEMINI_KEY_1: "",
+      OPENROUTER_API_KEY: "",
+      OPENROUTER_KEY: "",
+      ZAI_GLM_FLASH_KEY_1: "",
+      ZAI_GLM_FLASH_KEY_2: "",
+      DEEPSEEK_API_KEY: "",
+      DEEPSEEK_KEY: "",
+      MISTRAL_API_KEY: "",
+      MISTRAL_KEY: "",
+    });
+    const { cookie: cfDisabledCookie } = await getSession(cloudflareDisabledEnv);
+    const response = await worker.fetch(
+      apiRequest(cfDisabledCookie, JSON.stringify({ prompt: "Zdravo" })),
+      cloudflareDisabledEnv
+    );
+    assert.equal(response.status, 503);
+    assert.match((await response.json()).error, /Nema konfigurisanog provajdera/);
+    assert.equal(calls, 0, "unconfirmed Workers AI must not execute");
+  } finally {
+    globalThis.fetch = original;
+  }
+}
