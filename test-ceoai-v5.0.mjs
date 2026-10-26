@@ -282,6 +282,60 @@ try {
   assert.equal(retryCapCalls, 1, 'provider in cooldown must not be called again immediately');
 } finally { globalThis.fetch = originalFetchRetryCap; }
 
+// 18c: a provider can recover after its cooldown is cleared; routing probes it again.
+{
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  let geminiAttempts = 0;
+  globalThis.fetch = async (url) => {
+    const target = String(url);
+    calls.push(target);
+    if (target.includes('generativelanguage.googleapis.com')) {
+      geminiAttempts += 1;
+      if (geminiAttempts === 1) {
+        return new Response(JSON.stringify({error:{message:'temporary upstream outage'}}), {status:503});
+      }
+      return new Response(JSON.stringify({candidates:[{content:{parts:[{text:'Gemini se oporavio.'}]}}]}), {
+        status:200, headers:{'Content-Type':'application/json'},
+      });
+    }
+    if (target.includes('openrouter.ai')) {
+      return new Response(JSON.stringify({choices:[{message:{content:'Rezervni model je odgovorio.'}}]}), {
+        status:200, headers:{'Content-Type':'application/json'},
+      });
+    }
+    throw new Error('Unexpected provider URL: ' + target);
+  };
+  try {
+    const recoveryEnv = makeEnv({
+      AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true',
+      GEMINI_API_KEY_PRIMARY:'test-gemini-recovery',
+      OPENROUTER_API_KEY:'test-openrouter-recovery',
+    });
+    const {cookie: recoveryCookie} = await getSession(recoveryEnv);
+    const request = () => worker.fetch(apiRequest(recoveryCookie, JSON.stringify({prompt:'Proveri oporavak provajdera'})), recoveryEnv);
+
+    const first = await request();
+    assert.equal(first.status, 200);
+    assert.equal((await first.json()).reply, 'Rezervni model je odgovorio.');
+    assert.ok(await recoveryEnv.KV_MEMORY.get('cooldown:gemini-1'), 'failed Gemini provider should enter cooldown');
+
+    const second = await request();
+    assert.equal(second.status, 200);
+    assert.equal((await second.json()).reply, 'Rezervni model je odgovorio.');
+    assert.equal(geminiAttempts, 1, 'provider in cooldown must be skipped');
+
+    await recoveryEnv.KV_MEMORY.delete('cooldown:gemini-1');
+    const third = await request();
+    assert.equal(third.status, 200);
+    assert.equal((await third.json()).reply, 'Gemini se oporavio.');
+    assert.equal(geminiAttempts, 2, 'provider should be eligible again after cooldown expires');
+    assert.equal(calls.length, 4, 'one failure, two fallback calls, then one recovered primary call');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
 // 19: transient provider failures receive a conservative 120-second retry hint.
 const originalFetch5 = globalThis.fetch;
 globalThis.fetch = async (url) => {
