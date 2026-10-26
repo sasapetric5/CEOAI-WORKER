@@ -1175,3 +1175,31 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
   }
 }
 
+// V5.0 safety regression: missing atomic rate limiter fails closed before provider calls.
+{
+  const originalFetch = globalThis.fetch;
+  const providerCalls = [];
+  globalThis.fetch = async (url) => {
+    providerCalls.push(String(url));
+    throw new Error("Provider must not be called without rate limiter");
+  };
+  try {
+    const noLimiterEnv = makeEnv({
+      AI_ENABLED: "true",
+      EXTERNAL_AI_ENABLED: "true",
+      OPENROUTER_KEY: "test-key-no-limiter",
+      RATE_LIMITER: null,
+    });
+    const { cookie: noLimiterCookie } = await getSession(noLimiterEnv);
+    const response = await worker.fetch(
+      apiRequest(noLimiterCookie, JSON.stringify({ prompt: "Zdravo" })),
+      noLimiterEnv
+    );
+    assert.equal(response.status, 503, "missing atomic rate limiter must fail closed");
+    assert.match((await response.json()).error, /privremeno nedostupna/);
+    assert.equal(providerCalls.length, 0, "rate-limit failure must happen before any provider call");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
