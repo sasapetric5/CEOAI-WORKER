@@ -341,7 +341,7 @@ test("rejects malformed JSON with a stable error code", async () => {
   });
   const r = await handleOpenAIChatCompletions(malformed, env({ OPENROUTER_KEY: "test-key" }));
   assert.equal(r.status, 400);
-  assert.equal((await r.json()).error.code, "invalid_json_body");
+  assert.equal((await r.json()).error.code, "invalid_json");
 });
 
 test("rejects oversized request bodies before provider calls", async () => {
