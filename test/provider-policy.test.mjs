@@ -40,3 +40,9 @@ test("bad credentials, missing models, server errors and network failures cool d
   assert.deepEqual(providerFailureCooldown({ status: 0 }), { ttl: 60, reason: "provider_timeout_or_network" });
   assert.equal(providerFailureCooldown({ status: 400 }), null);
 });
+
+test("cooldown policy rejects unvalidated Retry-After values", () => {
+  assert.equal(providerFailureCooldown({ status: 429, retryAfterSeconds: Infinity }).ttl, 60);
+  assert.equal(providerFailureCooldown({ status: 429, retryAfterSeconds: -10 }).ttl, 60);
+  assert.equal(providerFailureCooldown({ status: 429, retryAfterSeconds: "999999" }).ttl, 60);
+});
