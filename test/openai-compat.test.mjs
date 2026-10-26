@@ -332,3 +332,32 @@ test("provider Retry-After is bounded to at most one hour in cooldown", async ()
   } finally { globalThis.fetch = oldFetch; }
 });
 
+// Batch request boundary regressions: malformed JSON, oversized payload, and disabled gateway.
+test("rejects malformed JSON with a stable error code", async () => {
+  const r = await handleOpenAIChatCompletions(req("{bad-json"), env({ OPENROUTER_KEY: "test-key" }));
+  assert.equal(r.status, 400);
+  assert.equal((await r.json()).error.code, "invalid_json");
+});
+
+test("rejects oversized request bodies before provider calls", async () => {
+  const oldFetch = globalThis.fetch; let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error("must not call provider"); };
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "x".repeat(20000) }] }), env({ OPENROUTER_KEY: "test-key" }));
+    assert.equal(r.status, 413);
+    assert.equal((await r.json()).error.code, "request_too_large");
+    assert.equal(calls, 0);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("disabled gateway rejects valid requests without provider calls", async () => {
+  const oldFetch = globalThis.fetch; let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error("must not call provider"); };
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), env({ AI_ENABLED: "false", EXTERNAL_AI_ENABLED: "false", OPENROUTER_KEY: "test-key" }));
+    assert.equal(r.status, 503);
+    assert.equal((await r.json()).error.code, "ai_disabled");
+    assert.equal(calls, 0);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
