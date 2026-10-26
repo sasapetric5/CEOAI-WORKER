@@ -1052,3 +1052,89 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
     globalThis.fetch = original;
   }
 }
+
+
+// Workers AI runtime failure must fall through to the next approved free candidate.
+{
+  const calls = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push(String(url));
+    assert.match(String(url), /openrouter\.ai\/api\/v1\/chat\/completions/);
+    const sent = JSON.parse(options.body);
+    assert.match(sent.model, /:free$/);
+    return new Response(JSON.stringify({ choices: [{ message: { content: "Odgovor posle Workers AI greške." } }] }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  };
+  try {
+    const fallbackEnv = makeEnv({
+      AI_ENABLED: "true",
+      EXTERNAL_AI_ENABLED: "true",
+      WORKERS_AI_ENABLED: "true",
+      WORKERS_AI_FREE_CONFIRMED: "true",
+      AI: { async run() { throw new Error("simulated Workers AI outage"); } },
+      OPENROUTER_API_KEY: "test-openrouter-fallback",
+      OPENROUTER_KEY: "",
+      GEMINI_API_KEY_PRIMARY: "",
+      GEMINI_KEY_1: "",
+      ZAI_GLM_FLASH_KEY_1: "",
+      ZAI_GLM_FLASH_KEY_2: "",
+      DEEPSEEK_API_KEY: "",
+      DEEPSEEK_KEY: "",
+      MISTRAL_API_KEY: "",
+      MISTRAL_KEY: "",
+    });
+    const { cookie: fallbackCookie } = await getSession(fallbackEnv);
+    const response = await worker.fetch(
+      apiRequest(fallbackCookie, JSON.stringify({ prompt: "Zdravo" })),
+      fallbackEnv
+    );
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).reply, "Odgovor posle Workers AI greške.");
+    assert.equal(calls.length, 1, "only the approved free fallback should receive an HTTP request");
+  } finally {
+    globalThis.fetch = original;
+  }
+}
+
+// Empty Workers AI output must be rejected and must not be returned as a successful reply.
+{
+  const calls = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push(String(url));
+    return new Response(JSON.stringify({ choices: [{ message: { content: "Fallback after empty Workers AI." } }] }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  };
+  try {
+    const emptyEnv = makeEnv({
+      AI_ENABLED: "true",
+      EXTERNAL_AI_ENABLED: "true",
+      WORKERS_AI_ENABLED: "true",
+      WORKERS_AI_FREE_CONFIRMED: "true",
+      AI: { async run() { return { response: "   " }; } },
+      OPENROUTER_API_KEY: "test-openrouter-empty-fallback",
+      OPENROUTER_KEY: "",
+      GEMINI_API_KEY_PRIMARY: "",
+      GEMINI_KEY_1: "",
+      ZAI_GLM_FLASH_KEY_1: "",
+      ZAI_GLM_FLASH_KEY_2: "",
+      DEEPSEEK_API_KEY: "",
+      DEEPSEEK_KEY: "",
+      MISTRAL_API_KEY: "",
+      MISTRAL_KEY: "",
+    });
+    const { cookie: emptyCookie } = await getSession(emptyEnv);
+    const response = await worker.fetch(
+      apiRequest(emptyCookie, JSON.stringify({ prompt: "Zdravo" })),
+      emptyEnv
+    );
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).reply, "Fallback after empty Workers AI.");
+    assert.equal(calls.length, 1);
+  } finally {
+    globalThis.fetch = original;
+  }
+}
