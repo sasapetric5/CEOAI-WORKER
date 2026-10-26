@@ -49,47 +49,19 @@ test("Gemini free-only mode selects a current free-tier model and uses header au
   } finally { globalThis.fetch = old; }
 });
 
-test("Gemini route requires explicit free-tier confirmation", async () => {
-  const old = globalThis.fetch;
-  let observed;
-  globalThis.fetch = async (url, options) => {
-    observed = { url: String(url), headers: options.headers, payload: JSON.parse(options.body) };
-    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "Gemini free path OK" }] } }] }), { status: 200 });
-  };
+test("Gemini provider is excluded when free-only policy is explicitly disabled", async () => {
+  const oldFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error("unexpected provider call"); };
   try {
     const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), env({
       GEMINI_KEY_1: "test-gemini-key",
       GEMINI_FREE_CONFIRMED: "true",
+      GEMINI_FREE_ONLY: "false",
       OPENROUTER_KEY: "",
     }));
-    assert.equal(r.status, 200);
-    assert.match(observed.url, /models\/gemini-3\.5-flash-lite:generateContent$/);
-    assert.equal(observed.headers["x-goog-api-key"], "test-gemini-key");
-    assert.equal(observed.url.includes("test-gemini-key"), false);
-    assert.equal((await r.json()).choices[0].message.content, "Gemini free path OK");
-  } finally { globalThis.fetch = old; }
-});
-
-test("automatic failover skips an OpenRouter quota error and succeeds on confirmed Gemini", async () => {
-  const old = globalThis.fetch;
-  const calls = [];
-  globalThis.fetch = async (url) => {
-    calls.push(String(url));
-    if (String(url).includes("openrouter.ai")) {
-      return new Response(JSON.stringify({ error: { message: "quota exhausted" } }), { status: 429, headers: { "Content-Type": "application/json" } });
-    }
-    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "Fallback succeeded" }] } }] }), { status: 200 });
-  };
-  try {
-    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), env({
-      OPENROUTER_KEY: "test-openrouter-key",
-      GEMINI_KEY_1: "test-gemini-key",
-      GEMINI_FREE_CONFIRMED: "true",
-    }));
-    assert.equal(r.status, 200);
-    assert.equal((await r.json()).choices[0].message.content, "Fallback succeeded");
-    assert.equal(calls.length, 2);
-    assert.match(calls[0], /openrouter\.ai/);
-    assert.match(calls[1], /generativelanguage\.googleapis\.com/);
-  } finally { globalThis.fetch = old; }
+    assert.equal(r.status, 503);
+    assert.equal((await r.json()).error.code, "no_free_provider");
+    assert.equal(calls, 0);
+  } finally { globalThis.fetch = oldFetch; }
 });
