@@ -1490,4 +1490,45 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
     globalThis.fetch = originalFetch;
   }
 }
+ 
+// V5 reliability: exhausted request budget must stop the provider chain instead of starting another call.
+{
+  const originalFetch = globalThis.fetch;
+  const originalNow = Date.now;
+  const calls = [];
+  let simulatedNow = originalNow();
+  Date.now = () => simulatedNow;
+  globalThis.fetch = async (url) => {
+    const target = String(url);
+    calls.push(target);
+    if (target.includes('generativelanguage.googleapis.com')) {
+      simulatedNow += 23000;
+      return new Response(JSON.stringify({error:{message:'temporary upstream failure'}}), {
+        status:503, headers:{'Content-Type':'application/json'},
+      });
+    }
+    if (target.includes('openrouter.ai')) {
+      return new Response(JSON.stringify({choices:[{message:{content:'This must not be reached after the budget is exhausted.'}}]}), {
+        status:200, headers:{'Content-Type':'application/json'},
+      });
+    }
+    throw new Error('Unexpected provider URL: ' + target);
+  };
+  try {
+    const budgetEnv = makeEnv({
+      AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true',
+      GEMINI_API_KEY_PRIMARY:'test-gemini-budget',
+      OPENROUTER_API_KEY:'test-openrouter-budget',
+    });
+    const {cookie: budgetCookie} = await getSession(budgetEnv);
+    const response = await worker.fetch(apiRequest(budgetCookie, JSON.stringify({prompt:'Proveri ukupni vremenski budžet'})), budgetEnv);
+    assert.equal(response.status, 503, 'the request should stop when less than two seconds remain');
+    assert.equal(calls.length, 1, 'do not start a fallback that cannot fit within the remaining budget');
+    assert.ok(calls[0].includes('generativelanguage.googleapis.com'));
+    assert.ok(await budgetEnv.KV_MEMORY.get('cooldown:gemini-1'), 'the failed provider still receives its normal cooldown');
+  } finally {
+    globalThis.fetch = originalFetch;
+    Date.now = originalNow;
+  }
+}
 
