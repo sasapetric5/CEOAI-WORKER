@@ -71,3 +71,37 @@ test("memory reset reports delete failure without claiming success", async () =>
   assert.equal((await response.json()).success, false);
   assert.equal(kv.data.has(`memory:${SID}`), true);
 });
+
+// Batch session reset regressions: method, missing session, and missing KV operations.
+test("memory reset rejects non-POST methods without changing memory", async () => {
+  const { kv, env } = setup();
+  const res = await handleMemoryReset(new Request("https://ceoai.dev/api/reset", {
+    method: "GET", headers: { Origin: ORIGIN, Cookie: `ceoai_session=${SID}` },
+  }), env);
+  assert.equal(res.status, 405);
+  assert.equal(res.headers.get("allow"), "POST");
+  assert.equal(kv.data.has(`memory:${SID}`), true);
+});
+
+test("memory reset rejects a valid-looking cookie for an unknown session", async () => {
+  const { kv, env } = setup();
+  const unknown = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+  const res = await handleMemoryReset(request({ Origin: ORIGIN, Cookie: `ceoai_session=${unknown}` }), env);
+  assert.equal(res.status, 401);
+  assert.equal((await res.json()).success, false);
+  assert.equal(kv.data.has(`memory:${SID}`), true);
+});
+
+test("memory reset fails safely when KV delete is unavailable", async () => {
+  const { env } = setup();
+  env.KV_MEMORY.delete = undefined;
+  const res = await handleMemoryReset(request({ Origin: ORIGIN, Cookie: `ceoai_session=${SID}` }), env);
+  assert.equal(res.status, 503);
+  assert.equal((await res.json()).success, false);
+});
+
+test("session cookie parser rejects malformed and duplicate-lookalike values", () => {
+  assert.equal(readSessionId(request({ Cookie: "ceoai_session=not-a-uuid" })), null);
+  assert.equal(readSessionId(request({ Cookie: "other=value; ceoai_session=bad" })), null);
+});
+
