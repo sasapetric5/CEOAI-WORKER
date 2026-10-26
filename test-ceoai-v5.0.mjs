@@ -1138,3 +1138,40 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
     globalThis.fetch = original;
   }
 }
+
+// V5.0 safety regression: reject oversized bodies and prompts before any provider call.
+{
+  const originalFetch = globalThis.fetch;
+  const providerCalls = [];
+  globalThis.fetch = async (url) => {
+    providerCalls.push(String(url));
+    throw new Error("Provider must not be called for invalid input");
+  };
+  try {
+    const guardEnv = makeEnv({
+      AI_ENABLED: "true",
+      EXTERNAL_AI_ENABLED: "true",
+      OPENROUTER_KEY: "test-key-input-guards",
+    });
+    const { cookie: guardCookie } = await getSession(guardEnv);
+
+    const longPromptResponse = await worker.fetch(
+      apiRequest(guardCookie, JSON.stringify({ prompt: "x".repeat(2001) })),
+      guardEnv
+    );
+    assert.equal(longPromptResponse.status, 400, "prompt over 2000 characters is rejected");
+    assert.match((await longPromptResponse.json()).error, /2000 karaktera/);
+
+    const oversizedBodyResponse = await worker.fetch(
+      apiRequest(guardCookie, " ".repeat(16_001)),
+      guardEnv
+    );
+    assert.equal(oversizedBodyResponse.status, 413, "request body over 16000 bytes is rejected");
+    assert.match((await oversizedBodyResponse.json()).error, /prevelik/);
+
+    assert.equal(providerCalls.length, 0, "invalid input must never reach an AI provider");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
