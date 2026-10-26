@@ -148,3 +148,80 @@ test("provider quota errors set cooldown and return a retry hint when no fallbac
     assert.ok(data.get("gateway:cooldown:openrouter-free:ttl") >= 60);
   } finally { globalThis.fetch = oldFetch; }
 });
+
+
+test("provider 5xx failure is cooled down and surfaced as unavailable", async () => {
+  const oldFetch = globalThis.fetch;
+  const data = new Map();
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return new Response(JSON.stringify({ error: { message: "upstream failure" } }), { status: 503 });
+  };
+  const e = env({
+    OPENROUTER_KEY: "test-key",
+    KV_MEMORY: {
+      async get(k) { return data.get(k) ?? null; },
+      async put(k, v, options) { data.set(k, v); data.set(k + ":ttl", options?.expirationTtl); },
+    },
+  });
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), e);
+    assert.equal(r.status, 503);
+    assert.equal((await r.json()).error.code, "providers_unavailable");
+    assert.equal(calls, 1);
+    assert.equal(data.get("gateway:cooldown:openrouter-free"), "1");
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("empty provider output does not become a successful empty assistant message", async () => {
+  const oldFetch = globalThis.fetch;
+  const data = new Map();
+  globalThis.fetch = async () => new Response(JSON.stringify({ choices: [{ message: { content: "  " } }] }), { status: 200 });
+  const e = env({
+    OPENROUTER_KEY: "test-key",
+    KV_MEMORY: {
+      async get(k) { return data.get(k) ?? null; },
+      async put(k, v) { data.set(k, v); },
+    },
+  });
+  try {
+    const r = await handleOpenAIChatCompletions(req({ messages: [{ role: "user", content: "Hi" }] }), e);
+    assert.equal(r.status, 503);
+    assert.equal((await r.json()).error.code, "providers_unavailable");
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("model override cannot select a paid OpenRouter model through the auto route", async () => {
+  const oldFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error("unexpected provider call"); };
+  try {
+    const r = await handleOpenAIChatCompletions(req({
+      model: "openai/gpt-4o",
+      messages: [{ role: "user", content: "Hi" }],
+    }), env({ OPENROUTER_KEY: "test-key" }));
+    assert.equal(r.status, 503);
+    assert.equal((await r.json()).error.code, "no_free_provider");
+    assert.equal(calls, 0);
+  } finally { globalThis.fetch = oldFetch; }
+});
+
+test("client-supplied provider credentials are ignored", async () => {
+  const oldFetch = globalThis.fetch;
+  let observedAuth = "";
+  globalThis.fetch = async (_url, options) => {
+    observedAuth = options.headers.Authorization || "";
+    return new Response(JSON.stringify({ choices: [{ message: { content: "OK" } }] }), { status: 200 });
+  };
+  try {
+    const r = await handleOpenAIChatCompletions(req({
+      api_key: "client-controlled-secret",
+      provider: "openai",
+      messages: [{ role: "user", content: "Hi" }],
+    }), env({ OPENROUTER_KEY: "server-side-test-key" }));
+    assert.equal(r.status, 200);
+    assert.equal(observedAuth, "Bearer server-side-test-key");
+    assert.equal(observedAuth.includes("client-controlled-secret"), false);
+  } finally { globalThis.fetch = oldFetch; }
+});
