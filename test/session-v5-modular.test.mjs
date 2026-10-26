@@ -275,3 +275,58 @@ test("rate limiter failure is handled without exposing exception details", async
   assert.deepEqual(result, { ok: true, retryAfter: 0 });
 });
 
+// Final regression batch: lock behavior under parallel load and session isolation.
+test("many parallel attempts for one session allow at most one callback", async () => {
+  const { kv } = setup();
+  let entered = 0;
+  let release;
+  const barrier = new Promise(resolve => { release = resolve; });
+  const first = withSessionLock(kv, SID, async () => { entered++; await barrier; return "owner"; });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const others = await Promise.all(Array.from({ length: 25 }, () => withSessionLock(kv, SID, async () => { entered++; return "intruder"; })));
+  assert.equal(entered, 1);
+  assert.ok(others.every(x => x.busy === true));
+  release();
+  assert.deepEqual(await first, { busy: false, value: "owner" });
+  assert.equal(kv.data.has(`lock:${SID}`), false);
+});
+
+test("parallel locks for distinct sessions remain independent", async () => {
+  const { kv } = setup();
+  const ids = Array.from({ length: 12 }, (_, i) => `0000000${i}-bbbb-4ccc-8ddd-eeeeeeeeeeee`);
+  const results = await Promise.all(ids.map(id => withSessionLock(kv, id, async () => id)));
+  assert.ok(results.every((r, i) => r.busy === false && r.value === ids[i]));
+  assert.ok(ids.every(id => !kv.data.has(`lock:${id}`)));
+});
+
+test("session reset with unavailable session lookup never deletes memory", async () => {
+  const { kv, env } = setup();
+  const original = kv.get.bind(kv);
+  kv.get = async key => { if (key === `session:${SID}`) throw new Error("simulated lookup outage"); return original(key); };
+  const response = await handleMemoryReset(request({ Origin: ORIGIN, Cookie: `ceoai_session=${SID}` }), env);
+  assert.equal(response.status, 503);
+  assert.equal(kv.data.has(`memory:${SID}`), true);
+});
+
+test("session lock callback rejection does not block a later valid request", async () => {
+  const { kv } = setup();
+  await assert.rejects(withSessionLock(kv, SID, async () => { throw new Error("first attempt failed"); }), /first attempt failed/);
+  const recovered = await withSessionLock(kv, SID, async () => "second attempt");
+  assert.deepEqual(recovered, { busy: false, value: "second attempt" });
+});
+
+test("lock storage read error prevents callback execution", async () => {
+  const { kv } = setup();
+  kv.get = async () => { throw new Error("simulated KV outage"); };
+  let called = false;
+  await assert.rejects(withSessionLock(kv, SID, async () => { called = true; }), /simulated KV outage/);
+  assert.equal(called, false);
+});
+
+test("reset request from a sibling subdomain is not implicitly trusted", async () => {
+  const { kv, env } = setup();
+  const response = await handleMemoryReset(request({ Origin: "https://sub.ceoai.dev", Cookie: `ceoai_session=${SID}` }), env);
+  assert.equal(response.status, 403);
+  assert.equal(kv.data.has(`memory:${SID}`), true);
+});
+
