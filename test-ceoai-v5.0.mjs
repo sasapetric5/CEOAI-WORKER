@@ -216,6 +216,44 @@ try {
   assert.match(savedMemory.summary, /Sačuvati kontekst/);
 } finally { globalThis.fetch = originalFetch4; }
 
+// 18a: Workers AI capacity rejection immediately falls back and is cooled down for the next request.
+const originalFetchWorkersBusy = globalThis.fetch;
+const workersBusyFallbackCalls = [];
+globalThis.fetch = async (url) => {
+  const target = String(url);
+  workersBusyFallbackCalls.push(target);
+  if (target.includes('openrouter.ai')) {
+    return new Response(JSON.stringify({choices:[{message:{content:'Odgovor nakon Workers AI zagušenja.'}}]}), {status:200, headers:{'Content-Type':'application/json'}});
+  }
+  throw new Error('Unexpected provider URL: ' + target);
+};
+try {
+  let busyAiCalls = 0;
+  const workersBusyEnv = makeEnv({
+    AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true',
+    WORKERS_AI_ENABLED:'true', WORKERS_AI_FREE_CONFIRMED:'true',
+    OPENROUTER_FREE_CONFIRMED:'true', OPENROUTER_KEY:'test-openrouter-workers-busy',
+    AI: { async run(_model, _payload, options) {
+      busyAiCalls += 1;
+      assert.deepEqual(options, { rejectIfBusy: true });
+      const error = new Error('Capacity temporarily exceeded, please try again.');
+      error.status = 429;
+      throw error;
+    } },
+  });
+  const {cookie: workersBusyCookie} = await getSession(workersBusyEnv);
+  const first = await worker.fetch(apiRequest(workersBusyCookie, JSON.stringify({prompt:'Testiraj rezervni model'})), workersBusyEnv);
+  assert.equal(first.status, 200, 'OpenRouter should answer after Workers AI rejects for capacity');
+  assert.equal((await first.json()).reply, 'Odgovor nakon Workers AI zagušenja.');
+  assert.equal(busyAiCalls, 1);
+  assert.equal(workersBusyFallbackCalls.length, 1);
+  assert.ok(workersBusyEnv.KV_MEMORY.data.has('cooldown:workers-ai-1'), 'capacity rejection should cool down Workers AI');
+  const second = await worker.fetch(apiRequest(workersBusyCookie, JSON.stringify({prompt:'Ponovi test rezervnog modela'})), workersBusyEnv);
+  assert.equal(second.status, 200);
+  assert.equal(busyAiCalls, 1, 'cooldown should prevent repeating the known-busy Workers AI call');
+  assert.equal(workersBusyFallbackCalls.length, 2, 'the healthy fallback should continue serving requests');
+} finally { globalThis.fetch = originalFetchWorkersBusy; }
+
 // 19: transient provider failures receive a conservative 120-second retry hint.
 const originalFetch5 = globalThis.fetch;
 globalThis.fetch = async (url) => {
