@@ -8,8 +8,10 @@ const ROLES = new Set(["user", "assistant"]);
 
 export function sanitizeStored(messages) {
   if (!Array.isArray(messages)) return [];
-  return messages.filter(m => m && ROLES.has(m.role) && typeof m.content === "string" && m.content.length > 0)
-    .map(m => ({ role: m.role, content: m.content }));
+  return messages
+    .filter(m => m && ROLES.has(m.role) && typeof m.content === "string")
+    .map(m => ({ role: m.role, content: m.content.trim().slice(0, 8000) }))
+    .filter(m => m.content.length > 0);
 }
 export function trimHistory(messages, max = MAX_HISTORY_MESSAGES) {
   const out = sanitizeStored(messages).slice(-max);
