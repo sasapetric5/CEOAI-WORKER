@@ -235,13 +235,13 @@ test("session lock deletes only its own token and preserves replacement lock", a
   kv.get = async key => {
     if (key === `lock:${SID}`) {
       lockReads++;
-      if (lockReads >= 3) return "replacement-owner";
+      if (lockReads >= 3) { kv.data.set(`lock:${SID}`, "replacement-owner"); return "replacement-owner"; }
     }
     return originalGet(key);
   };
   const result = await withSessionLock(kv, SID, async () => "done");
   assert.deepEqual(result, { busy: false, value: "done" });
-  assert.equal(kv.data.get(`lock:${SID}`), "1");
+  assert.equal(kv.data.get(`lock:${SID}`), "replacement-owner");
 });
 
 test("session lock handles callback returning undefined and still cleans up", async () => {
