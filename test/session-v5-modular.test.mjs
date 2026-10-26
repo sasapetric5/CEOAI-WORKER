@@ -175,3 +175,103 @@ test("memory reset rejects an origin that differs by trailing slash", async () =
   assert.equal(kv.data.has(`memory:${SID}`), true);
 });
 
+// Batch 3: session isolation, reset authorization, and rate-limit edge cases.
+test("session reset rejects missing Origin even with a valid cookie", async () => {
+  const { kv, env } = setup();
+  const res = await handleMemoryReset(request({ Cookie: `ceoai_session=${SID}` }), env);
+  assert.equal(res.status, 403);
+  assert.equal(kv.data.has(`memory:${SID}`), true);
+});
+
+test("session reset rejects a malformed Origin without touching memory", async () => {
+  const { kv, env } = setup();
+  const res = await handleMemoryReset(request({ Origin: "null", Cookie: `ceoai_session=${SID}` }), env);
+  assert.equal(res.status, 403);
+  assert.equal(kv.data.has(`memory:${SID}`), true);
+});
+
+test("allowlisted origins are trimmed and split by commas", async () => {
+  const { kv, env } = setup();
+  env.ALLOWED_ORIGINS = " https://other.example , https://ceoai.dev ";
+  const res = await handleMemoryReset(request({ Origin: ORIGIN, Cookie: `ceoai_session=${SID}` }), env);
+  assert.equal(res.status, 200);
+  assert.equal(kv.data.has(`memory:${SID}`), false);
+});
+
+test("reset does not delete the session registration record", async () => {
+  const { kv, env } = setup();
+  const res = await handleMemoryReset(request({ Origin: ORIGIN, Cookie: `ceoai_session=${SID}` }), env);
+  assert.equal(res.status, 200);
+  assert.equal(kv.data.has(`session:${SID}`), true);
+  assert.equal(kv.data.has(`memory:${SID}`), false);
+});
+
+test("session lock does not run callback if token verification loses a race", async () => {
+  const { kv } = setup();
+  const originalPut = kv.put.bind(kv);
+  kv.put = async (key, value, options) => {
+    if (key === `lock:${SID}`) return originalPut(key, "another-owner-token", options);
+    return originalPut(key, value, options);
+  };
+  let called = false;
+  const result = await withSessionLock(kv, SID, async () => { called = true; });
+  assert.deepEqual(result, { busy: true });
+  assert.equal(called, false);
+});
+
+test("session lock reports busy when another lock value already exists", async () => {
+  const { kv } = setup();
+  kv.data.set(`lock:${SID}`, "existing-owner");
+  let called = false;
+  const result = await withSessionLock(kv, SID, async () => { called = true; });
+  assert.deepEqual(result, { busy: true });
+  assert.equal(called, false);
+});
+
+test("session lock deletes only its own token and preserves replacement lock", async () => {
+  const { kv } = setup();
+  const originalGet = kv.get.bind(kv);
+  let lockReads = 0;
+  kv.get = async key => {
+    if (key === `lock:${SID}`) {
+      lockReads++;
+      if (lockReads >= 3) return "replacement-owner";
+    }
+    return originalGet(key);
+  };
+  const result = await withSessionLock(kv, SID, async () => "done");
+  assert.deepEqual(result, { busy: false, value: "done" });
+  assert.equal(kv.data.get(`lock:${SID}`), "1");
+});
+
+test("session lock handles callback returning undefined and still cleans up", async () => {
+  const { kv } = setup();
+  const result = await withSessionLock(kv, SID, async () => undefined);
+  assert.deepEqual(result, { busy: false, value: undefined });
+  assert.equal(kv.data.has(`lock:${SID}`), false);
+});
+
+test("rate limiter allows session creation when binding is not configured", async () => {
+  const { limitSessionCreation } = await import("../src/v5-modules/session.mjs");
+  const result = await limitSessionCreation(new Request("https://ceoai.dev/"), {});
+  assert.deepEqual(result, { ok: true, retryAfter: 0 });
+});
+
+test("rate limiter rejects when provider explicitly reports limit exceeded", async () => {
+  const { limitSessionCreation } = await import("../src/v5-modules/session.mjs");
+  let keySeen;
+  const result = await limitSessionCreation(new Request("https://ceoai.dev/", {
+    headers: { "CF-Connecting-IP": "203.0.113.7" },
+  }), { RATE_LIMITER: { async limit(input) { keySeen = input.key; return { success: false }; } } });
+  assert.deepEqual(result, { ok: false, retryAfter: 60 });
+  assert.equal(keySeen, "page:203.0.113.7");
+});
+
+test("rate limiter failure is handled without exposing exception details", async () => {
+  const { limitSessionCreation } = await import("../src/v5-modules/session.mjs");
+  const result = await limitSessionCreation(new Request("https://ceoai.dev/"), {
+    RATE_LIMITER: { async limit() { throw new Error("private limiter detail"); } },
+  });
+  assert.deepEqual(result, { ok: true, retryAfter: 0 });
+});
+
