@@ -8,7 +8,9 @@ const MODEL_RULES = Object.freeze({
   "workers-ai": model => model.startsWith("@cf/"),
   "glm-flash": model => /^[A-Za-z0-9._-]{1,80}$/.test(model),
   "gemini": model => /^gemini-[A-Za-z0-9.-]+$/.test(model),
-  "deepseek": model => model === "deepseek-chat" || model === "deepseek-reasoner",
+  "deepseek": model => model === "deepseek-flash",
+  // Token Harbor model IDs are exact-allowlisted; only explicit free routes are permitted.
+  "tokenharbor": model => model === "deepseek-v4.1-flash:free",
   "xai": model => /^[A-Za-z0-9._-]{1,80}$/.test(model),
   "nvidia": model => /^[A-Za-z0-9._/-]{1,120}$/.test(model),
   "huggingface": model => /^[A-Za-z0-9._/-]{1,120}$/.test(model),
@@ -19,6 +21,7 @@ const BUILT_INS = [
   { id:"gemini", adapter:"gemini", confirmationEnv:"GEMINI_FREE_CONFIRMED", keyRequired:true, modelRule:"gemini", capabilities:["fast","reasoning"], quotaMode:"local-counter" },
   { id:"openrouter", adapter:"openai-compatible", confirmationEnv:"OPENROUTER_FREE_CONFIRMED", keyRequired:true, modelRule:"openrouter", capabilities:["fast","coding","reasoning","complex"], quotaMode:"local-counter" },
   { id:"deepseek", adapter:"openai-compatible", confirmationEnv:"DEEPSEEK_FREE_CONFIRMED", keyRequired:true, modelRule:"deepseek", capabilities:["coding","reasoning"], quotaMode:"local-counter" },
+  { id:"tokenharbor", adapter:"openai-compatible", confirmationEnv:"TOKENHARBOR_FREE_CONFIRMED", keyRequired:true, modelRule:"tokenharbor", capabilities:["fast","coding","reasoning","complex"], quotaMode:"local-counter" },
   { id:"mistral", adapter:"openai-compatible", confirmationEnv:"MISTRAL_FREE_CONFIRMED", keyRequired:true, modelRule:"mistral", capabilities:["coding","fast"], quotaMode:"local-counter" },
   { id:"xai", adapter:"openai-compatible", confirmationEnv:"XAI_FREE_CONFIRMED", keyRequired:true, modelRule:"xai", capabilities:["reasoning","complex"], quotaMode:"local-counter" },
   { id:"nvidia", adapter:"openai-compatible", confirmationEnv:"NVIDIA_FREE_CONFIRMED", keyRequired:true, modelRule:"nvidia", capabilities:["coding","reasoning"], quotaMode:"local-counter" },
