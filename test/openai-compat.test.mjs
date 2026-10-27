@@ -891,3 +891,27 @@ test("invalid max_tokens types are normalized to a bounded safe integer", async 
   } finally { globalThis.fetch = oldFetch; }
 });
 
+test("oversized streaming request bodies are cancelled before full buffering", async () => {
+  let cancelled = false;
+  let chunks = 0;
+  const body = new ReadableStream({
+    pull(controller) {
+      chunks++;
+      controller.enqueue(new Uint8Array(8192));
+      if (chunks >= 4) controller.close();
+    },
+    cancel() { cancelled = true; },
+  });
+  const response = await handleOpenAIChatCompletions(new Request("https://ceoai.dev/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer test-secret-with-at-least-16",
+      "Content-Type": "application/json",
+    },
+    body,
+    duplex: "half",
+  }), env({ OPENROUTER_KEY: "test-key" }));
+  assert.equal(response.status, 413);
+  assert.equal(cancelled, true);
+  assert.ok(chunks <= 2, "reader should stop after crossing the configured body limit");
+});
