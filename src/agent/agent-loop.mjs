@@ -55,7 +55,7 @@ export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, max
         if (decision.type === "final") {
           if (!Object.hasOwn(decision, "output")) return failRun("INVALID_PLAN", step, toolCalls);
           let serialized;
-          try { serialized = JSON.stringify(decision.output); } catch { return fail("INVALID_FINAL_OUTPUT", step, toolCalls); }
+          try { serialized = JSON.stringify(decision.output); } catch { return failRun("INVALID_FINAL_OUTPUT", step, toolCalls); }
           if (typeof serialized !== "string" || new TextEncoder().encode(serialized).byteLength > 8192) return failRun("INVALID_FINAL_OUTPUT", step, toolCalls);
           audit({ type: "run_succeeded", runId, step, toolCalls });
           return { ok: true, output: JSON.parse(serialized), steps: step, toolCalls, budgetUsed: budgetData.used };
@@ -71,14 +71,12 @@ export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, max
           result = await toolRegistry.execute(decision.toolId, decision.arguments, { allowToolExecution: true, allowedToolIds: [...capabilities], session: toolSession }, { calls: toolCalls });
         } catch {
           audit({ type: "tool_failed", runId, code: "TOOL_EXECUTION_FAILED", step, toolCalls });
-          audit({ type: "run_failed", runId, code: "TOOL_EXECUTION_FAILED", step, toolCalls });
           return failRun("TOOL_EXECUTION_FAILED", step, toolCalls);
         }
         if (!result || result.ok !== true) {
           const code = typeof result?.code === "string" ? result.code : "TOOL_EXECUTION_FAILED";
           const safeCode = /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? code : "TOOL_EXECUTION_FAILED";
           audit({ type: "tool_failed", runId, code: safeCode, step, toolCalls });
-          audit({ type: "run_failed", runId, code: safeCode, step, toolCalls });
           return failRun(code, step, toolCalls);
         }
         toolCalls++;
