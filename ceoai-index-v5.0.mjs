@@ -30,6 +30,7 @@ import { recordRecoveryMetric } from "./src/v5-modules/recovery-metrics.mjs";
 import { providerLatencyRoutingAdjustment } from "./src/v5-modules/provider-latency.mjs";
 import { createRequestDeadline, remainingRequestBudget, adaptiveProviderTimeout, canStartProviderAttempt } from "./src/v5-modules/adaptive-timeout.mjs";
 import { checkFreeQuotaEligibility, reserveProviderCall } from "./src/v5-modules/provider-cost-guard.mjs";
+import { getProviderCapability } from "./src/v5-modules/provider-registry.mjs";
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
 // Quota cooldowns differ by provider signal: monthly exhaustion must not be retried every few hours.
@@ -310,8 +311,13 @@ const PROVIDER_CAPABILITIES = {
 };
 
 function scoreProviderForIntent(providerName, intent) {
-  const caps = PROVIDER_CAPABILITIES[providerName] || { fast: 1, coding: 1, reasoning: 1, research: 1, complex: 1 };
-  return caps[intent] || caps.fast || 1;
+  const legacyScores = PROVIDER_CAPABILITIES[providerName];
+  if (legacyScores) return legacyScores[intent] || legacyScores.fast || 1;
+  // Newly registered providers receive a usable baseline score from registry capability tags.
+  // Fine-grained weights can be tuned later without changing health/timeout/circuit modules.
+  const capability = getProviderCapability(providerName);
+  if (!capability) return 1;
+  return capability.capabilities.includes(intent) ? 2 : 1;
 }
 
 function validMistralFreeModel(value) {
