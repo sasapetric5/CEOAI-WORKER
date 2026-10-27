@@ -22,6 +22,7 @@ import { handleOpenAIChatCompletions } from "./src/openai-compat.mjs";
 import { prepareConversation, appendReply, withSummary } from "./src/v5-modules/history.mjs";
 import { handleMemoryReset } from "./src/v5-modules/session.mjs";
 import { parseRetryAfterSeconds, providerFailureCooldown } from "./src/v5-modules/provider-policy.mjs";
+import { recordProviderOutcome } from "./src/v5-modules/agent-health.mjs";
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
 // Quota cooldowns differ by provider signal: monthly exhaustion must not be retried every few hours.
@@ -1308,12 +1309,14 @@ export default {
         try {
           reply = await executeModel(candidate, messages, remainingMs);
           if (!reply.trim()) throw new Error("Prazan odgovor");
+          await recordProviderOutcome(env.KV_MEMORY, candidate.id, { kind: "success" });
           providerSucceeded = true;
           usedProviderId = candidate.id;
           break;
         } catch (error) {
           lastStatus = Number(error?.status) || 0;
           const msg = String(error?.message || "");
+          await recordProviderOutcome(env.KV_MEMORY, candidate.id, { kind: "failure", statusCode: lastStatus });
           console.warn("CEOAI_DIAG provider_failed", JSON.stringify({ provider: candidate.id, status: lastStatus, quota: isQuotaError(error) }));
           if (env.DEBUG_PROVIDER_ERRORS === "true" && error?.providerDetail) {
             console.debug(`Provider ${candidate.id} detail: ${String(error.providerDetail).slice(0, 600)}`);
