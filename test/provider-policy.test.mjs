@@ -80,3 +80,22 @@ test('invalid Retry-After values do not crash the cooldown classifier', () => {
     assert.ok(result.ttl >= 60 && result.ttl <= MAX_RETRY_AFTER_SECONDS);
   }
 });
+
+
+test('Retry-After parser rejects invalid clock and ceiling configuration', () => {
+  for (const now of [NaN, Infinity, -Infinity, '0', null]) {
+    assert.equal(parseRetryAfterSeconds('10', now), null);
+  }
+  for (const ceiling of [-1, 1.5, NaN, Infinity, '30', null]) {
+    assert.equal(parseRetryAfterSeconds('10', 0, ceiling), null);
+  }
+  assert.equal(parseRetryAfterSeconds('10', 0, 0), 0);
+});
+
+test('Retry-After HTTP dates require the correct weekday and valid leap days', () => {
+  const now = Date.UTC(2024, 0, 1, 0, 0, 0);
+  assert.equal(parseRetryAfterSeconds('Fri, 29 Feb 2024 00:00:10 GMT', now), null);
+  assert.equal(parseRetryAfterSeconds('Thu, 29 Feb 2024 00:00:10 GMT', now), 51062410);
+  assert.equal(parseRetryAfterSeconds('Thu, 29 Feb 2025 00:00:10 GMT', now), null);
+  assert.equal(parseRetryAfterSeconds('Thu, 01 Jan 2026 24:00:00 GMT', now), null);
+});
