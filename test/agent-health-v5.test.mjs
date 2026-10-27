@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readProviderHealth, recordProviderOutcome, PROVIDER_HEALTH_TTL_SECONDS } from "../src/v5-modules/agent-health.mjs";
+import { readProviderHealth, recordProviderOutcome, recordProviderLatency, PROVIDER_HEALTH_TTL_SECONDS } from "../src/v5-modules/agent-health.mjs";
 
 class MemoryKV {
   constructor() { this.data = new Map(); this.options = new Map(); }
@@ -75,4 +75,26 @@ test("invalid provider IDs and outcomes are rejected safely", async () => {
   await assert.rejects(() => readProviderHealth(kv, "../memory:session"), /Invalid provider ID/);
   assert.equal(await recordProviderOutcome(kv, "gemini-1", { kind: "unknown" }, 8000), false);
   assert.equal(await recordProviderOutcome(kv, "gemini-1", { kind: "success" }, -1), false);
+});
+
+
+test("latency samples update bounded EWMA without changing outcome counters", async () => {
+  const kv = new MemoryKV();
+  assert.equal(await recordProviderLatency(kv, "gemini-1", 1000, 1000), true);
+  assert.equal(await recordProviderLatency(kv, "gemini-1", 2000, 2000), true);
+  const health = await readProviderHealth(kv, "gemini-1");
+  assert.equal(health.latencyEwmaMs, 1300);
+  assert.equal(health.latencySamples, 2);
+  assert.equal(health.attempts, 0);
+  assert.equal(health.successes, 0);
+  assert.equal(health.failures, 0);
+});
+
+test("invalid latency samples and KV outages are ignored safely", async () => {
+  const kv = new MemoryKV();
+  assert.equal(await recordProviderLatency(kv, "gemini-1", 0, 1000), false);
+  assert.equal(await recordProviderLatency(kv, "gemini-1", 120001, 1000), false);
+  assert.equal(await recordProviderLatency(kv, "gemini-1", 200, -1), false);
+  const broken = { async get() { throw new Error("private storage detail"); }, async put() { throw new Error("private storage detail"); } };
+  assert.equal(await recordProviderLatency(broken, "gemini-1", 200, 1000), false);
 });
