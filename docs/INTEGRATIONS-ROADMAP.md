@@ -18,7 +18,7 @@ The Worker is the coordinator. Browser-driven audits and Python/browser crawling
 
 src/integrations/registry.mjs defines capability contracts and safe readiness reporting only. It makes no network requests and does not activate any integration. A status of CONFIG_PRESENT_NOT_IMPLEMENTED means configuration appears present, but no adapter is implemented.
 
-The Lychee result normalizer in src/integrations/lychee-result.mjs is a local, deterministic parsing/sanitization layer for JSON produced by a future runner. It does not execute Lychee or make outbound requests. It validates report shape and counters, strips URL query strings/fragments, bounds text and failure entries, and ignores unknown upstream fields. This is not yet an end-to-end integration.
+The Lychee result normalizer in src/integrations/lychee-result.mjs is a local, deterministic parsing/sanitization layer for JSON produced by a future runner. It does not execute Lychee or make outbound requests. It validates report shape and counters, strips URL query strings/fragments, bounds text and failure entries, and ignores unknown upstream fields. This is not yet an end-to-end integration.\n\nThe Unlighthouse/Lighthouse result normalizer in src/integrations/unlighthouse-result.mjs similarly accepts one Lighthouse JSON report (or a wrapper containing lighthouseResult), returns only allowlisted category scores and core performance metrics, strips URL query strings/fragments, and ignores arbitrary upstream fields. It does not launch Chromium or call Unlighthouse.
 
 ## Rollout order
 
@@ -43,4 +43,4 @@ The Lychee result normalizer in src/integrations/lychee-result.mjs is a local, d
 
 ## Current status
 
-The registry and local Lychee result-normalization layer are scaffolding only. No Lychee process or external service is called by the Worker. The next step is a separately hosted, self-hosted runner reachable over authenticated HTTPS; do not set secrets or activate it until the runner and its URL allowlist are reviewed. The other adapters follow the order above and each must pass tests before activation.
+The registry and local Lychee/Unlighthouse result-normalization layers are local parsing scaffolding only. No Lychee or Unlighthouse process or external service is called by the Worker. Lychee's repository workflow can audit the configured live URL, but it is not a Worker adapter. The next step for Unlighthouse is a separately hosted, self-hosted browser runner reachable over authenticated HTTPS; do not set secrets or activate it until the runner, URL allowlist, resource budgets, and report contract are reviewed. The other adapters follow the order above and each must pass tests before activation.
