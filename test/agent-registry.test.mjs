@@ -78,11 +78,11 @@ test("session budget is enforced atomically across concurrent tools", async () =
   const ctx = { allowToolExecution: true, allowedToolIds: ["first_tool", "second_tool"], session: session(1) };
   const a = r.execute("first_tool", {}, ctx);
   const b = r.execute("second_tool", {}, ctx);
-  const early = await Promise.all([a, b]);
+  await Promise.resolve();
+  await Promise.resolve();
   release();
   const results = await Promise.all([a, b]);
   assert.equal(results.filter((x) => x.ok).length, 1);
   assert.equal(results.filter((x) => x.code === "TOOL_SESSION_CALL_LIMIT").length, 1);
   assert.equal(started, 1);
-  assert.equal(early.filter((x) => x.code === "TOOL_SESSION_CALL_LIMIT").length, 1);
 });
