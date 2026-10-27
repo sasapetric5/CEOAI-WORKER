@@ -4,7 +4,7 @@ import { PROVIDER_REGISTRY, createProviderRegistry, getProviderCapability, isReg
 
 test("built-in registry covers current AI providers and publishes capability metadata", () => {
   const providers = PROVIDER_REGISTRY.list();
-  assert.equal(providers.length, 9);
+  assert.equal(providers.length, 10);
   assert.ok(providers.every(p => p.id && p.adapter && p.confirmationEnv && p.quotaMode));
   assert.deepEqual(getProviderCapability("openrouter").capabilities, ["fast","coding","reasoning","complex"]);
   assert.equal(getProviderCapability("missing-provider"), null);
@@ -15,6 +15,12 @@ test("registered provider model policy denies paid, malformed, and unknown model
   assert.equal(isRegisteredModelAllowed("openrouter", "openai/gpt-4o"), false);
   assert.equal(isRegisteredModelAllowed("workers-ai", "@cf/meta/llama-3-8b-instruct"), true);
   assert.equal(isRegisteredModelAllowed("workers-ai", "paid-model"), false);
+  assert.equal(isRegisteredModelAllowed("deepseek", "deepseek-flash"), true);
+  assert.equal(isRegisteredModelAllowed("deepseek", "deepseek-chat"), false);
+  assert.equal(isRegisteredModelAllowed("tokenharbor", "deepseek-v4.1-flash:free"), true);
+  assert.equal(isRegisteredModelAllowed("tokenharbor", "deepseek-v4.1-flash"), false);
+  assert.equal(isRegisteredModelAllowed("tokenharbor", "unknown-model:free"), false);
+  assert.equal(getProviderCapability("tokenharbor").confirmationEnv, "TOKENHARBOR_FREE_CONFIRMED");
   assert.equal(isRegisteredModelAllowed("unregistered", "model"), false);
 });
 
