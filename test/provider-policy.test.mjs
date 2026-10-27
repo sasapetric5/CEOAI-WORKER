@@ -72,3 +72,11 @@ test("provider cooldown classification handles boundary status codes conservativ
   assert.deepEqual(providerFailureCooldown({ status: 599 }), { ttl: 300, reason: "provider_server_error" });
   assert.deepEqual(providerFailureCooldown({ status: 429, retryAfterSeconds: 0 }), { ttl: 60, reason: "rate_limited" });
 });
+
+test("Retry-After parser keeps custom caps non-negative and bounded", () => {
+  assert.equal(parseRetryAfterSeconds("120", 0, 0), 0);
+  assert.equal(parseRetryAfterSeconds("120", 0, -1), 120);
+  assert.equal(parseRetryAfterSeconds("120", 0, NaN), 120);
+  assert.equal(parseRetryAfterSeconds("120", 0, Infinity), 120);
+  assert.equal(parseRetryAfterSeconds("120", NaN), null);
+});
