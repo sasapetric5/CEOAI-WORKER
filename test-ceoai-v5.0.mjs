@@ -1551,7 +1551,7 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
   const calls = [];
   let providerTimers = 0;
   globalThis.setTimeout = (callback, delay, ...args) => {
-    if (Number(delay) >= 20000 && providerTimers === 0) {
+    if (Number(delay) >= 4000 && providerTimers === 0) {
       providerTimers += 1;
       const fakeTimer = { fakeProviderTimeout: true };
       queueMicrotask(() => callback(...args));
