@@ -78,11 +78,11 @@ test('fetch result never echoes query parameters or fragments from the requested
 });
 
 test('HTTP error result strips URL query secrets and fragments', async () => {
-  const result = await fetchPublicHtml('https://example.com/private?api_key=hidden#internal', {
+  const result = await fetchPublicHtml('https://example.com/audit-123?api_key=hidden#internal', {
     fetchImpl: async () => new Response('upstream body is private', { status: 503 }),
   });
   assert.equal(result.code, 'HTTP_ERROR');
-  assert.equal(result.finalUrl, 'https://example.com/private');
+  assert.equal(result.finalUrl, 'https://example.com/audit-123');
   assert.equal(JSON.stringify(result).includes('hidden'), false);
   assert.equal(JSON.stringify(result).includes('private'), false);
 });
