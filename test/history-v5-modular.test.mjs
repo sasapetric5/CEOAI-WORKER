@@ -136,3 +136,22 @@ test("appendReply returns a new array and preserves prior history", () => {
   assert.equal(appended[1].role, "assistant");
 });
 
+test("history limit zero safely falls back to the default bounded limit", () => {
+  const result = trimHistory(turns(40), 0);
+  assert.ok(result.length <= MAX_HISTORY_MESSAGES);
+  assert.equal(result[0]?.role, "user");
+});
+
+test("invalid history limits cannot disable the message bound", () => {
+  for (const limit of [-1, NaN, Infinity, 1.5, "4", null]) {
+    const result = trimHistory(turns(40), limit);
+    assert.ok(result.length <= MAX_HISTORY_MESSAGES, `limit ${String(limit)} must remain bounded`);
+    if (result.length) assert.equal(result[0].role, "user");
+  }
+});
+
+test("oversized history limit is clamped to the documented maximum", () => {
+  const result = trimHistory(turns(40), Number.MAX_SAFE_INTEGER);
+  assert.ok(result.length <= MAX_HISTORY_MESSAGES);
+  assert.equal(result[0]?.role, "user");
+});
