@@ -1656,3 +1656,64 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
     globalThis.fetch = originalFetch;
   }
 }
+
+
+// V5 regression: overlapping turns in the same session must not read/write stale history.
+{
+  const originalFetch = globalThis.fetch;
+  let primaryCalls = 0;
+  let fallbackCalls = 0;
+  let releasePrimary;
+  const primaryGate = new Promise(resolve => { releasePrimary = resolve; });
+  const sessionEnv = makeEnv({
+    AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true',
+    GEMINI_API_KEY_PRIMARY:'test-gemini-same-session',
+    OPENROUTER_API_KEY:'test-openrouter-same-session',
+  });
+  const {cookie} = await getSession(sessionEnv);
+  globalThis.fetch = async (url) => {
+    const target = String(url);
+    if (target.includes('generativelanguage.googleapis.com')) {
+      primaryCalls += 1;
+      await primaryGate;
+      return new Response(JSON.stringify({error:{message:'simulated provider outage'}}), {
+        status:503, headers:{'Content-Type':'application/json'},
+      });
+    }
+    if (target.includes('openrouter.ai')) {
+      fallbackCalls += 1;
+      return new Response(JSON.stringify({choices:[{message:{content:'Odgovor je sačuvan u memoriji.'}}]}), {
+        status:200, headers:{'Content-Type':'application/json'},
+      });
+    }
+    throw new Error('Unexpected provider URL: ' + target);
+  };
+  try {
+    const firstRequest = worker.fetch(apiRequest(cookie, JSON.stringify({prompt:'Prva poruka iste sesije'})), sessionEnv);
+    for (let i = 0; i < 50 && primaryCalls === 0; i++) await new Promise(resolve => setImmediate(resolve));
+    assert.equal(primaryCalls, 1, 'first turn must reach provider while holding the session guard');
+
+    const overlapping = await worker.fetch(apiRequest(cookie, JSON.stringify({prompt:'Druga poruka iste sesije'})), sessionEnv);
+    assert.equal(overlapping.status, 409, 'overlapping turn for the same session must be rejected');
+    assert.match((await overlapping.json()).error, /Već obrađujemo poruku/);
+    assert.equal(fallbackCalls, 0, 'rejected overlapping turn must not call any provider');
+
+    releasePrimary();
+    const firstResponse = await firstRequest;
+    assert.equal(firstResponse.status, 200, 'first turn should recover through fallback');
+    assert.equal(fallbackCalls, 1);
+
+    // The guard must be released after provider failure and fallback success.
+    const nextResponse = await worker.fetch(apiRequest(cookie, JSON.stringify({prompt:'Sledeća poruka nakon završetka'})), sessionEnv);
+    assert.equal(nextResponse.status, 200, 'a later turn must proceed after the guard is released');
+    assert.equal(fallbackCalls, 2);
+    const sessionId = cookie.match(/^ceoai_session=([0-9a-f-]{36})$/i)?.[1];
+    const saved = JSON.parse(sessionEnv.KV_MEMORY.data.get(`memory:${sessionId}`));
+    assert.ok(saved.messages.some(message => message.content === 'Prva poruka iste sesije'));
+    assert.ok(saved.messages.some(message => message.content === 'Sledeća poruka nakon završetka'));
+    assert.ok(!saved.messages.some(message => message.content === 'Druga poruka iste sesije'));
+  } finally {
+    releasePrimary();
+    globalThis.fetch = originalFetch;
+  }
+}
