@@ -33,7 +33,7 @@ export function validatePublicPageUrl(input) {
   return { ok: true, url };
 }
 
-async function readBounded(response, maxBytes) {
+async function readBounded(response, maxBytes, signal) {
   const declared = Number(response.headers.get('content-length'));
   if (Number.isFinite(declared) && declared > maxBytes) throw new Error('HTML_TOO_LARGE');
   if (!response.body) return '';
@@ -42,15 +42,31 @@ async function readBounded(response, maxBytes) {
   let size = 0;
   try {
     while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > maxBytes) {
-        await reader.cancel('body limit exceeded').catch(() => {});
-        throw new Error('HTML_TOO_LARGE');
+      if (signal?.aborted) {
+        const error = new Error('read timeout');
+        error.name = 'AbortError';
+        throw error;
       }
-      chunks.push(value);
+      let onAbort;
+      const aborted = new Promise((_, reject) => {
+        onAbort = () => {
+          const error = new Error('read timeout');
+          error.name = 'AbortError';
+          reject(error);
+        };
+        signal?.addEventListener('abort', onAbort, { once: true });
+      });
+      let next;
+      try { next = await Promise.race([reader.read(), aborted]); }
+      finally { signal?.removeEventListener('abort', onAbort); }
+      if (next.done) break;
+      size += next.value.byteLength;
+      if (size > maxBytes) throw new Error('HTML_TOO_LARGE');
+      chunks.push(next.value);
     }
+  } catch (error) {
+    await reader.cancel('bounded read stopped').catch(() => {});
+    throw error;
   } finally { reader.releaseLock(); }
   const joined = new Uint8Array(size);
   let offset = 0;
@@ -97,7 +113,7 @@ export async function fetchPublicHtml(input, options = {}) {
       return { ok: false, code: 'CONTENT_TYPE_NOT_HTML', contentType: type.slice(0, 100) };
     }
     try {
-      const html = await readBounded(response, maxBytes);
+      const html = await readBounded(response, maxBytes, controller.signal);
       return { ok: true, status: response.status, finalUrl: current.toString(), contentType: type, html };
     } catch (error) {
       return { ok: false, code: error?.name === 'AbortError' ? 'FETCH_TIMEOUT' : error?.message === 'HTML_TOO_LARGE' ? 'HTML_TOO_LARGE' : 'BODY_READ_FAILED' };
