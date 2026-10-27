@@ -132,3 +132,96 @@ test("transient failure fails over and records privacy-safe recovery metrics", a
     assert.equal(recoveredHealth.status, "healthy");
   } finally { globalThis.fetch = originalFetch; }
 });
+
+
+test("open circuit skips failed first provider and routes to the next healthy provider", async () => {
+  const kv = new MemoryKV();
+  const now = Date.now();
+  kv.data.set("health:provider:gemini-1", JSON.stringify({
+    provider: "gemini-1", status: "unavailable", attempts: 3, successes: 0, failures: 3,
+    consecutiveFailures: 3, lastOutcomeAt: now - 1000, lastSuccessAt: null,
+    lastFailureAt: now - 1000, lastStatusCode: 503, lastFailureClass: "server_error",
+    updatedAt: now - 1000,
+  }));
+  const env = {
+    ...makeEnv(kv), GEMINI_FREE_CONFIRMED: "true",
+    GEMINI_API_KEY_PRIMARY: "test-gemini-circuit-open",
+  };
+  const originalFetch = globalThis.fetch;
+  const called = [];
+  globalThis.fetch = async url => {
+    called.push(String(url));
+    if (String(url).includes("openrouter.ai")) {
+      return new Response(JSON.stringify({ choices: [{ message: { content: "Odgovor rezervnog provajdera" } }] }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
+    throw new Error("Open-circuit provider should not be called");
+  };
+  try {
+    const cookie = await makeSession(env);
+    const response = await chat(env, cookie);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).reply, "Odgovor rezervnog provajdera");
+    assert.equal(called.length, 1);
+    assert.ok(called[0].includes("openrouter.ai"));
+    const metrics = await kv.get("recovery:metrics:v1", "json");
+    assert.equal(metrics.circuitOpenSkips, 1);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("active provider cooldown skips it and preserves healthy fallback", async () => {
+  const kv = new MemoryKV();
+  kv.data.set("cooldown:gemini-1", "1");
+  const env = {
+    ...makeEnv(kv), GEMINI_FREE_CONFIRMED: "true",
+    GEMINI_API_KEY_PRIMARY: "test-gemini-cooldown",
+  };
+  const originalFetch = globalThis.fetch;
+  const called = [];
+  globalThis.fetch = async url => {
+    called.push(String(url));
+    if (String(url).includes("openrouter.ai")) {
+      return new Response(JSON.stringify({ choices: [{ message: { content: "Fallback posle cooldown-a" } }] }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
+    throw new Error("Cooling-down provider should not be called");
+  };
+  try {
+    const cookie = await makeSession(env);
+    const response = await chat(env, cookie);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).reply, "Fallback posle cooldown-a");
+    assert.equal(called.length, 1);
+    assert.ok(called[0].includes("openrouter.ai"));
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("unavailable cooldown KV fails closed without leaking storage error or calling providers", async () => {
+  const kv = new MemoryKV();
+  const originalGet = kv.get.bind(kv);
+  kv.get = async (key, type) => {
+    if (String(key).startsWith("cooldown:")) throw new Error("private storage backend detail");
+    return originalGet(key, type);
+  };
+  const env = {
+    ...makeEnv(kv), GEMINI_FREE_CONFIRMED: "true",
+    GEMINI_API_KEY_PRIMARY: "test-gemini-kv-down",
+  };
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  globalThis.fetch = async () => {
+    providerCalls++;
+    return new Response("unexpected", { status: 200 });
+  };
+  try {
+    const cookie = await makeSession(env);
+    const response = await chat(env, cookie);
+    assert.equal(response.status, 503);
+    const body = await response.text();
+    assert.match(body, /privremenih ograničenja/);
+    assert.equal(body.includes("private storage backend detail"), false);
+    assert.equal(providerCalls, 0);
+  } finally { globalThis.fetch = originalFetch; }
+});
