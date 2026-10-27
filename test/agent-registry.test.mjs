@@ -52,7 +52,7 @@ test("oversized outputs and thrown secret-bearing errors are sanitized", async (
 test("unsafe schemas, duplicate IDs and invalid limits are rejected", () => {
   const tool = { id: "local_lookup", description: "Fixture.", inputSchema: schema, handler: async () => ({}) };
   assert.throws(() => createToolRegistry({ tools: [tool, tool] }), /DUPLICATE_TOOL/);
-  assert.throws(() => createToolRegistry({ tools: [{ ...tool, inputSchema: { type: "object", properties: { x: { type: "string" } } } ] }), /INVALID_TOOL_SCHEMA/);
+  assert.throws(() => createToolRegistry({ tools: [{ ...tool, inputSchema: { type: "object", properties: { x: { type: "string" } } } } ] }), /INVALID_TOOL_SCHEMA/);
   assert.throws(() => createToolRegistry({ limits: { maxCalls: 0 } }), /INVALID_LIMIT/);
 });
 test("skills only declare registered capabilities", () => {
