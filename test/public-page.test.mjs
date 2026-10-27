@@ -409,3 +409,26 @@ test('HTML observations cap collected headings, images, JSON-LD blocks and links
   assert.equal(result.structuredData.jsonLdBlocks, 100);
   assert.equal(result.links.inspected, 2000);
 });
+
+test('failed HTTP responses redact query strings and fragments from returned URLs', async () => {
+  const result = await fetchPublicHtml('https://example.com/private?api_key=top-secret#fragment-secret', {
+    fetchImpl: async () => new Response('unavailable', { status: 503 }),
+  });
+  assert.equal(result.code, 'HTTP_ERROR');
+  assert.equal(result.finalUrl, 'https://example.com/private');
+  assert.equal(JSON.stringify(result).includes('top-secret'), false);
+  assert.equal(JSON.stringify(result).includes('fragment-secret'), false);
+});
+
+test('redirect errors never expose credential-like query parameters from rejected targets', async () => {
+  const result = await fetchPublicHtml('https://example.com/start?token=origin-secret', {
+    fetchImpl: async () => new Response(null, {
+      status: 302,
+      headers: { location: 'https://example.com/next?api_key=redirect-secret#private' },
+    }),
+  });
+  assert.equal(result.ok, false);
+  assert.equal(JSON.stringify(result).includes('origin-secret'), false);
+  assert.equal(JSON.stringify(result).includes('redirect-secret'), false);
+  assert.equal(JSON.stringify(result).includes('#private'), false);
+});
