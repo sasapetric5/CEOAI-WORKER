@@ -55,6 +55,12 @@ test("unsafe schemas, duplicate IDs and invalid limits are rejected", () => {
   assert.throws(() => createToolRegistry({ tools: [{ ...tool, inputSchema: { type: "object", properties: { x: { type: "string" } } } } ] }), /INVALID_TOOL_SCHEMA/);
   assert.throws(() => createToolRegistry({ limits: { maxCalls: 0 } }), /INVALID_LIMIT/);
 });
+test("rejects unknown schema keywords and duplicate required fields", () => {
+  const base = { id: "safe_tool", description: "Schema fixture.", inputSchema: { type: "object", properties: { query: { type: "string", maxLength: 20 } }, required: ["query"], additionalProperties: false }, handler: async () => "ok" };
+  assert.throws(() => createToolRegistry({ tools: [{ ...base, inputSchema: { ...base.inputSchema, pattern: ".*" } }] }), /INVALID_TOOL_SCHEMA/);
+  assert.throws(() => createToolRegistry({ tools: [{ ...base, inputSchema: { ...base.inputSchema, required: ["query", "query"] } }] }), /INVALID_TOOL_SCHEMA/);
+  assert.throws(() => createToolRegistry({ tools: [{ ...base, inputSchema: { type: "object", properties: { query: { type: "string", minimum: 0 } }, additionalProperties: false } }] }), /INVALID_TOOL_SCHEMA/);
+});
 test("skills only declare registered capabilities", () => {
   const tools = make(); const skills = createSkillRegistry({ toolRegistry: tools, skills: [{ id: "research_plan", version: "1.0.0", description: "Plan a bounded research task.", allowedToolIds: ["local_lookup"] }] });
   assert.equal(skills.allows("research_plan", "local_lookup"), true); assert.equal(skills.allows("research_plan", "missing"), false);

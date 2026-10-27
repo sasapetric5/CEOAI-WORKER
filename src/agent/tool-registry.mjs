@@ -7,12 +7,14 @@ const plain = (v) => v !== null && typeof v === "object" && !Array.isArray(v) &&
 const error = (code) => ({ ok: false, code });
 
 function validSchema(s) {
-  if (!plain(s) || s.type !== "object" || !plain(s.properties) || s.additionalProperties !== false) return false;
+  if (!plain(s) || Object.keys(s).some((k) => !["type", "properties", "required", "additionalProperties"].includes(k)) || s.type !== "object" || !plain(s.properties) || s.additionalProperties !== false) return false;
   const keys = Object.keys(s.properties);
-  if (keys.some((k) => !ID.test(k) || RESERVED.has(k))) return false;
-  if (s.required !== undefined && (!Array.isArray(s.required) || s.required.some((k) => !keys.includes(k))) ) return false;
+  if (keys.length > 32 || keys.some((k) => !ID.test(k) || RESERVED.has(k))) return false;
+  if (s.required !== undefined && (!Array.isArray(s.required) || new Set(s.required).size !== s.required.length || s.required.some((k) => !keys.includes(k)))) return false;
   for (const r of Object.values(s.properties)) {
-    if (!plain(r) || !["string", "number", "integer", "boolean"].includes(r.type)) return false;
+    if (!plain(r) || Object.keys(r).some((k) => !["type", "maxLength", "minimum", "maximum"].includes(k)) || !["string", "number", "integer", "boolean"].includes(r.type)) return false;
+    if (r.type !== "string" && r.maxLength !== undefined) return false;
+    if (r.type !== "number" && r.type !== "integer" && (r.minimum !== undefined || r.maximum !== undefined)) return false;
     if (r.type === "string" && r.maxLength !== undefined && (!Number.isSafeInteger(r.maxLength) || r.maxLength < 0 || r.maxLength > 4096)) return false;
     if (["number", "integer"].includes(r.type)) {
       if (r.minimum !== undefined && !Number.isFinite(r.minimum)) return false;
