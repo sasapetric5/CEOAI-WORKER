@@ -88,7 +88,6 @@ test('HTTP error result strips URL query secrets and fragments', async () => {
 });
 
 test('observation report sanitizes pageUrl query and fragment', () => {
-  const { extractHtmlObservations } = await import('../src/audit/public-page.mjs');
   const result = extractHtmlObservations('<title>Example</title>', 'https://example.com/path?token=secret#frag');
   assert.equal(result.pageUrl, 'https://example.com/path');
   assert.equal(JSON.stringify(result).includes('secret'), false);
