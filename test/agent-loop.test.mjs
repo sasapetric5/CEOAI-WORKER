@@ -4,6 +4,7 @@ import { createToolRegistry } from "../src/agent/tool-registry.mjs";
 import { createSkillRegistry } from "../src/agent/skill-registry.mjs";
 import { createAgentLoop, createAgentBudget } from "../src/agent/agent-loop.mjs";
 import { createAgentAuditLog } from "../src/agent/audit-log.mjs";
+import { createAgentHealthMonitor } from "../src/agent/health-monitor.mjs";
 function setup({ maxSteps = 4, maxToolCalls = 2, executeOverride } = {}) {
   let executions = 0;
   const base = createToolRegistry({ enabled: true, tools: [{ id: "local_echo", description: "Returns a local test value.", inputSchema: { type: "object", properties: { value: { type: "string", maxLength: 40 } }, required: ["value"], additionalProperties: false }, handler: async ({ value }) => { executions++; return { value }; } }] });
@@ -163,4 +164,37 @@ test("audit log records sanitized planner failures", async () => {
   assert.equal(result.code, "PLANNER_FAILED");
   assert.deepEqual(auditLog.list({ runId: "planner_fail_1" }).map(e => [e.type, e.code]), [["run_started", undefined], ["run_failed", "PLANNER_FAILED"]]);
   assert.equal(JSON.stringify(auditLog.list()).includes("prompt=private"), false);
+});
+
+
+test("agent loop records successful runs in the optional health monitor", async () => {
+  let clock = 100;
+  const health = createAgentHealthMonitor({ now: () => clock });
+  const registry = createToolRegistry({ enabled: true, tools: [] });
+  const skills = createSkillRegistry({ toolRegistry: registry, skills: [{ id: "safe_research", version: "1.0.0", description: "fixture", allowedToolIds: [] }] });
+  const loop = createAgentLoop({ toolRegistry: registry, skillRegistry: skills, healthMonitor: health });
+  const result = await loop.run({ skillId: "safe_research", input: {}, allowToolExecution: true, allowedToolIds: [], plan: async () => ({ type: "final", output: "ok" }) });
+  assert.equal(result.ok, true);
+  const metric = health.get("safe_research");
+  assert.equal(metric.runs, 1);
+  assert.equal(metric.succeeded, 1);
+  assert.equal(metric.failed, 0);
+  assert.equal(metric.lastOutcome, "succeeded");
+});
+
+test("agent loop records fail-closed results and health telemetry failures do not alter results", async () => {
+  const health = createAgentHealthMonitor({ now: () => 101 });
+  const registry = createToolRegistry({ enabled: true, tools: [] });
+  const skills = createSkillRegistry({ toolRegistry: registry, skills: [{ id: "safe_research", version: "1.0.0", description: "fixture", allowedToolIds: [] }] });
+  const loop = createAgentLoop({ toolRegistry: registry, skillRegistry: skills, healthMonitor: health });
+  const result = await loop.run({ skillId: "safe_research", input: {}, allowToolExecution: true, allowedToolIds: [], plan: async () => { throw new Error("secret prompt"); } });
+  assert.equal(result.code, "PLANNER_FAILED");
+  assert.equal(health.get("safe_research").failed, 1);
+  assert.equal(health.get("safe_research").lastCode, "PLANNER_FAILED");
+  assert.equal(JSON.stringify(health.list()).includes("secret prompt"), false);
+
+  const noThrowHealth = { record() { throw new Error("private telemetry error"); } };
+  const safeLoop = createAgentLoop({ toolRegistry: registry, skillRegistry: skills, healthMonitor: noThrowHealth });
+  const safeResult = await safeLoop.run({ skillId: "safe_research", input: {}, allowToolExecution: true, allowedToolIds: [], plan: async () => ({ type: "final", output: "still ok" }) });
+  assert.equal(safeResult.ok, true);
 });
