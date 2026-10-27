@@ -287,3 +287,16 @@ test('non-HTML response bodies are cancelled rather than left unread', async () 
   assert.equal(result.code, 'CONTENT_TYPE_NOT_HTML');
   assert.equal(cancelled, true);
 });
+
+
+test('malformed redirect Location returns a stable sanitized result without throwing', async () => {
+  let calls = 0;
+  const result = await fetchPublicHtml('https://example.com/start', {
+    fetchImpl: async () => {
+      calls++;
+      return new Response(null, { status: 302, headers: { location: 'http://[malformed' } });
+    },
+  });
+  assert.deepEqual(result, { ok: false, code: 'REDIRECT_TARGET_BLOCKED', reason: 'URL_INVALID' });
+  assert.equal(calls, 1);
+});

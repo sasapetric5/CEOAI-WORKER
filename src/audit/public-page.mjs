@@ -124,7 +124,8 @@ export async function fetchPublicHtml(input, options = {}) {
       if (redirects === MAX_REDIRECTS) { clearTimeout(timer); await discardResponseBody(response); return { ok: false, code: 'TOO_MANY_REDIRECTS' }; }
       const location = response.headers.get('location');
       if (!location) { clearTimeout(timer); await discardResponseBody(response); return { ok: false, code: 'REDIRECT_WITHOUT_LOCATION' }; }
-      checked = validate(new URL(location, current).toString());
+      try { checked = validate(new URL(location, current).toString()); }
+      catch { checked = { ok: false, code: 'URL_INVALID' }; }
       if (!checked.ok) { clearTimeout(timer); await discardResponseBody(response); return { ok: false, code: 'REDIRECT_TARGET_BLOCKED', reason: checked.code }; }
       await discardResponseBody(response);
       current = checked.url;
