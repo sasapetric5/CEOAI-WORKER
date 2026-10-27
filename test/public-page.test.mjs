@@ -384,3 +384,28 @@ test('redirect chains stop after the configured maximum and do not fetch the nex
   assert.equal(result.code, 'TOO_MANY_REDIRECTS');
   assert.equal(calls, 4);
 });
+
+test('HTML observation extraction tolerates malformed entities and malformed JSON-LD', () => {
+  const html = '<title>A &#x110000; B &#999999999999999999999999; C &#xD800;</title>' +
+    '<script type="application/ld+json">{broken json}</script>' +
+    '<img alt="A &amp; B" src="/image.png"><a href="javascript:alert(1)">bad scheme</a>';
+  const result = extractHtmlObservations(html, 'https://example.com/page?private=secret');
+  assert.equal(result.title.status, 'MEASURED');
+  assert.equal(result.structuredData.jsonLdBlocks, 1);
+  assert.equal(result.structuredData.validJsonLdBlocks, 0);
+  assert.equal(result.images.count, 1);
+  assert.equal(result.images.missingAlt, 0);
+  assert.equal(JSON.stringify(result).includes('private=secret'), false);
+});
+
+test('HTML observations cap collected headings, images, JSON-LD blocks and links', () => {
+  const html = '<h1>Heading</h1>'.repeat(120) +
+    '<img alt="image" src="/x">'.repeat(1005) +
+    '<script type="application/ld+json">{"@type":"Thing"}</script>'.repeat(105) +
+    '<a href="/page">link</a>'.repeat(2005);
+  const result = extractHtmlObservations(html, 'https://example.com/');
+  assert.equal(result.headings.h1.length, 100);
+  assert.equal(result.images.count, 1000);
+  assert.equal(result.structuredData.jsonLdBlocks, 100);
+  assert.equal(result.links.inspected, 2000);
+});
