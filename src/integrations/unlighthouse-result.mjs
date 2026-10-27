@@ -67,6 +67,11 @@ export function normalizeUnlighthouseReport(input) {
   if (!isRecord(lighthouse.categories) || !isRecord(lighthouse.audits)) {
     return { ok: false, code: "UNLIGHTHOUSE_REPORT_INVALID_SHAPE" };
   }
+  const hasKnownCategory = CATEGORY_IDS.some((id) => isRecord(lighthouse.categories[id]));
+  const hasKnownMetric = METRIC_IDS.some((id) => isRecord(lighthouse.audits[id]));
+  if (!hasKnownCategory || !hasKnownMetric) {
+    return { ok: false, code: "UNLIGHTHOUSE_REPORT_INVALID_SHAPE" };
+  }
 
   const requestedUrl = safeUrl(lighthouse.requestedUrl ?? lighthouse.finalDisplayedUrl ?? lighthouse.finalUrl);
   const finalUrl = safeUrl(lighthouse.finalDisplayedUrl ?? lighthouse.finalUrl ?? lighthouse.requestedUrl);
