@@ -3,13 +3,16 @@
 export const MAX_RETRY_AFTER_SECONDS = 24 * 60 * 60;
 
 export function parseRetryAfterSeconds(value, nowMs = Date.now(), maxSeconds = MAX_RETRY_AFTER_SECONDS) {
-  if (value === null || value === undefined) return null;
+  if (value === null || value === undefined || !Number.isFinite(nowMs)) return null;
+  const cap = Number.isSafeInteger(maxSeconds) && maxSeconds >= 0
+    ? Math.min(maxSeconds, MAX_RETRY_AFTER_SECONDS)
+    : MAX_RETRY_AFTER_SECONDS;
   const raw = String(value).trim();
   if (!raw) return null;
   if (/^[0-9]+$/.test(raw)) {
     const seconds = Number(raw);
     if (!Number.isSafeInteger(seconds) || seconds < 0) return null;
-    return Math.min(seconds, maxSeconds);
+    return Math.min(seconds, cap);
   }
   // Date.parse accepts non-HTTP strings such as "-1"; require an HTTP-date shape first.
   if (!/^[A-Za-z]{3}, [0-9]{2} [A-Za-z]{3} [0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2} GMT$/.test(raw)) return null;
@@ -17,7 +20,7 @@ export function parseRetryAfterSeconds(value, nowMs = Date.now(), maxSeconds = M
   if (!Number.isFinite(at)) return null;
   const seconds = Math.ceil((at - nowMs) / 1000);
   if (seconds <= 0) return 0;
-  return Math.min(seconds, maxSeconds);
+  return Math.min(seconds, cap);
 }
 
 export function providerFailureCooldown({ status = 0, quotaExhausted = false, retryAfterSeconds = null } = {}) {
