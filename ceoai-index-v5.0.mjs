@@ -29,6 +29,7 @@ import { classifyProviderFailure } from "./src/v5-modules/failure-classification
 import { recordRecoveryMetric } from "./src/v5-modules/recovery-metrics.mjs";
 import { providerLatencyRoutingAdjustment } from "./src/v5-modules/provider-latency.mjs";
 import { createRequestDeadline, remainingRequestBudget, adaptiveProviderTimeout, canStartProviderAttempt } from "./src/v5-modules/adaptive-timeout.mjs";
+import { checkFreeQuotaEligibility, reserveProviderCall } from "./src/v5-modules/provider-cost-guard.mjs";
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
 // Quota cooldowns differ by provider signal: monthly exhaustion must not be retried every few hours.
@@ -1312,6 +1313,14 @@ export default {
       // ranked free candidate automatically takes over within the same request.
       const providerDeadline = createRequestDeadline(Date.now());
       for (const candidate of candidates) {
+        const eligibility = checkFreeQuotaEligibility(candidate, env);
+        if (!eligibility.allowed) {
+          sawCooldownSkip = true;
+          console.warn("CEOAI_DIAG provider_cost_guard_skip", JSON.stringify({
+            provider: candidate.id, reason: eligibility.reason,
+          }));
+          continue;
+        }
         const remainingMs = remainingRequestBudget(providerDeadline, Date.now());
         if (!canStartProviderAttempt(remainingMs)) break;
         // Circuit breaker only covers repeated transient failures; quota/auth cooldowns remain authoritative.
@@ -1337,6 +1346,15 @@ export default {
         // Avoid a same-isolate burst against a provider while its first attempt is unresolved.
         // This is intentionally best-effort; separate Worker isolates can still race.
         if (inFlightProviders.has(candidate.id)) { sawCooldownSkip = true; continue; }
+        const quotaReservation = await reserveProviderCall(env.KV_MEMORY, candidate.id, env);
+        if (!quotaReservation.allowed) {
+          sawCooldownSkip = true;
+          console.warn("CEOAI_DIAG provider_quota_guard_skip", JSON.stringify({
+            provider: candidate.id, reason: quotaReservation.reason,
+            count: quotaReservation.count,
+          }));
+          continue;
+        }
         inFlightProviders.add(candidate.id);
         const providerStartedAt = Date.now();
         const providerTimeoutMs = adaptiveProviderTimeout(remainingMs, providerHealthById.get(candidate.id)?.latencyEwmaMs);
