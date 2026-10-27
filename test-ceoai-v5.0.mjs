@@ -1759,3 +1759,36 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
     globalThis.fetch = originalFetch;
   }
 }
+
+
+// V5 regression: a KV history read outage must fail closed before any provider is contacted.
+{
+  const originalFetch = globalThis.fetch;
+  const memoryEnv = makeEnv({
+    AI_ENABLED: "true",
+    EXTERNAL_AI_ENABLED: "true",
+    OPENROUTER_API_KEY: "test-openrouter-memory-read-failure",
+  });
+  const { cookie: memoryCookie } = await getSession(memoryEnv);
+  const originalGet = memoryEnv.KV_MEMORY.get.bind(memoryEnv.KV_MEMORY);
+  let providerCalls = 0;
+  memoryEnv.KV_MEMORY.get = async (key, type) => {
+    if (key.startsWith("memory:")) throw new Error("simulated memory read failure");
+    return originalGet(key, type);
+  };
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("openrouter.ai")) providerCalls++;
+    throw new Error("Provider must not be contacted after memory read failure");
+  };
+  try {
+    const response = await worker.fetch(
+      apiRequest(memoryCookie, JSON.stringify({prompt:"Provera nedostupne memorije"})),
+      memoryEnv,
+    );
+    assert.equal(response.status, 503, "memory read outage must return service unavailable");
+    assert.match((await response.json()).error, /Memorija je privremeno nedostupna/i);
+    assert.equal(providerCalls, 0, "no provider should be contacted when history cannot be read");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
