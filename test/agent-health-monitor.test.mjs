@@ -56,3 +56,12 @@ test("health monitor validates configuration limits", () => {
   assert.throws(() => createAgentHealthMonitor({ maxAgents: 257 }), /INVALID_HEALTH_MONITOR_LIMIT/);
   assert.throws(() => createAgentHealthMonitor({ now: 1 }), /INVALID_HEALTH_MONITOR_CLOCK/);
 });
+
+
+test("health monitor safely rejects null, arrays, and primitive records", () => {
+  const monitor = createAgentHealthMonitor({ now: () => 10 });
+  for (const input of [null, [], "bad", 7, true]) {
+    assert.deepEqual(monitor.record(input), { ok: false, code: "INVALID_HEALTH_METRIC" });
+  }
+  assert.equal(monitor.size, 0);
+});
