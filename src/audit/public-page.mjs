@@ -149,7 +149,7 @@ export function extractHtmlObservations(html, pageUrl) {
   const canonicalRaw = firstMatch(html, /<link\b(?=[^>]*\brel\s*=\s*["']canonical["'])[^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>/i) ||
     firstMatch(html, /<link\b(?=[^>]*\bhref\s*=\s*["']([^"']+)["'])(?=[^>]*\brel\s*=\s*["']canonical["'])[^>]*>/i);
   let canonical = null;
-  try { if (canonicalRaw) canonical = new URL(decodeEntities(canonicalRaw), pageUrl).toString(); } catch {}
+  try { if (canonicalRaw) canonical = publicUrlForOutput(new URL(decodeEntities(canonicalRaw), pageUrl)); } catch {}
   const robots = firstMatch(html, /<meta\b(?=[^>]*\bname\s*=\s*["']robots["'])[^>]*\bcontent\s*=\s*["']([^"']*)["'][^>]*>/i) ||
     firstMatch(html, /<meta\b(?=[^>]*\bcontent\s*=\s*["']([^"']*)["'])(?=[^>]*\bname\s*=\s*["']robots["'])[^>]*>/i);
   const headings = {};

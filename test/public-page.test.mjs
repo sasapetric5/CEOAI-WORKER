@@ -108,3 +108,57 @@ test('unsupported redirect status is treated as a non-success HTTP response', as
   assert.equal(result.code, 'HTTP_ERROR');
   assert.equal(result.status, 300);
 });
+
+
+test('canonical observation strips query parameters and fragments', () => {
+  const html = '<link rel="canonical" href="https://example.com/canonical?token=secret#private">';
+  const result = extractHtmlObservations(html, 'https://example.com/page');
+  assert.equal(result.canonical.value, 'https://example.com/canonical');
+  assert.equal(JSON.stringify(result).includes('secret'), false);
+  assert.equal(JSON.stringify(result).includes('private'), false);
+});
+
+test('redirect limit allows exactly three redirects and rejects a fourth', async () => {
+  let calls = 0;
+  const accepted = await fetchPublicHtml('https://example.com/0', {
+    fetchImpl: async (url) => {
+      calls++;
+      const n = Number(url.split('/').pop());
+      if (n < 3) return new Response(null, { status: 302, headers: { location: '/' + (n + 1) } });
+      return new Response('<title>OK</title>', { headers: { 'content-type': 'text/html' } });
+    },
+  });
+  assert.equal(accepted.ok, true);
+  assert.equal(calls, 4);
+  calls = 0;
+  const rejected = await fetchPublicHtml('https://example.com/0', {
+    fetchImpl: async (url) => {
+      calls++;
+      const n = Number(url.split('/').pop());
+      return new Response(null, { status: 302, headers: { location: '/' + (n + 1) } });
+    },
+  });
+  assert.equal(rejected.code, 'TOO_MANY_REDIRECTS');
+  assert.equal(calls, 4);
+});
+
+test('body read timeout is sanitized and does not leak upstream exception details', async () => {
+  const result = await fetchPublicHtml('https://example.com', {
+    timeoutMs: 250,
+    fetchImpl: async () => new Response(new ReadableStream({
+      pull() { return new Promise(() => {}); },
+    }), { headers: { 'content-type': 'text/html' } }),
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'FETCH_TIMEOUT');
+  assert.equal(JSON.stringify(result).includes('secret'), false);
+});
+
+test('missing content type is rejected and never treated as HTML', async () => {
+  const result = await fetchPublicHtml('https://example.com', {
+    fetchImpl: async () => new Response('<title>not trusted</title>'),
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'CONTENT_TYPE_NOT_HTML');
+  assert.equal('html' in result, false);
+});
