@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createToolRegistry } from "../src/agent/tool-registry.mjs";
 import { createSkillRegistry } from "../src/agent/skill-registry.mjs";
-import { createAgentLoop } from "../src/agent/agent-loop.mjs";
+import { createAgentBudget, createAgentLoop } from "../src/agent/agent-loop.mjs";
 
 function setup({ maxSteps = 4, maxToolCalls = 2 } = {}) {
   let executions = 0;
@@ -10,6 +10,7 @@ function setup({ maxSteps = 4, maxToolCalls = 2 } = {}) {
   const skillRegistry = createSkillRegistry({ toolRegistry, skills: [{ id: "safe_research", version: "1.0.0", description: "Bounded local research fixture.", allowedToolIds: ["local_echo"] }] });
   return { loop: createAgentLoop({ toolRegistry, skillRegistry, maxSteps, maxToolCalls }), getExecutions: () => executions };
 }
+const runArgs = (loop, plan, extra = {}) => loop.run({ skillId: "safe_research", input: {}, allowToolExecution: true, allowedToolIds: ["local_echo"], plan, ...extra });
 
 test("requires explicit approval and known skill", async () => {
   const { loop } = setup();
@@ -18,13 +19,13 @@ test("requires explicit approval and known skill", async () => {
 });
 test("returns final output without calling tools", async () => {
   const { loop, getExecutions } = setup();
-  assert.deepEqual(await loop.run({ skillId: "safe_research", input: {}, allowToolExecution: true, allowedToolIds: ["local_echo"], plan: async () => ({ type: "final", output: "done" }) }), { ok: true, output: "done", steps: 1, toolCalls: 0 });
+  assert.deepEqual(await runArgs(loop, async () => ({ type: "final", output: "done" })), { ok: true, output: "done", steps: 1, toolCalls: 0, budgetUsed: 0 });
   assert.equal(getExecutions(), 0);
 });
 test("uses only skill and caller allowlisted tools", async () => {
   const { loop, getExecutions } = setup();
-  const result = await loop.run({ skillId: "safe_research", input: {}, allowToolExecution: true, allowedToolIds: ["local_echo"], plan: async ({ step }) => step === 1 ? ({ type: "tool", toolId: "local_echo", arguments: { value: "safe" } }) : ({ type: "final", output: "finished" }) });
-  assert.deepEqual(result, { ok: true, output: "finished", steps: 2, toolCalls: 1 });
+  const result = await runArgs(loop, async ({ step }) => step === 1 ? ({ type: "tool", toolId: "local_echo", arguments: { value: "safe" } }) : ({ type: "final", output: "finished" }));
+  assert.deepEqual(result, { ok: true, output: "finished", steps: 2, toolCalls: 1, budgetUsed: 1 });
   assert.equal(getExecutions(), 1);
 });
 test("denies tools outside caller capability allowlist", async () => {
@@ -33,21 +34,41 @@ test("denies tools outside caller capability allowlist", async () => {
   assert.equal(result.code, "TOOL_CAPABILITY_DENIED");
   assert.equal(getExecutions(), 0);
 });
-test("stops after maximum tool calls", async () => {
+test("stops after per-run tool call maximum", async () => {
   const { loop, getExecutions } = setup({ maxSteps: 4, maxToolCalls: 1 });
-  const result = await loop.run({ skillId: "safe_research", input: {}, allowToolExecution: true, allowedToolIds: ["local_echo"], plan: async () => ({ type: "tool", toolId: "local_echo", arguments: { value: "x" } }) });
+  const result = await runArgs(loop, async () => ({ type: "tool", toolId: "local_echo", arguments: { value: "x" } }));
   assert.equal(result.code, "AGENT_TOOL_CALL_LIMIT");
   assert.equal(result.toolCalls, 1);
   assert.equal(getExecutions(), 1);
 });
 test("planner errors and malformed decisions fail closed", async () => {
   const { loop } = setup();
-  const args = { skillId: "safe_research", input: {}, allowToolExecution: true, allowedToolIds: ["local_echo"] };
-  assert.equal((await loop.run({ ...args, plan: async () => { throw new Error("failure"); } })).code, "PLANNER_FAILED");
-  assert.equal((await loop.run({ ...args, plan: async () => ({ type: "unknown" }) })).code, "INVALID_PLAN");
+  assert.equal((await runArgs(loop, async () => { throw new Error("failure"); })).code, "PLANNER_FAILED");
+  assert.equal((await runArgs(loop, async () => ({ type: "unknown" }))).code, "INVALID_PLAN");
 });
 test("rejects oversized final output", async () => {
   const { loop } = setup();
-  const result = await loop.run({ skillId: "safe_research", input: {}, allowToolExecution: true, allowedToolIds: ["local_echo"], plan: async () => ({ type: "final", output: "x".repeat(9000) }) });
-  assert.equal(result.code, "INVALID_FINAL_OUTPUT");
+  assert.equal((await runArgs(loop, async () => ({ type: "final", output: "x".repeat(9000) }))).code, "INVALID_FINAL_OUTPUT");
+});
+test("shared budget is reserved before awaiting and cannot be overspent concurrently", async () => {
+  const { loop, getExecutions } = setup({ maxSteps: 2, maxToolCalls: 2 });
+  const budget = createAgentBudget({ maxToolCalls: 1 });
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const plan = async () => ({ type: "tool", toolId: "local_echo", arguments: { value: "x" } });
+  const first = runArgs(loop, async (ctx) => { if (ctx.step === 1) await gate; return plan(ctx); }, { budget });
+  // Ensure the first plan is waiting, then let it proceed; second call shares the same budget.
+  await Promise.resolve();
+  const second = runArgs(loop, plan, { budget });
+  release();
+  const results = await Promise.all([first, second]);
+  assert.equal(results.filter((r) => r.code === "AGENT_SHARED_BUDGET_EXHAUSTED").length, 1);
+  assert.equal(results.filter((r) => r.ok).length, 0);
+  assert.equal(getExecutions(), 1);
+});
+test("invalid budget and unsafe limit settings are rejected", async () => {
+  const { loop } = setup();
+  assert.equal((await runArgs(loop, async () => ({ type: "final", output: "ok" }), { budget: {} })).code, "INVALID_AGENT_BUDGET");
+  assert.throws(() => createAgentBudget({ maxToolCalls: 99 }), /INVALID_BUDGET_LIMIT/);
+  assert.throws(() => createAgentLoop({ toolRegistry: {}, skillRegistry: {}, maxSteps: 99 }), /TOOL_REGISTRY_REQUIRED/);
 });
