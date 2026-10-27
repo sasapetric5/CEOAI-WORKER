@@ -36,6 +36,9 @@ let warnedInvalidOpenRouterModel = false;
 // Best-effort per-isolate guard: concurrent requests skip an already-running provider attempt.
 // KV cooldown remains the cross-request persistence layer; this Set is not distributed coordination.
 const inFlightProviders = new Set();
+// Per-isolate session guard prevents concurrent chat turns from overwriting the same KV history.
+// This is intentionally not described as a distributed lock: separate Worker isolates can still race.
+const inFlightSessions = new Set();
 
 const HTML_PAGE = `<!doctype html>
 <html lang="sr">
@@ -1120,10 +1123,16 @@ export default {
       }, 503, corsHeaders(origin));
     }
 
+    // Reject overlapping turns for this session in this isolate before reading or mutating history.
+    if (inFlightSessions.has(sessionId)) {
+      return json({ success: false, error: "Već obrađujemo poruku iz ove sesije. Sačekajte da se završi pa pokušajte ponovo." }, 409, { ...corsHeaders(origin), "Retry-After": "1" });
+    }
+    inFlightSessions.add(sessionId);
     try {
-      let memory;
       try {
-        memory = await env.KV_MEMORY.get(`memory:${sessionId}`, "json");
+        let memory;
+        try {
+          memory = await env.KV_MEMORY.get(`memory:${sessionId}`, "json");
       } catch {
         return json({ success: false, error: "Memorija je privremeno nedostupna; istorija nije promenjena." }, 503, corsHeaders(origin));
       }
@@ -1379,9 +1388,13 @@ export default {
           researchSource,
         },
       }, 200, corsHeaders(origin));
-    } catch (error) {
-      console.error("Chat request failed:", String(error?.message || error).slice(0, 180));
-      return json({ success: false, error: "Interna greška pri obradi zahteva." }, 500, corsHeaders(origin));
+      } catch (error) {
+        console.error("Chat request failed:", String(error?.message || error).slice(0, 180));
+        return json({ success: false, error: "Interna greška pri obradi zahteva." }, 500, corsHeaders(origin));
+      }
+    } finally {
+      // Always release the guard on success, provider failure, or KV errors.
+      inFlightSessions.delete(sessionId);
     }
   },
 };
