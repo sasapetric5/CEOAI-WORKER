@@ -20,12 +20,6 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24.13.1'
-          cache: pnpm
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@fe02b34f77f2bc7e4e2f0c6f9f3b4a6f6a6f2c8b # v4.0.0
-        with:
-          version: 10
 
       - name: Check fixed smoke-test target
         shell: bash
@@ -39,13 +33,13 @@ jobs:
 
       - name: Install Unlighthouse CI CLI
         shell: bash
-        run: pnpm add --global unlighthouse@beta
+        run: npm install --global unlighthouse@beta
 
       - name: Run real browser audit
         shell: bash
         run: |
           set -euo pipefail
-          unlighthouse-ci --site https://example.com --reporter json --no-cache --output-path .unlighthouse
+          unlighthouse-ci --site https://example.com --reporter json --no-cache
           test -s .unlighthouse/ci-result.json
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
