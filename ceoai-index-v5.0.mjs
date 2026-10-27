@@ -417,6 +417,7 @@ async function executeModel(provider, messages, timeoutMs = PROVIDER_TIMEOUT_MS)
     "glm-flash":   { url: "https://api.z.ai/api/paas/v4/chat/completions" },
     "openrouter":  { url: "https://openrouter.ai/api/v1/chat/completions", referer: true },
     "deepseek":    { url: "https://api.deepseek.com/chat/completions" },
+    "tokenharbor": { url: "https://tokenharbor.ai/v1/chat/completions" },
     "mistral":     { url: "https://api.mistral.ai/v1/chat/completions" },
     "xai":         { url: "https://api.x.ai/v1/chat/completions" },
     "nvidia":      { url: "https://integrate.api.nvidia.com/v1/chat/completions" },
@@ -1243,7 +1244,10 @@ export default {
         { id: "gemini-3", provider: "gemini", model: "gemini-1.5-flash", key: validFreeConfirmedFlag(env, "GEMINI_FREE_CONFIRMED") ? (env.GEMINI_API_KEY_TERTIARY || env.GEMINI_KEY_3) : "", tier: "fast" },
         { id: "openrouter-1", provider: "openrouter", model: "meta-llama/llama-3-8b-instruct:free", key: validFreeConfirmedFlag(env, "OPENROUTER_FREE_CONFIRMED") ? (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY) : "", tier: "fast" },
         ...(validFreeConfirmedFlag(env, "DEEPSEEK_FREE_CONFIRMED") && typeof (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY) === "string" && (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY).trim()
-          ? [{ id: "deepseek-1", provider: "deepseek", model: "deepseek-chat", key: (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY), tier: "complex" }]
+          ? [{ id: "deepseek-1", provider: "deepseek", model: "deepseek-flash", key: (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY), tier: "complex" }]
+          : []),
+        ...(validFreeConfirmedFlag(env, "TOKENHARBOR_FREE_CONFIRMED") && typeof env.TOKENHARBOR_API_KEY === "string" && env.TOKENHARBOR_API_KEY.trim()
+          ? [{ id: "tokenharbor-deepseek-flash-1", provider: "tokenharbor", model: "deepseek-v4.1-flash:free", key: env.TOKENHARBOR_API_KEY, tier: "complex" }]
           : []),
         ...(validOpenRouterFreeModel(configuredComplexModel) && typeof (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY) === "string" && (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY).trim()
           ? [{ id: "openrouter-complex-free", provider: "openrouter", model: configuredComplexModel, key: (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY), tier: "complex" }]
