@@ -47,10 +47,15 @@ export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, max
         if (toolCalls >= maxToolCalls) return fail("AGENT_TOOL_CALL_LIMIT", step, toolCalls);
         if (budgetData.used >= budgetData.maxToolCalls) return fail("AGENT_SHARED_BUDGET_EXHAUSTED", step, toolCalls);
         if (typeof decision.toolId !== "string" || !capabilities.has(decision.toolId) || !skillRegistry.allows(skillId, decision.toolId)) return fail("TOOL_CAPABILITY_DENIED", step, toolCalls);
-        // Reserve synchronously before awaiting execution; concurrent runs sharing this budget cannot overspend it.
+        // Reserve before awaiting: concurrent runs sharing this token cannot overspend.
         budgetData.used++;
-        const result = await toolRegistry.execute(decision.toolId, decision.arguments, { allowToolExecution: true, allowedToolIds: [...capabilities] }, { calls: toolCalls });
-        if (!result.ok) return fail(result.code || "TOOL_EXECUTION_FAILED", step, toolCalls);
+        let result;
+        try {
+          result = await toolRegistry.execute(decision.toolId, decision.arguments, { allowToolExecution: true, allowedToolIds: [...capabilities] }, { calls: toolCalls });
+        } catch {
+          return fail("TOOL_EXECUTION_FAILED", step, toolCalls);
+        }
+        if (!result || result.ok !== true) return fail(result?.code || "TOOL_EXECUTION_FAILED", step, toolCalls);
         toolCalls++;
         current = { previous: current, tool: decision.toolId, result: result.result };
       }
