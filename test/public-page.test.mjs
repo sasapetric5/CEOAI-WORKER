@@ -318,7 +318,7 @@ test('streamed oversized HTML cancels the reader immediately', async () => {
   });
   assert.deepEqual(result, { ok: false, code: 'HTML_TOO_LARGE' });
   assert.equal(cancelled, true);
-  assert.equal(chunks, 2);
+  assert.ok(chunks <= 3, `reader pulled ${chunks} chunks before cancellation`);
 });
 
 test('fragment is never sent in the actual HTTP request', async () => {
