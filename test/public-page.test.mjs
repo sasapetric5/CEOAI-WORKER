@@ -196,3 +196,52 @@ test('missing content type is rejected without returning HTML', async () => {
   assert.equal(result.code, 'CONTENT_TYPE_NOT_HTML');
   assert.equal('html' in result, false);
 });
+
+
+test('independent concurrent audit requests keep results isolated', async () => {
+  const inputs = ['alpha', 'beta', 'gamma', 'delta'];
+  const results = await Promise.all(inputs.map(async (name) => fetchPublicHtml(`https://example.com/${name}?token=hidden-${name}`, {
+    fetchImpl: async (url) => {
+      await new Promise(resolve => setTimeout(resolve, name.length % 2));
+      return new Response(`<title>${new URL(url).pathname.slice(1)}</title>`, {
+        headers: { 'content-type': 'text/html' },
+      });
+    },
+  })));
+  assert.deepEqual(results.map(result => result.ok), [true, true, true, true]);
+  assert.deepEqual(results.map(result => result.html), inputs.map(name => `<title>${name}</title>`));
+  for (const result of results) {
+    assert.equal(JSON.stringify(result).includes('hidden-'), false);
+  }
+});
+
+test('fetch rejection with sensitive exception details returns only stable code', async () => {
+  const result = await fetchPublicHtml('https://example.com', {
+    fetchImpl: async () => {
+      const error = new Error('Authorization: Bearer super-secret-token at https://internal.example/?api_key=hidden');
+      error.name = 'NetworkError';
+      throw error;
+    },
+  });
+  assert.deepEqual(result, { ok: false, code: 'FETCH_FAILED' });
+  assert.equal(JSON.stringify(result).includes('super-secret'), false);
+  assert.equal(JSON.stringify(result).includes('internal.example'), false);
+  assert.equal(JSON.stringify(result).includes('hidden'), false);
+});
+
+test('URL validator rejects encoded and unusual host representations before fetch', async () => {
+  const blocked = [
+    'http://127.1/',
+    'http://0/',
+    'http://0x7f.0.0.1/',
+    'http://0177.0.0.1/',
+    'https://user%3Apass@example.com/',
+    'javascript:alert(1)',
+  ];
+  for (const input of blocked) {
+    let calls = 0;
+    const result = await fetchPublicHtml(input, { fetchImpl: async () => { calls++; throw new Error('must not fetch'); } });
+    assert.equal(result.ok, false, input);
+    assert.equal(calls, 0, input);
+  }
+});
