@@ -1,42 +1,19 @@
-// CEOAI V5.0: fail-closed free-tier eligibility and best-effort daily call accounting.
-// This prevents accidental use of unapproved/non-free models; it cannot guarantee a provider's live quota.
-const FREE_CONFIRMATION_ENV = Object.freeze({
-  "workers-ai": "WORKERS_AI_FREE_CONFIRMED",
-  "glm-flash": "ZAI_GLM_FLASH_FREE_CONFIRMED",
-  gemini: "GEMINI_FREE_CONFIRMED",
-  openrouter: "OPENROUTER_FREE_CONFIRMED",
-  deepseek: "DEEPSEEK_FREE_CONFIRMED",
-  mistral: "MISTRAL_FREE_CONFIRMED",
-  xai: "XAI_FREE_CONFIRMED",
-  nvidia: "NVIDIA_FREE_CONFIRMED",
-  huggingface: "HF_FREE_CONFIRMED",
-});
+// CEOAI V5.0: registry-backed fail-closed free-tier eligibility and best-effort daily call accounting.
+// The registry is the single source of truth for registered providers and safe model policies.
+import { getProviderCapability, isRegisteredModelAllowed } from "./provider-registry.mjs";
 
 export function isFreeModelAllowed(provider, model) {
-  if (typeof provider !== "string" || typeof model !== "string" || !model.trim()) return false;
-  const name = model.trim();
-  switch (provider) {
-    case "openrouter": return /^[A-Za-z0-9._/-]{1,180}:free$/.test(name);
-    case "mistral": return ["open-mistral-nemo", "mistral-small-latest", "ministral-8b-latest"].includes(name);
-    case "workers-ai": return name.startsWith("@cf/");
-    case "glm-flash": return /^[A-Za-z0-9._-]{1,80}$/.test(name);
-    case "gemini": return /^gemini-[A-Za-z0-9.-]+$/.test(name);
-    case "deepseek": return name === "deepseek-chat" || name === "deepseek-reasoner";
-    case "xai": return /^[A-Za-z0-9._-]{1,80}$/.test(name);
-    case "nvidia": return /^[A-Za-z0-9._/-]{1,120}$/.test(name);
-    case "huggingface": return /^[A-Za-z0-9._/-]{1,120}$/.test(name);
-    default: return false;
-  }
+  return isRegisteredModelAllowed(provider, model);
 }
 
 export function checkFreeQuotaEligibility(candidate, env = {}) {
   if (!candidate || typeof candidate !== "object") return { allowed: false, reason: "invalid_candidate" };
   const provider = candidate.provider;
-  const confirmationName = FREE_CONFIRMATION_ENV[provider];
-  if (!confirmationName) return { allowed: false, reason: "provider_not_allowlisted" };
+  const capability = getProviderCapability(provider);
+  if (!capability) return { allowed: false, reason: "provider_not_allowlisted" };
   if (!isFreeModelAllowed(provider, candidate.model)) return { allowed: false, reason: "model_not_allowlisted" };
-  if (env[confirmationName] !== "true") return { allowed: false, reason: "free_tier_not_confirmed" };
-  if (provider === "workers-ai") {
+  if (env[capability.confirmationEnv] !== "true") return { allowed: false, reason: "free_tier_not_confirmed" };
+  if (!capability.keyRequired) {
     if (!env.AI || env.WORKERS_AI_ENABLED !== "true") return { allowed: false, reason: "workers_ai_disabled" };
   } else if (typeof candidate.key !== "string" || !candidate.key.trim()) {
     return { allowed: false, reason: "provider_key_missing" };
