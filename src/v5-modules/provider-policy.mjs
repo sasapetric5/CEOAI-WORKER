@@ -24,17 +24,20 @@ export function parseRetryAfterSeconds(value, nowMs = Date.now(), maxSeconds = M
 }
 
 export function providerFailureCooldown({ status = 0, quotaExhausted = false, retryAfterSeconds = null } = {}) {
-  const code = Number(status) || 0;
+  const numericStatus = Number(status);
+  const code = Number.isInteger(numericStatus) && numericStatus >= 0 && numericStatus <= 599
+    ? numericStatus
+    : -1;
   if (quotaExhausted) return { ttl: 6 * 60 * 60, reason: "quota_exhausted" };
   if (code === 429) {
     const hinted = Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0
-      ? Math.min(retryAfterSeconds, MAX_RETRY_AFTER_SECONDS)
+      ? Math.min(Math.ceil(retryAfterSeconds), MAX_RETRY_AFTER_SECONDS)
       : 0;
     return { ttl: Math.max(60, hinted), reason: "rate_limited" };
   }
   if (code === 401 || code === 403) return { ttl: 60 * 60, reason: "provider_auth_or_policy" };
   if (code === 404) return { ttl: 6 * 60 * 60, reason: "provider_model_unavailable" };
-  if (code >= 500) return { ttl: 5 * 60, reason: "provider_server_error" };
+  if (code >= 500 && code <= 599) return { ttl: 5 * 60, reason: "provider_server_error" };
   if (code === 0) return { ttl: 60, reason: "provider_timeout_or_network" };
   return null;
 }
