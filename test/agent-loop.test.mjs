@@ -89,3 +89,33 @@ test("invalid budget and unsafe limit settings are rejected", async () => {
   assert.throws(() => createAgentBudget({ maxToolCalls: 99 }), /INVALID_BUDGET_LIMIT/);
   assert.throws(() => createAgentLoop({ toolRegistry: {}, skillRegistry: {}, maxSteps: 99 }), /TOOL_REGISTRY_REQUIRED/);
 });
+
+test("independent agent budgets do not exhaust each other", async () => {
+  const { loop, getExecutions } = setup({ maxSteps: 2, maxToolCalls: 1 });
+  const firstBudget = createAgentBudget({ maxToolCalls: 1 });
+  const secondBudget = createAgentBudget({ maxToolCalls: 1 });
+  const plan = async ({ step }) => step === 1
+    ? ({ type: "tool", toolId: "local_echo", arguments: { value: "isolated" } })
+    : ({ type: "final", output: "done" });
+  const [first, second] = await Promise.all([
+    runArgs(loop, plan, { budget: firstBudget }),
+    runArgs(loop, plan, { budget: secondBudget }),
+  ]);
+  assert.equal(first.ok, true);
+  assert.equal(second.ok, true);
+  assert.equal(first.budgetUsed, 1);
+  assert.equal(second.budgetUsed, 1);
+  assert.equal(getExecutions(), 2);
+});
+
+test("failed tool execution still consumes shared budget", async () => {
+  const { loop } = setup({ executeOverride: async () => ({ ok: false, code: "TOOL_TIMEOUT" }) });
+  const budget = createAgentBudget({ maxToolCalls: 1 });
+  const toolPlan = async () => ({ type: "tool", toolId: "local_echo", arguments: { value: "x" } });
+  const first = await runArgs(loop, toolPlan, { budget });
+  assert.equal(first.code, "TOOL_TIMEOUT");
+  assert.equal(first.toolCalls, 0);
+  const second = await runArgs(loop, toolPlan, { budget });
+  assert.equal(second.code, "AGENT_SHARED_BUDGET_EXHAUSTED");
+  assert.equal(second.toolCalls, 0);
+});
