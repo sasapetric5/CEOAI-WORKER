@@ -1717,3 +1717,45 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
     globalThis.fetch = originalFetch;
   }
 }
+
+
+// V5 regression: a failed KV history write must never report chat success or mutate stored history.
+{
+  const originalFetch = globalThis.fetch;
+  const memoryEnv = makeEnv({
+    AI_ENABLED: "true",
+    EXTERNAL_AI_ENABLED: "true",
+    OPENROUTER_API_KEY: "test-openrouter-memory-write-failure",
+  });
+  const { cookie: memoryCookie } = await getSession(memoryEnv);
+  const sessionId = memoryCookie.match(/^ceoai_session=([0-9a-f-]{36})$/i)?.[1];
+  const memoryKey = `memory:${sessionId}`;
+  const originalMemory = memoryEnv.KV_MEMORY.data.get(memoryKey) ?? null;
+  const originalPut = memoryEnv.KV_MEMORY.put.bind(memoryEnv.KV_MEMORY);
+  let providerCalls = 0;
+  memoryEnv.KV_MEMORY.put = async (key, value) => {
+    if (key === memoryKey) throw new Error("simulated memory persistence failure");
+    return originalPut(key, value);
+  };
+  globalThis.fetch = async (url) => {
+    if (String(url).includes("openrouter.ai")) {
+      providerCalls++;
+      return new Response(JSON.stringify({choices:[{message:{content:"Odgovor koji nije sačuvan."}}]}), {
+        status: 200, headers: {"Content-Type":"application/json"},
+      });
+    }
+    throw new Error("Unexpected provider URL in memory-write test: " + String(url));
+  };
+  try {
+    const response = await worker.fetch(
+      apiRequest(memoryCookie, JSON.stringify({prompt:"Provera neuspešnog upisa memorije"})),
+      memoryEnv,
+    );
+    assert.equal(response.status, 503, "failed persistence must not return success");
+    assert.match((await response.json()).error, /memorija nije mogla biti sačuvana/i);
+    assert.equal(providerCalls, 1, "one provider response should be generated before persistence fails");
+    assert.equal(memoryEnv.KV_MEMORY.data.get(memoryKey) ?? null, originalMemory, "failed write must leave stored history unchanged");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
