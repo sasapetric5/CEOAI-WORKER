@@ -89,3 +89,46 @@ test("provider outage updates health and normal failover error remains controlle
     assert.equal(health.lastStatusCode, 503);
   } finally { globalThis.fetch = originalFetch; }
 });
+
+
+test("transient failure fails over and records privacy-safe recovery metrics", async () => {
+  const kv = new MemoryKV();
+  const env = {
+    ...makeEnv(kv),
+    GEMINI_FREE_CONFIRMED: "true",
+    GEMINI_API_KEY_PRIMARY: "test-gemini-health",
+  };
+  const originalFetch = globalThis.fetch;
+  const called = [];
+  globalThis.fetch = async url => {
+    const target = String(url);
+    called.push(target);
+    if (target.includes("generativelanguage.googleapis.com")) {
+      return new Response(JSON.stringify({ error: { message: "temporary outage" } }), {
+        status: 503, headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (target.includes("openrouter.ai")) {
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: "Odgovor nakon uspešnog failover-a" } }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    throw new Error("Unexpected provider endpoint in integration test");
+  };
+  try {
+    const cookie = await makeSession(env);
+    const response = await chat(env, cookie);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).reply, "Odgovor nakon uspešnog failover-a");
+    assert.ok(called.some(url => url.includes("generativelanguage.googleapis.com")));
+    assert.ok(called.some(url => url.includes("openrouter.ai")));
+    const metrics = await kv.get("recovery:metrics:v1", "json");
+    assert.equal(metrics.providerFailures, 1);
+    assert.equal(metrics.failoverSuccesses, 1);
+    assert.equal(metrics.recoveredRequests, 1);
+    const failedHealth = await kv.get("health:provider:gemini-1", "json");
+    const recoveredHealth = await kv.get("health:provider:openrouter-1", "json");
+    assert.equal(failedHealth.lastFailureClass, "server_error");
+    assert.equal(recoveredHealth.status, "healthy");
+  } finally { globalThis.fetch = originalFetch; }
+});
