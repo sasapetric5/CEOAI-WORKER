@@ -26,6 +26,7 @@ import { recordProviderOutcome } from "./src/v5-modules/agent-health.mjs";
 import { providerHealthRoutingAdjustment } from "./src/v5-modules/provider-recovery.mjs";
 import { providerCircuitDecision } from "./src/v5-modules/provider-circuit-breaker.mjs";
 import { classifyProviderFailure } from "./src/v5-modules/failure-classification.mjs";
+import { recordRecoveryMetric } from "./src/v5-modules/recovery-metrics.mjs";
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
 // Quota cooldowns differ by provider signal: monthly exhaustion must not be retried every few hours.
@@ -1304,6 +1305,7 @@ export default {
       let sawCooldownSkip = false;
       let quotaRetryAfter = QUOTA_COOLDOWN_TTL;
       let usedProviderId = null;
+      let failedInThisRequest = false;
       // Sequential failover: on quota/rate-limit the provider is cooled down and the next
       // ranked free candidate automatically takes over within the same request.
       const providerDeadline = Date.now() + 24000;
@@ -1316,10 +1318,12 @@ export default {
         if (circuit.state === "open") {
           sawCooldownSkip = true;
           console.info("CEOAI_DIAG provider_circuit_skip", JSON.stringify({ provider: candidate.id, state: circuit.state }));
+          await recordRecoveryMetric(env.KV_MEMORY, "circuit_open_skip");
           continue;
         }
         if (circuit.state === "half_open") {
           console.info("CEOAI_DIAG provider_circuit_probe", JSON.stringify({ provider: candidate.id, state: circuit.state }));
+          await recordRecoveryMetric(env.KV_MEMORY, "half_open_probe");
         }
         const cooldownKey = `cooldown:${candidate.id}`;
         let coolingDown = false;
@@ -1336,6 +1340,8 @@ export default {
           reply = await executeModel(candidate, messages, remainingMs);
           if (!reply.trim()) throw new Error("Prazan odgovor");
           await recordProviderOutcome(env.KV_MEMORY, candidate.id, { kind: "success" });
+          if (failedInThisRequest) await recordRecoveryMetric(env.KV_MEMORY, "failover_success");
+          if (failedInThisRequest || circuit.state === "half_open") await recordRecoveryMetric(env.KV_MEMORY, "recovered_request");
           providerSucceeded = true;
           usedProviderId = candidate.id;
           break;
@@ -1348,9 +1354,11 @@ export default {
             retryAfterSeconds: error?.retryAfterSeconds,
             message: msg,
           });
+          failedInThisRequest = true;
           await recordProviderOutcome(env.KV_MEMORY, candidate.id, {
             kind: "failure", statusCode: lastStatus, failureClass: failure.classification,
           });
+          await recordRecoveryMetric(env.KV_MEMORY, "provider_failure");
           console.warn("CEOAI_DIAG provider_failed", JSON.stringify({
             provider: candidate.id, status: lastStatus, classification: failure.classification,
             retryable: failure.retryable, quota: isQuotaError(error),
