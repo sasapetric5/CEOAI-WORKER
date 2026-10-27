@@ -23,6 +23,7 @@ function emptyHealth(providerId, now) {
     lastSuccessAt: null,
     lastFailureAt: null,
     lastStatusCode: null,
+    lastFailureClass: null,
     updatedAt: now,
   };
 }
@@ -72,6 +73,7 @@ export async function recordProviderOutcome(kv, providerId, outcome, now = Date.
       lastSuccessAt: success ? now : previous.lastSuccessAt,
       lastFailureAt: success ? previous.lastFailureAt : now,
       lastStatusCode: success ? 200 : statusCode,
+      lastFailureClass: success ? null : (typeof outcome.failureClass === "string" ? outcome.failureClass : null),
       updatedAt: now,
     };
     await kv.put(key, JSON.stringify(next), { expirationTtl: HEALTH_TTL_SECONDS });
