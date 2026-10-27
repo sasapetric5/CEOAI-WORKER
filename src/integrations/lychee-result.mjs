@@ -32,7 +32,11 @@ function safeUrl(value) {
 
 function safeText(value) {
   if (typeof value !== "string") return null;
-  return value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, MAX_TEXT_LENGTH) || null;
+  return value
+    .replace(/[\\u0000-\\u001f\\u007f]/g, " ")
+    .replace(/\\bBearer\\s+[A-Za-z0-9._~+\\/-]+=*/gi, "Bearer [REDACTED]")
+    .replace(/\\b(token|api[_-]?key|access[_-]?token|password|secret)\\s*[:=]\\s*[^\\s,;]+/gi, "$1=[REDACTED]")
+    .replace(/\\s+/g, " ").trim().slice(0, MAX_TEXT_LENGTH) || null;
 }
 
 function parseStatus(value) {
