@@ -1,0 +1,40 @@
+name: CEOAI Lychee link audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ceoai-lychee-manual
+  cancel-in-progress: true
+
+jobs:
+  link-audit:
+    name: Check approved CEOAI domain links
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Run Lychee against the fixed CEOAI domain
+        id: lychee
+        uses: lycheeverse/lychee-action@8646ba30535128ac92d33dfc9133794bfdd9b411 # v2.8.0
+        with:
+          args: >-
+            --timeout 10
+            --threads 4
+            --max-retries 1
+            --include '^https://ceoai\.dev(/|$)'
+            https://ceoai.dev
+          output: lychee-report.md
+          fail: false
+          failIfEmpty: false
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18d3 # v4.3.6
+        with:
+          name: ceoai-lychee-report
+          path: lychee-report.md
+          if-no-files-found: warn
+          retention-days: 7
