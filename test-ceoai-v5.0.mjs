@@ -1767,3 +1767,70 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
     globalThis.fetch = originalFetch;
   }
 }
+
+
+// Batch reliability: KV cooldown read errors fail closed before external provider calls.
+{
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  class BrokenCooldownKV extends MemoryKV {
+    async get(key, type) {
+      if (String(key).startsWith("cooldown:")) throw new Error("simulated cooldown storage outage");
+      return super.get(key, type);
+    }
+  }
+  const env = makeEnv({
+    KV_MEMORY: new BrokenCooldownKV(),
+    AI_ENABLED: "true", EXTERNAL_AI_ENABLED: "true",
+    GEMINI_API_KEY_PRIMARY: "test-kv-cooldown-read",
+  });
+  const { cookie } = await getSession(env);
+  globalThis.fetch = async () => { providerCalls++; throw new Error("must not call provider if cooldown state cannot be checked"); };
+  try {
+    const response = await worker.fetch(apiRequest(cookie, JSON.stringify({ prompt: "KV failure test" })), env);
+    assert.equal(response.status, 503);
+    assert.match((await response.json()).error, /privremenih ograničenja/);
+    assert.equal(providerCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+// Batch reliability: server errors trigger a short cooldown and safely fall back without leaking details.
+{
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  const originalWarn = console.warn;
+  const originalInfo = console.info;
+  console.warn = () => {};
+  console.info = () => {};
+  globalThis.fetch = async (url) => {
+    const target = String(url);
+    calls.push(target);
+    if (target.includes("generativelanguage.googleapis.com")) {
+      return new Response(JSON.stringify({ error: { message: "internal secret=do-not-leak" } }), { status: 503 });
+    }
+    if (target.includes("openrouter.ai")) {
+      return new Response(JSON.stringify({ choices: [{ message: { content: "Fallback posle greške servera." } }] }), { status: 200 });
+    }
+    throw new Error("Unexpected provider URL");
+  };
+  try {
+    const env = makeEnv({
+      AI_ENABLED: "true", EXTERNAL_AI_ENABLED: "true",
+      GEMINI_API_KEY_PRIMARY: "test-gemini-server-error",
+      OPENROUTER_API_KEY: "test-openrouter-server-error",
+    });
+    const { cookie } = await getSession(env);
+    const response = await worker.fetch(apiRequest(cookie, JSON.stringify({ prompt: "Server error fallback" })), env);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).reply, "Fallback posle greške servera.");
+    assert.equal(calls.length, 2);
+    assert.ok(await env.KV_MEMORY.get("cooldown:gemini-1"));
+    assert.equal(JSON.stringify(await response.json()).includes("do-not-leak"), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
+    console.info = originalInfo;
+  }
+}
