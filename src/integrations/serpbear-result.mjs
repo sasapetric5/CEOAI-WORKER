@@ -12,7 +12,6 @@ function date(v) {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 function position(v) { return Number.isSafeInteger(v) && v >= 0 && v <= 1_000_000 ? v : null; }
-/** Accepts a list or common data/keywords wrapper. Unknown fields are discarded. */
 export function normalizeSerpBearResult(input) {
   let data = input;
   if (typeof input === "string") {
@@ -20,7 +19,7 @@ export function normalizeSerpBearResult(input) {
     try { data = JSON.parse(input); } catch { return { ok:false, code:"SERPBEAR_INVALID_JSON" }; }
   } else if (!record(input) && !Array.isArray(input)) return { ok:false, code:"SERPBEAR_INVALID_SHAPE" };
   if (record(data)) data = data.data ?? data.keywords ?? data.results;
-  if (!Array.isArray(data)) return { ok:false, code:"SERPBEAR_INVALID_SHAPE" };
+  if (!Array.isArray(data) || data.length === 0) return { ok:false, code:"SERPBEAR_INVALID_SHAPE" };
   if (data.length > MAX_ROWS) return { ok:false, code:"SERPBEAR_TOO_MANY_ROWS" };
   const rows = [];
   let rejected = 0;
