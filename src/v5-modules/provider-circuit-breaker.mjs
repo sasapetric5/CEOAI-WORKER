@@ -15,7 +15,10 @@ export function providerCircuitDecision(health, now = Date.now(), {
     ? health.consecutiveFailures : 0;
   const statusCode = Number.isInteger(health.lastStatusCode) ? health.lastStatusCode : null;
   // Do not duplicate quota (429), auth/policy (401/403), or model (404) cooldown policy.
-  const transient = statusCode === null || statusCode === 0 || (statusCode >= 500 && statusCode <= 599);
+  const knownClass = typeof health.lastFailureClass === "string" ? health.lastFailureClass : null;
+  const transient = knownClass
+    ? ["network_error", "timeout", "server_error", "empty_response"].includes(knownClass)
+    : (statusCode === null || statusCode === 0 || (statusCode >= 500 && statusCode <= 599));
   const lastFailureAt = Number(health.lastFailureAt);
   if (failures < failureThreshold || !transient || !Number.isFinite(lastFailureAt) ||
       lastFailureAt < 0 || lastFailureAt > now) {
