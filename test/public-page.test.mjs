@@ -300,3 +300,36 @@ test('malformed redirect Location returns a stable sanitized result without thro
   assert.deepEqual(result, { ok: false, code: 'REDIRECT_TARGET_BLOCKED', reason: 'URL_INVALID' });
   assert.equal(calls, 1);
 });
+
+
+test('streamed oversized HTML cancels the reader immediately', async () => {
+  let cancelled = false;
+  let chunks = 0;
+  const body = new ReadableStream({
+    pull(controller) {
+      chunks++;
+      controller.enqueue(new Uint8Array(chunks === 1 ? 800 : 400));
+    },
+    cancel() { cancelled = true; },
+  });
+  const result = await fetchPublicHtml('https://example.com/stream-limit', {
+    maxBytes: 1024,
+    fetchImpl: async () => new Response(body, { headers: { 'content-type': 'text/html' } }),
+  });
+  assert.deepEqual(result, { ok: false, code: 'HTML_TOO_LARGE' });
+  assert.equal(cancelled, true);
+  assert.equal(chunks, 2);
+});
+
+test('fragment is never sent in the actual HTTP request', async () => {
+  let requested;
+  const result = await fetchPublicHtml('https://example.com/path?visible=allowed#secret-fragment', {
+    fetchImpl: async (url) => {
+      requested = url;
+      return new Response('<title>OK</title>', { headers: { 'content-type': 'text/html' } });
+    },
+  });
+  assert.equal(result.ok, true);
+  assert.equal(requested, 'https://example.com/path?visible=allowed');
+  assert.equal(JSON.stringify(result).includes('secret-fragment'), false);
+});
