@@ -358,3 +358,29 @@ test('body read timeout cancels a stalled HTML stream and returns a stable code'
   assert.deepEqual(result, { ok: false, code: 'FETCH_TIMEOUT' });
   assert.equal(cancelled, true);
 });
+
+test('invalid or misleading Content-Length cannot bypass the streamed byte cap', async () => {
+  for (const declared of ['not-a-number', '-1', '0', '1e3']) {
+    const body = new ReadableStream({
+      start(controller) { controller.enqueue(new Uint8Array(700)); controller.enqueue(new Uint8Array(700)); controller.close(); },
+    });
+    const result = await fetchPublicHtml('https://example.com/content-length-edge', {
+      maxBytes: 1024,
+      fetchImpl: async () => new Response(body, { headers: { 'content-type': 'text/html', 'content-length': declared } }),
+    });
+    assert.equal(result.code, 'HTML_TOO_LARGE', declared);
+  }
+});
+
+test('redirect chains stop after the configured maximum and do not fetch the next target', async () => {
+  let calls = 0;
+  const result = await fetchPublicHtml('https://example.com/r0', {
+    fetchImpl: async (url) => {
+      calls++;
+      const n = Number(url.match(/r(\d+)$/)?.[1] ?? 0);
+      return new Response(null, { status: 302, headers: { location: '/r' + (n + 1) } });
+    },
+  });
+  assert.equal(result.code, 'TOO_MANY_REDIRECTS');
+  assert.equal(calls, 4);
+});
