@@ -1698,3 +1698,72 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
     assert.equal((await response.json()).success, false);
   } finally { globalThis.fetch = originalFetch; }
 }
+
+
+// Batch reliability regressions: cooldown-aware provider routing.
+{
+  const originalFetch = globalThis.fetch;
+  const originalWarn = console.warn;
+  const originalInfo = console.info;
+  const calls = [];
+  globalThis.fetch = async (url) => {
+    const target = String(url);
+    calls.push(target);
+    if (target.includes("generativelanguage.googleapis.com")) {
+      return new Response(JSON.stringify({ error: { message: "simulated rate limit" } }), {
+        status: 429, headers: { "Content-Type": "application/json", "Retry-After": "75" },
+      });
+    }
+    if (target.includes("openrouter.ai")) {
+      return new Response(JSON.stringify({ choices: [{ message: { content: "Rezervni model je odgovorio." } }] }), {
+        status: 200, headers: { "Content-Type": "application/json" },
+      });
+    }
+    throw new Error("Unexpected provider URL");
+  };
+  console.warn = () => {};
+  console.info = () => {};
+  try {
+    const env = makeEnv({
+      AI_ENABLED: "true", EXTERNAL_AI_ENABLED: "true",
+      GEMINI_API_KEY_PRIMARY: "test-batch-gemini",
+      OPENROUTER_API_KEY: "test-batch-openrouter",
+    });
+    const { cookie } = await getSession(env);
+    const first = await worker.fetch(apiRequest(cookie, JSON.stringify({ prompt: "Zdravo" })), env);
+    assert.equal(first.status, 200);
+    assert.equal((await first.json()).reply, "Rezervni model je odgovorio.");
+    assert.equal(calls.length, 2, "one failed primary followed by one fallback");
+    assert.ok(await env.KV_MEMORY.get("cooldown:gemini-1"), "rate-limited primary should enter cooldown");
+
+    calls.length = 0;
+    const second = await worker.fetch(apiRequest(cookie, JSON.stringify({ prompt: "Drugi zahtev" })), env);
+    assert.equal(second.status, 200);
+    assert.equal(calls.length, 1, "the cooled-down primary must be skipped on the next request");
+    assert.ok(calls[0].includes("openrouter.ai"), "next request should start with the eligible fallback");
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
+    console.info = originalInfo;
+  }
+}
+
+// Batch reliability regression: no eligible provider in cooldown-only state means no external call.
+{
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url) => { calls.push(String(url)); throw new Error("must not call a cooled provider"); };
+  try {
+    const env = makeEnv({
+      AI_ENABLED: "true", EXTERNAL_AI_ENABLED: "true",
+      GEMINI_API_KEY_PRIMARY: "test-batch-cooldown-only",
+    });
+    const { cookie } = await getSession(env);
+    await env.KV_MEMORY.put("cooldown:gemini-1", "1", { expirationTtl: 60 });
+    const response = await worker.fetch(apiRequest(cookie, JSON.stringify({ prompt: "Test cooldown" })), env);
+    assert.equal(response.status, 503);
+    assert.equal(calls.length, 0, "provider in cooldown must not be called");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
