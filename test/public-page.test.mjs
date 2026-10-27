@@ -162,3 +162,37 @@ test('missing content type is rejected and never treated as HTML', async () => {
   assert.equal(result.code, 'CONTENT_TYPE_NOT_HTML');
   assert.equal('html' in result, false);
 });
+
+
+test('body exactly at configured byte limit is accepted', async () => {
+  const body = 'x'.repeat(1024);
+  const result = await fetchPublicHtml('https://example.com/exact-limit', {
+    maxBytes: 1024,
+    fetchImpl: async () => new Response(body, { headers: { 'content-type': 'text/html', 'content-length': '1024' } }),
+  });
+  assert.equal(result.ok, true);
+  assert.equal(new TextEncoder().encode(result.html).byteLength, 1024);
+});
+
+test('invalid content length cannot bypass streamed body limit', async () => {
+  const result = await fetchPublicHtml('https://example.com/bad-length', {
+    maxBytes: 1024,
+    fetchImpl: async () => new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(new Uint8Array(800));
+        controller.enqueue(new Uint8Array(400));
+        controller.close();
+      },
+    }), { headers: { 'content-type': 'text/html', 'content-length': 'not-a-number' } }),
+  });
+  assert.deepEqual(result, { ok: false, code: 'HTML_TOO_LARGE' });
+});
+
+test('missing content type is rejected without returning HTML', async () => {
+  const result = await fetchPublicHtml('https://example.com/no-type', {
+    fetchImpl: async () => new Response('<title>not trusted</title>'),
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'CONTENT_TYPE_NOT_HTML');
+  assert.equal('html' in result, false);
+});
