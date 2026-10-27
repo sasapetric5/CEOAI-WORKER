@@ -1877,3 +1877,80 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
     globalThis.fetch = originalFetch;
   }
 }
+
+
+// Batch routing regression: ordinary client/configuration errors do not create a long cooldown.
+{
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  const originalWarn = console.warn;
+  const originalInfo = console.info;
+  console.warn = () => {};
+  console.info = () => {};
+  globalThis.fetch = async (url) => {
+    const target = String(url);
+    calls.push(target);
+    if (target.includes("generativelanguage.googleapis.com")) {
+      return new Response(JSON.stringify({ error: { message: "invalid request fixture" } }), { status: 400 });
+    }
+    if (target.includes("openrouter.ai")) {
+      return new Response(JSON.stringify({ choices: [{ message: { content: "Rezervni odgovor posle 400." } }] }), { status: 200 });
+    }
+    throw new Error("Unexpected provider URL");
+  };
+  try {
+    const env = makeEnv({
+      AI_ENABLED: "true", EXTERNAL_AI_ENABLED: "true",
+      GEMINI_API_KEY_PRIMARY: "test-gemini-client-error",
+      OPENROUTER_API_KEY: "test-openrouter-client-error",
+    });
+    const { cookie } = await getSession(env);
+    const response = await worker.fetch(apiRequest(cookie, JSON.stringify({ prompt: "Test 400 fallback" })), env);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).reply, "Rezervni odgovor posle 400.");
+    assert.equal(calls.length, 2);
+    assert.equal(await env.KV_MEMORY.get("cooldown:gemini-1"), null,
+      "ordinary 400 responses must not create a provider cooldown");
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
+    console.info = originalInfo;
+  }
+}
+
+// Batch routing regression: malformed successful provider payloads fail over safely.
+{
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  const originalWarn = console.warn;
+  const originalInfo = console.info;
+  console.warn = () => {};
+  console.info = () => {};
+  globalThis.fetch = async (url) => {
+    const target = String(url);
+    calls.push(target);
+    if (target.includes("generativelanguage.googleapis.com")) {
+      return new Response(JSON.stringify({ candidates: [] }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    if (target.includes("openrouter.ai")) {
+      return new Response(JSON.stringify({ choices: [{ message: { content: "Rezervni odgovor posle neispravnog tela." } }] }), { status: 200 });
+    }
+    throw new Error("Unexpected provider URL");
+  };
+  try {
+    const env = makeEnv({
+      AI_ENABLED: "true", EXTERNAL_AI_ENABLED: "true",
+      GEMINI_API_KEY_PRIMARY: "test-gemini-malformed-success",
+      OPENROUTER_API_KEY: "test-openrouter-malformed-success",
+    });
+    const { cookie } = await getSession(env);
+    const response = await worker.fetch(apiRequest(cookie, JSON.stringify({ prompt: "Test neispravnog odgovora" })), env);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).reply, "Rezervni odgovor posle neispravnog tela.");
+    assert.equal(calls.length, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
+    console.info = originalInfo;
+  }
+}
