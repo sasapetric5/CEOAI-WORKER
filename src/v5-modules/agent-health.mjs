@@ -47,6 +47,32 @@ export async function readProviderHealth(kv, providerId) {
   };
 }
 
+export async function recordProviderLatency(kv, providerId, durationMs, now = Date.now()) {
+  try {
+    if (!kv || typeof kv.get !== "function" || typeof kv.put !== "function" ||
+        !Number.isFinite(now) || now < 0 || !Number.isFinite(durationMs) ||
+        durationMs < 1 || durationMs > 120_000) return false;
+    const key = keyFor(providerId);
+    let previous;
+    try { previous = await readProviderHealth(kv, providerId); }
+    catch { previous = emptyHealth(providerId, now); }
+    const oldLatency = Number.isFinite(previous.latencyEwmaMs) &&
+      previous.latencyEwmaMs >= 1 && previous.latencyEwmaMs <= 120_000
+      ? previous.latencyEwmaMs : null;
+    const latencyEwmaMs = oldLatency === null
+      ? Math.round(durationMs)
+      : Math.round(oldLatency * 0.7 + durationMs * 0.3);
+    const next = { ...previous, latencyEwmaMs, latencySamples: Math.min(1_000_000_000,
+      (Number.isSafeInteger(previous.latencySamples) && previous.latencySamples >= 0 ? previous.latencySamples : 0) + 1),
+      updatedAt: now };
+    await kv.put(key, JSON.stringify(next), { expirationTtl: HEALTH_TTL_SECONDS });
+    return true;
+  } catch {
+    // Latency telemetry is advisory and must never break provider routing.
+    return false;
+  }
+}
+
 export async function recordProviderOutcome(kv, providerId, outcome, now = Date.now()) {
   try {
     if (!kv || typeof kv.get !== "function" || typeof kv.put !== "function") return false;
