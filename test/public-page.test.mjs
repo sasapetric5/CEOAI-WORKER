@@ -333,3 +333,28 @@ test('fragment is never sent in the actual HTTP request', async () => {
   assert.equal(requested, 'https://example.com/path?visible=allowed');
   assert.equal(JSON.stringify(result).includes('secret-fragment'), false);
 });
+
+test('URL validation rejects non-string and oversized input without network access', async () => {
+  for (const input of [null, undefined, 42, {}, 'https://example.com/' + 'x'.repeat(2048)]) {
+    assert.equal(validatePublicPageUrl(input).ok, false);
+    let calls = 0;
+    const result = await fetchPublicHtml(input, { fetchImpl: async () => { calls++; throw new Error('must not fetch'); } });
+    assert.equal(result.ok, false);
+    assert.equal(calls, 0);
+  }
+});
+
+test('body read timeout cancels a stalled HTML stream and returns a stable code', async () => {
+  let cancelled = false;
+  let controllerRef;
+  const body = new ReadableStream({
+    start(controller) { controllerRef = controller; controller.enqueue(new TextEncoder().encode('<title>partial')); },
+    cancel() { cancelled = true; },
+  });
+  const result = await fetchPublicHtml('https://example.com/stalled-body', {
+    timeoutMs: 250,
+    fetchImpl: async () => new Response(body, { headers: { 'content-type': 'text/html' } }),
+  });
+  assert.deepEqual(result, { ok: false, code: 'FETCH_TIMEOUT' });
+  assert.equal(cancelled, true);
+});
