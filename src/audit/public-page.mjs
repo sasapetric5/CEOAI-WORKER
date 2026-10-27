@@ -121,7 +121,7 @@ export async function fetchPublicHtml(input, options = {}) {
     }
     try {
       const html = await readBounded(response, maxBytes, controller.signal);
-      return { ok: true, status: response.status, finalUrl: current.toString(), contentType: type, html };
+      return { ok: true, status: response.status, finalUrl: publicUrlForOutput(current), contentType: type, html };
     } catch (error) {
       return { ok: false, code: error?.name === 'AbortError' ? 'FETCH_TIMEOUT' : error?.message === 'HTML_TOO_LARGE' ? 'HTML_TOO_LARGE' : 'BODY_READ_FAILED' };
     } finally { clearTimeout(timer); }
