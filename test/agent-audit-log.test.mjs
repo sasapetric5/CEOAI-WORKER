@@ -38,3 +38,25 @@ test("audit log handles clock failure without recording partial events", () => {
   assert.equal(audit.record({ type: "run_started", runId: "a" }).code, "AUDIT_CLOCK_FAILED");
   assert.equal(audit.size, 0);
 });
+
+test("audit log snapshots cannot mutate stored events and eviction remains bounded", () => {
+  const audit = createAgentAuditLog({ maxEvents: 2, now: () => 99 });
+  audit.record({ type: "run_started", runId: "first" });
+  const snapshot = audit.list();
+  snapshot[0].runId = "tampered";
+  snapshot.push({ type: "run_failed", runId: "injected" });
+  assert.equal(audit.size, 1);
+  assert.equal(audit.list()[0].runId, "first");
+  audit.record({ type: "run_started", runId: "second" });
+  audit.record({ type: "run_succeeded", runId: "third" });
+  assert.equal(audit.size, 2);
+  assert.deepEqual(audit.list().map(event => event.runId), ["second", "third"]);
+});
+
+test("audit log clear removes all retained events", () => {
+  const audit = createAgentAuditLog({ now: () => 100 });
+  audit.record({ type: "run_started", runId: "clear_me" });
+  audit.clear();
+  assert.equal(audit.size, 0);
+  assert.deepEqual(audit.list(), []);
+});
