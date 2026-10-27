@@ -25,6 +25,7 @@ import { parseRetryAfterSeconds, providerFailureCooldown } from "./src/v5-module
 import { recordProviderOutcome } from "./src/v5-modules/agent-health.mjs";
 import { providerHealthRoutingAdjustment } from "./src/v5-modules/provider-recovery.mjs";
 import { providerCircuitDecision } from "./src/v5-modules/provider-circuit-breaker.mjs";
+import { classifyProviderFailure } from "./src/v5-modules/failure-classification.mjs";
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
 // Quota cooldowns differ by provider signal: monthly exhaustion must not be retried every few hours.
@@ -1341,8 +1342,19 @@ export default {
         } catch (error) {
           lastStatus = Number(error?.status) || 0;
           const msg = String(error?.message || "");
-          await recordProviderOutcome(env.KV_MEMORY, candidate.id, { kind: "failure", statusCode: lastStatus });
-          console.warn("CEOAI_DIAG provider_failed", JSON.stringify({ provider: candidate.id, status: lastStatus, quota: isQuotaError(error) }));
+          const failure = classifyProviderFailure({
+            status: lastStatus,
+            quotaExhausted: isQuotaError(error),
+            retryAfterSeconds: error?.retryAfterSeconds,
+            message: msg,
+          });
+          await recordProviderOutcome(env.KV_MEMORY, candidate.id, {
+            kind: "failure", statusCode: lastStatus, failureClass: failure.classification,
+          });
+          console.warn("CEOAI_DIAG provider_failed", JSON.stringify({
+            provider: candidate.id, status: lastStatus, classification: failure.classification,
+            retryable: failure.retryable, quota: isQuotaError(error),
+          }));
           if (env.DEBUG_PROVIDER_ERRORS === "true" && error?.providerDetail) {
             console.debug(`Provider ${candidate.id} detail: ${String(error.providerDetail).slice(0, 600)}`);
           }
