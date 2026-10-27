@@ -28,6 +28,7 @@ import { providerCircuitDecision } from "./src/v5-modules/provider-circuit-break
 import { classifyProviderFailure } from "./src/v5-modules/failure-classification.mjs";
 import { recordRecoveryMetric } from "./src/v5-modules/recovery-metrics.mjs";
 import { providerLatencyRoutingAdjustment } from "./src/v5-modules/provider-latency.mjs";
+import { createRequestDeadline, remainingRequestBudget, adaptiveProviderTimeout, canStartProviderAttempt } from "./src/v5-modules/adaptive-timeout.mjs";
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
 // Quota cooldowns differ by provider signal: monthly exhaustion must not be retried every few hours.
@@ -1309,10 +1310,10 @@ export default {
       let failedInThisRequest = false;
       // Sequential failover: on quota/rate-limit the provider is cooled down and the next
       // ranked free candidate automatically takes over within the same request.
-      const providerDeadline = Date.now() + 24000;
+      const providerDeadline = createRequestDeadline(Date.now());
       for (const candidate of candidates) {
-        const remainingMs = providerDeadline - Date.now();
-        if (remainingMs < 2000) break;
+        const remainingMs = remainingRequestBudget(providerDeadline, Date.now());
+        if (!canStartProviderAttempt(remainingMs)) break;
         // Circuit breaker only covers repeated transient failures; quota/auth cooldowns remain authoritative.
         // KV health is advisory and non-atomic across Worker isolates; the cooldown key remains the shared gate.
         const circuit = providerCircuitDecision(providerHealthById.get(candidate.id), Date.now());
@@ -1338,8 +1339,10 @@ export default {
         if (inFlightProviders.has(candidate.id)) { sawCooldownSkip = true; continue; }
         inFlightProviders.add(candidate.id);
         const providerStartedAt = Date.now();
+        const providerTimeoutMs = adaptiveProviderTimeout(remainingMs, providerHealthById.get(candidate.id)?.latencyEwmaMs);
+        if (!providerTimeoutMs) { inFlightProviders.delete(candidate.id); break; }
         try {
-          reply = await executeModel(candidate, messages, remainingMs);
+          reply = await executeModel(candidate, messages, providerTimeoutMs);
           await recordProviderLatency(env.KV_MEMORY, candidate.id, Date.now() - providerStartedAt);
           if (!reply.trim()) throw new Error("Prazan odgovor");
           await recordProviderOutcome(env.KV_MEMORY, candidate.id, { kind: "success" });
