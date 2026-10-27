@@ -330,3 +330,29 @@ test("reset request from a sibling subdomain is not implicitly trusted", async (
   assert.equal(kv.data.has(`memory:${SID}`), true);
 });
 
+
+
+// Explicit counterexample: KV replicas can each read/write their local view during propagation.
+// This passing diagnostic test documents that the helper is NOT a distributed mutex.
+test("independent KV replicas can both acquire the best-effort session lock", async () => {
+  const replicas = [new Map(), new Map()];
+  const kvFor = replica => ({
+    async get(key) { return replica.has(key) ? replica.get(key) : null; },
+    async put(key, value) { replica.set(key, value); },
+    async delete(key) { replica.delete(key); },
+  });
+  let entered = 0;
+  let release;
+  const barrier = new Promise(resolve => { release = resolve; });
+  const attempts = replicas.map(replica => withSessionLock(kvFor(replica), SID, async () => {
+    entered++;
+    await barrier;
+    return "entered";
+  }));
+  // Both replicas have independent, stale views of KV during propagation.
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(entered, 2, "demonstrate the distributed-lock limitation rather than hiding it");
+  release();
+  const results = await Promise.all(attempts);
+  assert.ok(results.every(result => result.busy === false));
+});
