@@ -52,3 +52,8 @@ The Crawl4AI normalizer in `src/integrations/crawl4ai-result.mjs` accepts bounde
 ## Current status
 
 The registry and the four local result-normalization layers are parsing scaffolding only. No SerpBear, Umami, or Crawl4AI service is called by the Worker, and no integration is activated. The Lychee repository workflow can audit its configured live URL; the Unlighthouse manual workflow has been smoke-tested against `https://example.com`, not yet against the CEOAI production site. The next steps require service/runner endpoints, an explicit URL policy, resource budgets, and an authenticated adapter contract. Do not set secrets or activate integrations before those are reviewed and approved.
+
+
+## Shared error contract
+
+`src/integrations/safe-error.mjs` maps timeouts, rate limits, invalid responses, and upstream failures to a small allowlist of stable error codes. It never returns exception messages, stack traces, URLs, credentials, or upstream response bodies. HTTP status mapping is deterministic and makes no network calls. Future adapters must use this boundary rather than forwarding upstream errors to clients.
