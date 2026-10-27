@@ -34,7 +34,7 @@ test('all integrations remain inactive with empty configuration', () => {
 test('partial opt-in reports incomplete configuration without enabling a module', () => {
   const status = getIntegrationReadiness('crawl4ai', {
     CEOAI_CRAWL4AI_ENABLED: 'true',
-    CEOAI_CRAWL4AI_URL: 'https://crawler.example.test',
+    CEOAI_CRAWL4AI_URL: 'https://crawler.example.com',
   });
   assert.equal(status.status, 'INCOMPLETE_CONFIGURATION');
   assert.equal(status.enabled, false);
@@ -44,22 +44,61 @@ test('partial opt-in reports incomplete configuration without enabling a module'
 test('complete config is not misreported as implemented or enabled', () => {
   const status = getIntegrationReadiness('umami', {
     CEOAI_UMAMI_ENABLED: 'true',
-    CEOAI_UMAMI_URL: 'https://analytics.example.test',
+    CEOAI_UMAMI_URL: 'https://analytics.example.com',
     CEOAI_UMAMI_TOKEN: 'do-not-return-this-token',
   });
   assert.equal(status.status, 'CONFIG_PRESENT_NOT_IMPLEMENTED');
   assert.equal(status.enabled, false);
   assert.equal(JSON.stringify(status).includes('do-not-return-this-token'), false);
-  assert.equal(JSON.stringify(status).includes('analytics.example.test'), false);
+  assert.equal(JSON.stringify(status).includes('analytics.example.com'), false);
 });
 
 test('status output never includes raw endpoint or credentials', () => {
   const status = getIntegrationReadiness('serpbear', {
     CEOAI_SERPBEAR_ENABLED: 'true',
-    CEOAI_SERPBEAR_URL: 'https://rank.example.test/private',
+    CEOAI_SERPBEAR_URL: 'https://rank.example.com/private',
     CEOAI_SERPBEAR_TOKEN: 'secret-value',
   });
   const serialized = JSON.stringify(status);
-  assert.equal(serialized.includes('rank.example.test'), false);
+  assert.equal(serialized.includes('rank.example.com'), false);
   assert.equal(serialized.includes('secret-value'), false);
+});
+
+test('unsafe endpoints are rejected: HTTP, credentials, IP literals, private names and non-default ports', () => {
+  const invalid = [
+    'http://runner.example.com',
+    'https://user:pass@runner.example.com',
+    'https://127.0.0.1',
+    'https://10.0.0.1',
+    'https://localhost',
+    'https://runner.local',
+    'https://runner.internal',
+    'https://runner.example.test',
+    'https://runner.example.com:8443',
+    'https://runner.example.com/?token=secret',
+  ];
+  for (const endpoint of invalid) {
+    const status = getIntegrationReadiness('lychee', {
+      CEOAI_LYCHEE_ENABLED: 'true',
+      CEOAI_LYCHEE_URL: endpoint,
+      CEOAI_LYCHEE_TOKEN: 'test-token',
+    });
+    assert.equal(status.endpointConfigured, false, endpoint);
+    assert.equal(status.enabled, false, endpoint);
+    assert.equal(status.status, 'INCOMPLETE_CONFIGURATION', endpoint);
+  }
+});
+
+test('only HTTPS service URLs with public-looking hostnames pass basic syntax checks', () => {
+  for (const id of EXPECTED) {
+    const prefix = 'CEOAI_' + id.toUpperCase();
+    const status = getIntegrationReadiness(id, {
+      [prefix + '_ENABLED']: 'true',
+      [prefix + '_URL']: 'https://service.example.com/api',
+      [prefix + '_TOKEN']: 'test-token',
+    });
+    assert.equal(status.endpointConfigured, true, id);
+    assert.equal(status.enabled, false, id);
+    assert.equal(status.status, 'CONFIG_PRESENT_NOT_IMPLEMENTED', id);
+  }
 });

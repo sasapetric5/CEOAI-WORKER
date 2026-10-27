@@ -13,6 +13,23 @@ const DEFINITIONS = [
 
 const cloneDefinition = (definition) => ({ ...definition, requires: [...definition.requires], output: [...definition.output] });
 
+function isSafeServiceEndpoint(value) {
+  if (typeof value !== "string" || value.length > 2048) return false;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.username || url.password || url.port || url.search || url.hash) return false;
+    const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
+    if (!hostname.includes(".") || hostname.length > 253) return false;
+    if (hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local") ||
+        hostname.endsWith(".internal") || hostname.endsWith(".test") || hostname.endsWith(".invalid")) return false;
+    if (/^(\d{1,3}\.){3}\d{1,3}$/.test(hostname) || hostname.startsWith("[") || hostname === "metadata.google.internal") return false;
+    if (hostname.split(".").some((label) => !label || label.length > 63 || label.startsWith("-") || label.endsWith("-"))) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function listIntegrationDefinitions() {
   return DEFINITIONS.map(cloneDefinition);
 }
@@ -31,7 +48,7 @@ export function getIntegrationReadiness(id, env = {}) {
   const prefix = definition.configPrefix;
   const optedIn = env[prefix + "_ENABLED"] === "true";
   const endpoint = env[prefix + "_URL"];
-  const hasEndpoint = typeof endpoint === "string" && endpoint.length > 0;
+  const hasEndpoint = isSafeServiceEndpoint(endpoint);
   const token = env[prefix + "_TOKEN"];
   const hasCredential = typeof token === "string" && token.trim().length > 0;
 
