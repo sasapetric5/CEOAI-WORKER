@@ -95,7 +95,7 @@ test('Retry-After parser rejects invalid clock and ceiling configuration', () =>
 test('Retry-After HTTP dates require the correct weekday and valid leap days', () => {
   const now = Date.UTC(2024, 0, 1, 0, 0, 0);
   assert.equal(parseRetryAfterSeconds('Fri, 29 Feb 2024 00:00:10 GMT', now), null);
-  assert.equal(parseRetryAfterSeconds('Thu, 29 Feb 2024 00:00:10 GMT', now), 5097610);
+  assert.equal(parseRetryAfterSeconds('Thu, 29 Feb 2024 00:00:10 GMT', now), MAX_RETRY_AFTER_SECONDS);
   assert.equal(parseRetryAfterSeconds('Thu, 29 Feb 2025 00:00:10 GMT', now), null);
   assert.equal(parseRetryAfterSeconds('Thu, 01 Jan 2026 24:00:00 GMT', now), null);
 });
