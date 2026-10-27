@@ -1656,3 +1656,26 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
     globalThis.fetch = originalFetch;
   }
 }
+
+// V5 rate-limit regression: reject before provider routing and key by client IP.
+{
+  const originalFetch = globalThis.fetch;
+  const limiterKeys = [];
+  let providerCalls = 0;
+  const limiterEnv = makeEnv({
+    AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true',
+    GEMINI_API_KEY_PRIMARY:'test-gemini-rate-limit',
+    RATE_LIMITER: { async limit({key}) { limiterKeys.push(key); return {success:false}; } },
+  });
+  const {cookie: limiterCookie} = await getSession(limiterEnv);
+  globalThis.fetch = async () => { providerCalls++; throw new Error('Provider must not be called after rate-limit rejection'); };
+  try {
+    const first = await worker.fetch(apiRequest(limiterCookie, JSON.stringify({prompt:'Prvi zahtev'})), limiterEnv);
+    const second = await worker.fetch(apiRequest(limiterCookie, JSON.stringify({prompt:'Drugi zahtev'}), {headers:{'CF-Connecting-IP':'198.51.100.23'}}), limiterEnv);
+    assert.equal(first.status, 429);
+    assert.equal(first.headers.get('Retry-After'), '60');
+    assert.equal(second.status, 429);
+    assert.deepEqual(limiterKeys, ['198.51.100.22','198.51.100.23']);
+    assert.equal(providerCalls, 0, 'rate-limited requests must not reach AI providers');
+  } finally { globalThis.fetch = originalFetch; }
+}
