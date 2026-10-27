@@ -32,10 +32,11 @@ test('normalizers never echo arbitrary secret-like upstream fields', () => {
   const serp = normalizeSerpBearResult([{keyword:'hello',domain:'example.com',position:1,token:secret}]);
   const umami = normalizeUmamiAggregate({data:{visitors:5,token:secret,visitorsList:[secret]}});
   const crawl = normalizeCrawl4AIResult({url:'https://example.com/?token=abc',markdown:'hello',token:secret,private:secret});
-  for (const result of [lychee,lighthouse,serp,umami,crawl]) {
-    assert.equal(JSON.stringify(result).includes(secret), false);
-    assert.equal(JSON.stringify(result).includes('token=abc'), false);
-    assert.equal(JSON.stringify(result).includes('api_key=abc'), false);
+  const named = { lychee, lighthouse, serp, umami, crawl };
+  for (const [name, result] of Object.entries(named)) {
+    assert.equal(JSON.stringify(result).includes(secret), false, name + ' leaked upstream secret');
+    assert.equal(JSON.stringify(result).includes('token=abc'), false, name + ' leaked URL token');
+    assert.equal(JSON.stringify(result).includes('api_key=abc'), false, name + ' leaked URL API key');
   }
 });
 
