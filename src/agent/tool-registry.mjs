@@ -5,6 +5,13 @@ const ID = /^[a-z][a-z0-9_]{0,47}$/;
 const RESERVED = new Set(["__proto__", "prototype", "constructor"]);
 const plain = (v) => v !== null && typeof v === "object" && !Array.isArray(v) && (Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null);
 const error = (code) => ({ ok: false, code });
+const toolSessionState = new WeakMap();
+export function createToolSession({ maxCalls = 4 } = {}) {
+  if (!Number.isSafeInteger(maxCalls) || maxCalls < 1 || maxCalls > 8) throw new TypeError("INVALID_TOOL_SESSION_LIMIT");
+  const token = Object.freeze({});
+  toolSessionState.set(token, { maxCalls, used: 0, perTool: new Map() });
+  return token;
+}
 
 function validSchema(s) {
   if (!plain(s) || Object.keys(s).some((k) => !["type", "properties", "required", "additionalProperties"].includes(k)) || s.type !== "object" || !plain(s.properties) || s.additionalProperties !== false) return false;
@@ -78,8 +85,13 @@ export function createToolRegistry({ tools = [], enabled = false, limits = {} } 
       if (context.allowedToolIds !== undefined && (!Array.isArray(context.allowedToolIds) || !context.allowedToolIds.includes(id))) return error("TOOL_CAPABILITY_DENIED");
       const checked = registry.validate(id, input);
       if (!checked.ok) return checked;
-      const calls = Number.isSafeInteger(state.calls) && state.calls >= 0 ? state.calls : 0;
+      const session = toolSessionState.get(context.session);
+      if (!session) return error("INVALID_TOOL_SESSION");
+      if (session.used >= session.maxCalls) return error("TOOL_SESSION_CALL_LIMIT");
+      const calls = session.perTool.get(id) || 0;
       if (calls >= t.limits.maxCalls) return error("TOOL_CALL_LIMIT");
+      session.used++;
+      session.perTool.set(id, calls + 1);
       const controller = new AbortController();
       let timer;
       let timedOut = false;
@@ -100,7 +112,7 @@ export function createToolRegistry({ tools = [], enabled = false, limits = {} } 
         try { json = JSON.stringify(result); } catch { return error("INVALID_TOOL_OUTPUT"); }
         if (typeof json !== "string") return error("INVALID_TOOL_OUTPUT");
         if (new TextEncoder().encode(json).byteLength > t.limits.maxOutputBytes) return error("TOOL_OUTPUT_TOO_LARGE");
-        return { ok: true, result: JSON.parse(json), calls: calls + 1 };
+        return { ok: true, result: JSON.parse(json), calls: calls + 1, sessionCalls: session.used };
       } catch (e) {
         return error(timedOut || e?.message === "TOOL_TIMEOUT" ? "TOOL_TIMEOUT" : "TOOL_EXECUTION_FAILED");
       } finally {

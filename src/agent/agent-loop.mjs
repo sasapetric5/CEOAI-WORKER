@@ -1,4 +1,5 @@
 // Bounded orchestration primitive. Does not call an LLM or external services.
+import { createToolSession } from "./tool-registry.mjs";
 const plain = (v) => v !== null && typeof v === "object" && !Array.isArray(v) && (Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null);
 const MAX_CONTEXT_BYTES = 8192;
 function withinContextLimit(value) {
@@ -35,6 +36,7 @@ export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, max
       const budgetData = budgetState.get(sharedBudget);
       if (!budgetData) return fail("INVALID_AGENT_BUDGET", 0, 0);
       const capabilities = new Set(allowedToolIds.filter((id) => skillRegistry.allows(skillId, id)));
+      const toolSession = createToolSession({ maxCalls: maxToolCalls });
       let current = input;
       let toolCalls = 0;
       for (let step = 1; step <= maxSteps; step++) {
@@ -59,7 +61,7 @@ export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, max
         budgetData.used++;
         let result;
         try {
-          result = await toolRegistry.execute(decision.toolId, decision.arguments, { allowToolExecution: true, allowedToolIds: [...capabilities] }, { calls: toolCalls });
+          result = await toolRegistry.execute(decision.toolId, decision.arguments, { allowToolExecution: true, allowedToolIds: [...capabilities], session: toolSession }, { calls: toolCalls });
         } catch {
           return fail("TOOL_EXECUTION_FAILED", step, toolCalls);
         }
