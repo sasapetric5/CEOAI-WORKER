@@ -30,7 +30,11 @@ export function createAgentHealthMonitor({ maxAgents = 64, now = () => Date.now(
   }
 
   return Object.freeze({
-    record({ agentId, outcome, durationMs, budgetUnits = 0, code } = {}) {
+    record(input = {}) {
+      if (!input || typeof input !== "object" || Array.isArray(input)) {
+        return { ok: false, code: "INVALID_HEALTH_METRIC" };
+      }
+      const { agentId, outcome, durationMs, budgetUnits = 0, code } = input;
       if (typeof agentId !== "string" || !AGENT_ID.test(agentId) ||
           !["succeeded", "failed"].includes(outcome) ||
           !integer(durationMs, MAX_DURATION_MS) ||
