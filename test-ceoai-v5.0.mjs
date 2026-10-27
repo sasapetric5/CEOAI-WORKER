@@ -1835,3 +1835,45 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
     console.info = originalInfo;
   }
 }
+
+
+// Batch free-only gate regression: every provider with an unconfirmed quota stays disabled.
+{
+  const originalFetch = globalThis.fetch;
+  let externalCalls = 0;
+  let workersAiCalls = 0;
+  globalThis.fetch = async () => { externalCalls++; throw new Error("Unconfirmed provider must not be called"); };
+  try {
+    const env = makeEnv({
+      AI_ENABLED: "true",
+      EXTERNAL_AI_ENABLED: "true",
+      AI: { async run() { workersAiCalls++; return { response: "must not run" }; } },
+      WORKERS_AI_ENABLED: "true",
+      WORKERS_AI_FREE_CONFIRMED: "false",
+      GEMINI_FREE_CONFIRMED: "false",
+      OPENROUTER_FREE_CONFIRMED: "false",
+      ZAI_GLM_FLASH_FREE_CONFIRMED: "false",
+      DEEPSEEK_FREE_CONFIRMED: "false",
+      MISTRAL_FREE_CONFIRMED: "false",
+      XAI_FREE_CONFIRMED: "false",
+      NVIDIA_FREE_CONFIRMED: "false",
+      HF_FREE_CONFIRMED: "false",
+      GEMINI_API_KEY_PRIMARY: "test-unconfirmed-gemini",
+      OPENROUTER_API_KEY: "test-unconfirmed-openrouter",
+      ZAI_GLM_FLASH_KEY_1: "test-unconfirmed-glm",
+      DEEPSEEK_API_KEY: "test-unconfirmed-deepseek",
+      MISTRAL_API_KEY: "test-unconfirmed-mistral",
+      XAI_KEY: "test-unconfirmed-xai",
+      NVIDIA_KEY: "test-unconfirmed-nvidia",
+      HF_TOKEN: "test-unconfirmed-hf",
+    });
+    const { cookie } = await getSession(env);
+    const response = await worker.fetch(apiRequest(cookie, JSON.stringify({ prompt: "Provera besplatnih ograničenja" })), env);
+    assert.equal(response.status, 503);
+    assert.match((await response.json()).error, /Nema konfigurisanog provajdera/);
+    assert.equal(externalCalls, 0, "no external provider may be called without free-quota confirmation");
+    assert.equal(workersAiCalls, 0, "Workers AI must remain disabled without its explicit free confirmation");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
