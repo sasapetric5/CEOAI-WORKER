@@ -1679,3 +1679,22 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
     assert.equal(providerCalls, 0, 'rate-limited requests must not reach AI providers');
   } finally { globalThis.fetch = originalFetch; }
 }
+
+// V5 rate-limit failure regression: limiter exceptions fail closed before any AI call.
+{
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  const brokenLimiterEnv = makeEnv({
+    AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true',
+    GEMINI_API_KEY_PRIMARY:'test-gemini-limiter-failure',
+    RATE_LIMITER: { async limit() { throw new Error('simulated limiter outage'); } },
+  });
+  const {cookie: brokenLimiterCookie} = await getSession(brokenLimiterEnv);
+  globalThis.fetch = async () => { providerCalls++; throw new Error('Provider must not be called when limiter fails'); };
+  try {
+    const response = await worker.fetch(apiRequest(brokenLimiterCookie, JSON.stringify({prompt:'Test zaštite pri kvaru limitera'})), brokenLimiterEnv);
+    assert.equal(response.status, 503, 'limiter outage must fail closed with service unavailable');
+    assert.equal(providerCalls, 0, 'limiter outage must not trigger paid or free provider requests');
+    assert.equal((await response.json()).success, false);
+  } finally { globalThis.fetch = originalFetch; }
+}
