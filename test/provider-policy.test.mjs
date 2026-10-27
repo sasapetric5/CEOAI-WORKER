@@ -80,3 +80,10 @@ test("Retry-After parser keeps custom caps non-negative and bounded", () => {
   assert.equal(parseRetryAfterSeconds("120", 0, Infinity), 120);
   assert.equal(parseRetryAfterSeconds("120", NaN), null);
 });
+
+test("provider cooldown rejects impossible HTTP statuses and rounds Retry-After up", () => {
+  assert.equal(providerFailureCooldown({ status: 600 }), null);
+  assert.equal(providerFailureCooldown({ status: 503.5 }), null);
+  assert.equal(providerFailureCooldown({ status: Infinity }), null);
+  assert.equal(providerFailureCooldown({ status: 429, retryAfterSeconds: 60.2 }).ttl, 61);
+});
