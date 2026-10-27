@@ -24,6 +24,7 @@ import { handleMemoryReset } from "./src/v5-modules/session.mjs";
 import { parseRetryAfterSeconds, providerFailureCooldown } from "./src/v5-modules/provider-policy.mjs";
 import { recordProviderOutcome } from "./src/v5-modules/agent-health.mjs";
 import { providerHealthRoutingAdjustment } from "./src/v5-modules/provider-recovery.mjs";
+import { providerCircuitDecision } from "./src/v5-modules/provider-circuit-breaker.mjs";
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
 // Quota cooldowns differ by provider signal: monthly exhaustion must not be retried every few hours.
@@ -1260,11 +1261,13 @@ export default {
       // Stable secondary sort by original order to keep key rotation predictable.
       // Recent provider health is a bounded tie-breaker; capability fit remains dominant.
       // Health telemetry is advisory: a KV read error falls back to the original capability score.
+      const providerHealthById = new Map();
       const rankedCandidates = await Promise.all(candidates.map(async (p, idx) => {
         const baseScore = scoreProviderForIntent(p.provider, intent);
         let adjustment = 0;
         try {
           const health = await env.KV_MEMORY.get(`health:provider:${p.id}`, "json");
+          if (health && typeof health === "object") providerHealthById.set(p.id, health);
           adjustment = providerHealthRoutingAdjustment(health, Date.now());
         } catch {}
         return { p, idx, score: baseScore + adjustment };
@@ -1306,6 +1309,17 @@ export default {
       for (const candidate of candidates) {
         const remainingMs = providerDeadline - Date.now();
         if (remainingMs < 2000) break;
+        // Circuit breaker only covers repeated transient failures; quota/auth cooldowns remain authoritative.
+        // KV health is advisory and non-atomic across Worker isolates; the cooldown key remains the shared gate.
+        const circuit = providerCircuitDecision(providerHealthById.get(candidate.id), Date.now());
+        if (circuit.state === "open") {
+          sawCooldownSkip = true;
+          console.info("CEOAI_DIAG provider_circuit_skip", JSON.stringify({ provider: candidate.id, state: circuit.state }));
+          continue;
+        }
+        if (circuit.state === "half_open") {
+          console.info("CEOAI_DIAG provider_circuit_probe", JSON.stringify({ provider: candidate.id, state: circuit.state }));
+        }
         const cooldownKey = `cooldown:${candidate.id}`;
         let coolingDown = false;
         try { coolingDown = Boolean(await env.KV_MEMORY.get(cooldownKey)); } catch {
