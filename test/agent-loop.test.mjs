@@ -152,3 +152,15 @@ test("audit logger exceptions do not interrupt agent runs", async () => {
   const result = await loop.run({ skillId: "safe_research", input: {}, allowToolExecution: true, allowedToolIds: [], plan: async () => ({ type: "final", output: "ok" }) });
   assert.equal(result.ok, true);
 });
+
+test("audit log records sanitized planner failures", async () => {
+  const auditLog = createAgentAuditLog({ now: () => 12 });
+  const { loop: original } = setup();
+  const registry = createToolRegistry({ enabled: true, tools: [] });
+  const skills = createSkillRegistry({ toolRegistry: registry, skills: [{ id: "safe_research", version: "1.0.0", description: "fixture", allowedToolIds: [] }] });
+  const loop = createAgentLoop({ toolRegistry: registry, skillRegistry: skills, auditLog });
+  const result = await loop.run({ skillId: "safe_research", input: {}, allowToolExecution: true, allowedToolIds: [], plan: async () => { throw new Error("prompt=private"); }, runId: "planner_fail_1" });
+  assert.equal(result.code, "PLANNER_FAILED");
+  assert.deepEqual(auditLog.list({ runId: "planner_fail_1" }).map(e => [e.type, e.code]), [["run_started", undefined], ["run_failed", "PLANNER_FAILED"]]);
+  assert.equal(JSON.stringify(auditLog.list()).includes("prompt=private"), false);
+});
