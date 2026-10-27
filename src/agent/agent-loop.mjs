@@ -18,14 +18,17 @@ export function createAgentBudget({ maxToolCalls = 4 } = {}) {
   return token;
 }
 
-export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, maxToolCalls = 4 } = {}) {
+export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, maxToolCalls = 4, auditLog = null } = {}) {
   if (!toolRegistry || typeof toolRegistry.execute !== "function" || typeof toolRegistry.get !== "function") throw new TypeError("TOOL_REGISTRY_REQUIRED");
   if (!skillRegistry || typeof skillRegistry.allows !== "function" || typeof skillRegistry.get !== "function") throw new TypeError("SKILL_REGISTRY_REQUIRED");
   if (!Number.isSafeInteger(maxSteps) || maxSteps < 1 || maxSteps > 8) throw new TypeError("INVALID_MAX_STEPS");
   if (!Number.isSafeInteger(maxToolCalls) || maxToolCalls < 1 || maxToolCalls > 8) throw new TypeError("INVALID_MAX_TOOL_CALLS");
 
+  if (auditLog !== null && typeof auditLog.record !== "function") throw new TypeError("INVALID_AUDIT_LOG");
+  const audit = (event) => { try { auditLog?.record(event); } catch { /* auditing must not change agent results */ } };
+
   return Object.freeze({
-    async run({ skillId, input, plan, allowToolExecution = false, allowedToolIds = [], budget } = {}) {
+    async run({ skillId, input, plan, allowToolExecution = false, allowedToolIds = [], budget, runId = crypto.randomUUID() } = {}) {
       if (allowToolExecution !== true) return fail("EXECUTION_NOT_APPROVED", 0, 0);
       const skill = skillRegistry.get(skillId);
       if (!skill) return fail("SKILL_NOT_FOUND", 0, 0);
@@ -35,6 +38,7 @@ export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, max
       const sharedBudget = budget === undefined ? createAgentBudget({ maxToolCalls }) : budget;
       const budgetData = budgetState.get(sharedBudget);
       if (!budgetData) return fail("INVALID_AGENT_BUDGET", 0, 0);
+      audit({ type: "run_started", runId });
       const capabilities = new Set(allowedToolIds.filter((id) => skillRegistry.allows(skillId, id)));
       const toolSession = createToolSession({ maxCalls: maxToolCalls });
       let current = input;
@@ -52,6 +56,7 @@ export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, max
           let serialized;
           try { serialized = JSON.stringify(decision.output); } catch { return fail("INVALID_FINAL_OUTPUT", step, toolCalls); }
           if (typeof serialized !== "string" || new TextEncoder().encode(serialized).byteLength > 8192) return fail("INVALID_FINAL_OUTPUT", step, toolCalls);
+          audit({ type: "run_succeeded", runId, step, toolCalls });
           return { ok: true, output: JSON.parse(serialized), steps: step, toolCalls, budgetUsed: budgetData.used };
         }
         if (toolCalls >= maxToolCalls) return fail("AGENT_TOOL_CALL_LIMIT", step, toolCalls);
@@ -59,14 +64,24 @@ export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, max
         if (typeof decision.toolId !== "string" || !capabilities.has(decision.toolId) || !skillRegistry.allows(skillId, decision.toolId)) return fail("TOOL_CAPABILITY_DENIED", step, toolCalls);
         // Reserve before awaiting: concurrent runs sharing this token cannot overspend.
         budgetData.used++;
+        audit({ type: "tool_reserved", runId, step, toolCalls });
         let result;
         try {
           result = await toolRegistry.execute(decision.toolId, decision.arguments, { allowToolExecution: true, allowedToolIds: [...capabilities], session: toolSession }, { calls: toolCalls });
         } catch {
+          audit({ type: "tool_failed", runId, code: "TOOL_EXECUTION_FAILED", step, toolCalls });
+          audit({ type: "run_failed", runId, code: "TOOL_EXECUTION_FAILED", step, toolCalls });
           return fail("TOOL_EXECUTION_FAILED", step, toolCalls);
         }
-        if (!result || result.ok !== true) return fail(result?.code || "TOOL_EXECUTION_FAILED", step, toolCalls);
+        if (!result || result.ok !== true) {
+          const code = typeof result?.code === "string" ? result.code : "TOOL_EXECUTION_FAILED";
+          const safeCode = /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? code : "TOOL_EXECUTION_FAILED";
+          audit({ type: "tool_failed", runId, code: safeCode, step, toolCalls });
+          audit({ type: "run_failed", runId, code: safeCode, step, toolCalls });
+          return fail(code, step, toolCalls);
+        }
         toolCalls++;
+        audit({ type: "tool_succeeded", runId, step, toolCalls });
         const nextContext = { previous: current, tool: decision.toolId, result: result.result };
         if (!withinContextLimit(nextContext)) return fail("AGENT_CONTEXT_TOO_LARGE", step, toolCalls);
         current = nextContext;

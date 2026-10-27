@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createToolRegistry } from "../src/agent/tool-registry.mjs";
 import { createSkillRegistry } from "../src/agent/skill-registry.mjs";
 import { createAgentLoop, createAgentBudget } from "../src/agent/agent-loop.mjs";
+import { createAgentAuditLog } from "../src/agent/audit-log.mjs";
 function setup({ maxSteps = 4, maxToolCalls = 2, executeOverride } = {}) {
   let executions = 0;
   const base = createToolRegistry({ enabled: true, tools: [{ id: "local_echo", description: "Returns a local test value.", inputSchema: { type: "object", properties: { value: { type: "string", maxLength: 40 } }, required: ["value"], additionalProperties: false }, handler: async ({ value }) => { executions++; return { value }; } }] });
@@ -118,4 +119,36 @@ test("failed tool execution still consumes shared budget", async () => {
   const second = await runArgs(loop, toolPlan, { budget });
   assert.equal(second.code, "AGENT_SHARED_BUDGET_EXHAUSTED");
   assert.equal(second.toolCalls, 0);
+});
+
+test("agent loop records privacy-safe audit events on successful runs", async () => {
+  const auditLog = createAgentAuditLog({ now: () => 10 });
+  const registry = createToolRegistry({ enabled: true, tools: [{ id: "local_echo", description: "safe fixture", inputSchema: { type: "object", properties: { value: { type: "string", maxLength: 40 } }, required: ["value"], additionalProperties: false }, handler: async () => "ok" }] });
+  const skills = createSkillRegistry({ toolRegistry: registry, skills: [{ id: "safe_research", version: "1.0.0", description: "fixture", allowedToolIds: ["local_echo"] }] });
+  const loop = createAgentLoop({ toolRegistry: registry, skillRegistry: skills, auditLog });
+  const result = await runArgs(loop, async ({ step }) => step === 1 ? ({ type: "tool", toolId: "local_echo", arguments: { value: "do not log this" } }) : ({ type: "final", output: "done" }), { runId: "audit_run_1" });
+  assert.equal(result.ok, true);
+  assert.deepEqual(auditLog.list({ runId: "audit_run_1" }).map(e => e.type), ["run_started", "tool_reserved", "tool_succeeded", "run_succeeded"]);
+  assert.equal(JSON.stringify(auditLog.list()).includes("do not log this"), false);
+});
+
+test("agent loop audit records sanitized tool failures", async () => {
+  const auditLog = createAgentAuditLog({ now: () => 11 });
+  const { loop: base } = setup({ executeOverride: async () => ({ ok: false, code: "TOOL_TIMEOUT" }) });
+  const loop = createAgentLoop({
+    toolRegistry: { execute: base ? async () => ({ ok: false, code: "TOOL_TIMEOUT" }) : null, get: () => ({ id: "local_echo" }) },
+    skillRegistry: { allows: () => true, get: () => ({ allowedToolIds: ["local_echo"] }) },
+    auditLog,
+  });
+  const result = await loop.run({ skillId: "safe_research", input: {}, allowToolExecution: true, allowedToolIds: ["local_echo"], plan: async () => ({ type: "tool", toolId: "local_echo", arguments: {} }), runId: "audit_fail_1" });
+  assert.equal(result.code, "TOOL_TIMEOUT");
+  assert.deepEqual(auditLog.list({ runId: "audit_fail_1" }).map(e => e.type), ["run_started", "tool_reserved", "tool_failed", "run_failed"]);
+});
+
+test("audit logger exceptions do not interrupt agent runs", async () => {
+  const registry = createToolRegistry({ enabled: true, tools: [] });
+  const skills = createSkillRegistry({ toolRegistry: registry, skills: [{ id: "safe_research", version: "1.0.0", description: "fixture", allowedToolIds: [] }] });
+  const loop = createAgentLoop({ toolRegistry: registry, skillRegistry: skills, auditLog: { record() { throw new Error("private"); } } });
+  const result = await loop.run({ skillId: "safe_research", input: {}, allowToolExecution: true, allowedToolIds: [], plan: async () => ({ type: "final", output: "ok" }) });
+  assert.equal(result.ok, true);
 });
