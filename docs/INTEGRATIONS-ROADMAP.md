@@ -16,7 +16,9 @@ Umami is the initial analytics choice; Plausible is not added in parallel. This 
 
 The Worker is the coordinator. Browser-driven audits and Python/browser crawling must run in separately hosted runners. SerpBear and Umami also require their own service/storage and authenticated access. The Worker must not try to execute CLI binaries, Chromium, or Python directly.
 
-src/integrations/registry.mjs currently defines capability contracts and safe readiness reporting only. It makes no network requests and does not activate any integration. A status of CONFIG_PRESENT_NOT_IMPLEMENTED means configuration appears present, but no adapter is implemented.
+src/integrations/registry.mjs defines capability contracts and safe readiness reporting only. It makes no network requests and does not activate any integration. A status of CONFIG_PRESENT_NOT_IMPLEMENTED means configuration appears present, but no adapter is implemented.
+
+The Lychee result normalizer in src/integrations/lychee-result.mjs is a local, deterministic parsing/sanitization layer for JSON produced by a future runner. It does not execute Lychee or make outbound requests. It validates report shape and counters, strips URL query strings/fragments, bounds text and failure entries, and ignores unknown upstream fields. This is not yet an end-to-end integration.
 
 ## Rollout order
 
@@ -41,4 +43,4 @@ src/integrations/registry.mjs currently defines capability contracts and safe re
 
 ## Current status
 
-The registry and tests are scaffolding only. None of the five external services is called by the Worker yet. The next implementation step is Lychee, after selecting a self-hosted runner reachable over authenticated HTTPS. The other adapters follow the order above and each must pass tests before activation.
+The registry and local Lychee result-normalization layer are scaffolding only. No Lychee process or external service is called by the Worker. The next step is a separately hosted, self-hosted runner reachable over authenticated HTTPS; do not set secrets or activate it until the runner and its URL allowlist are reviewed. The other adapters follow the order above and each must pass tests before activation.
