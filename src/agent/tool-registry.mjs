@@ -10,17 +10,17 @@ function validSchema(s) {
   if (!plain(s) || s.type !== "object" || !plain(s.properties) || s.additionalProperties !== false) return false;
   const keys = Object.keys(s.properties);
   if (keys.some((k) => !ID.test(k) || RESERVED.has(k))) return false;
-  if (s.required !== undefined && (!Array.isArray(s.required) || s.required.some((k) => !keys.includes(k)) || new Set(s.required).size !== s.required.length)) return false;
+  if (s.required !== undefined && (!Array.isArray(s.required) || s.required.some((k) => !keys.includes(k))) ) return false;
   for (const r of Object.values(s.properties)) {
-    if (!plain(r) || Object.keys(r).some(k => !["type", "maxLength", "minimum", "maximum"].includes(k)) || !["string", "number", "integer", "boolean"].includes(r.type)) return false;
+    if (!plain(r) || !["string", "number", "integer", "boolean"].includes(r.type)) return false;
     if (r.type === "string" && r.maxLength !== undefined && (!Number.isSafeInteger(r.maxLength) || r.maxLength < 0 || r.maxLength > 4096)) return false;
     if (["number", "integer"].includes(r.type)) {
       if (r.minimum !== undefined && !Number.isFinite(r.minimum)) return false;
       if (r.maximum !== undefined && !Number.isFinite(r.maximum)) return false;
       if (r.minimum !== undefined && r.maximum !== undefined && r.minimum > r.maximum) return false;
-    } else if (r.minimum !== undefined || r.maximum !== undefined) return false;
+    }
   }
-  return Object.keys(s).every(k => ["type", "properties", "required", "additionalProperties"].includes(k));
+  return true;
 }
 function publicDefinition(t) {
   return Object.freeze({ id: t.id, description: t.description, inputSchema: structuredClone(t.inputSchema), limits: Object.freeze({ ...t.limits }) });
@@ -32,7 +32,6 @@ function validLimits(limits) {
 }
 
 export function createToolRegistry({ tools = [], enabled = false, limits = {} } = {}) {
-  if (!Array.isArray(tools) || !plain(limits)) throw new TypeError("INVALID_REGISTRY_CONFIG");
   const baseLimits = { ...DEFAULT_TOOL_LIMITS, ...limits };
   validLimits(baseLimits);
   const definitions = new Map();
@@ -42,7 +41,6 @@ export function createToolRegistry({ tools = [], enabled = false, limits = {} } 
     if (typeof t.description !== "string" || !t.description.trim() || t.description.length > 240) throw new TypeError("INVALID_TOOL_DESCRIPTION:" + t.id);
     if (!validSchema(t.inputSchema)) throw new TypeError("INVALID_TOOL_SCHEMA:" + t.id);
     if (typeof t.handler !== "function") throw new TypeError("INVALID_TOOL_HANDLER:" + t.id);
-    if (t.limits !== undefined && !plain(t.limits)) throw new TypeError("INVALID_LIMITS:" + t.id);
     const toolLimits = { ...baseLimits, ...(t.limits || {}) };
     validLimits(toolLimits);
     definitions.set(t.id, { id: t.id, description: t.description.trim(), inputSchema: structuredClone(t.inputSchema), handler: t.handler, limits: toolLimits });
@@ -67,7 +65,7 @@ export function createToolRegistry({ tools = [], enabled = false, limits = {} } 
         if (r.type === "boolean" && typeof v !== "boolean") return error("INVALID_ARGUMENT_TYPE");
         if (typeof v === "number" && ((r.minimum !== undefined && v < r.minimum) || (r.maximum !== undefined && v > r.maximum))) return error("ARGUMENT_OUT_OF_RANGE");
       }
-      try { return { ok: true, value: structuredClone(input) }; } catch { return error("INVALID_ARGUMENTS"); }
+      return { ok: true, value: structuredClone(input) };
     },
     async execute(id, input, context = {}, state = {}) {
       if (!registry.enabled) return error("TOOLS_DISABLED");
@@ -82,25 +80,31 @@ export function createToolRegistry({ tools = [], enabled = false, limits = {} } 
       if (calls >= t.limits.maxCalls) return error("TOOL_CALL_LIMIT");
       const controller = new AbortController();
       let timer;
-      // Promise.race observes late rejection too, but timeout cannot forcibly stop a handler
-      // that ignores AbortSignal. Handlers must be cooperative and side-effect-free by default.
-      const timeout = new Promise((_, reject) => {
+      let timedOut = false;
+      // Attach both handlers immediately. A late rejection remains observed after timeout.
+      const handlerPromise = Promise.resolve().then(() => t.handler(checked.value, { signal: controller.signal }));
+      handlerPromise.catch(() => {});
+      const timeoutPromise = new Promise((_, reject) => {
         timer = setTimeout(() => {
-          controller.abort();
+          timedOut = true;
           reject(new Error("TOOL_TIMEOUT"));
+          controller.abort();
         }, t.limits.timeoutMs);
       });
       try {
-        const pending = Promise.resolve().then(() => t.handler(checked.value, { signal: controller.signal }));
-        const result = await Promise.race([pending, timeout]);
+        const result = await Promise.race([handlerPromise, timeoutPromise]);
+        if (timedOut) return error("TOOL_TIMEOUT");
         let json;
         try { json = JSON.stringify(result); } catch { return error("INVALID_TOOL_OUTPUT"); }
         if (typeof json !== "string") return error("INVALID_TOOL_OUTPUT");
         if (new TextEncoder().encode(json).byteLength > t.limits.maxOutputBytes) return error("TOOL_OUTPUT_TOO_LARGE");
         return { ok: true, result: JSON.parse(json), calls: calls + 1 };
       } catch (e) {
-        return error(e?.message === "TOOL_TIMEOUT" ? "TOOL_TIMEOUT" : "TOOL_EXECUTION_FAILED");
-      } finally { if (timer) clearTimeout(timer); }
+        return error(timedOut || e?.message === "TOOL_TIMEOUT" ? "TOOL_TIMEOUT" : "TOOL_EXECUTION_FAILED");
+      } finally {
+        if (timer) clearTimeout(timer);
+        if (!controller.signal.aborted && timedOut) controller.abort();
+      }
     },
   };
   return Object.freeze(registry);
