@@ -76,28 +76,32 @@ export async function fetchPublicHtml(input, options = {}) {
         headers: { Accept: 'text/html,application/xhtml+xml;q=0.9', 'User-Agent': 'CEOAI-PublicAudit/0.1 (+https://ceoai.dev)' },
       });
     } catch (error) {
+      clearTimeout(timer);
       return { ok: false, code: error?.name === 'AbortError' ? 'FETCH_TIMEOUT' : 'FETCH_FAILED' };
-    } finally { clearTimeout(timer); }
+    }
 
     if (REDIRECT_STATUSES.has(response.status)) {
-      if (redirects === MAX_REDIRECTS) return { ok: false, code: 'TOO_MANY_REDIRECTS' };
+      if (redirects === MAX_REDIRECTS) { clearTimeout(timer); return { ok: false, code: 'TOO_MANY_REDIRECTS' }; }
       const location = response.headers.get('location');
-      if (!location) return { ok: false, code: 'REDIRECT_WITHOUT_LOCATION' };
+      if (!location) { clearTimeout(timer); return { ok: false, code: 'REDIRECT_WITHOUT_LOCATION' }; }
       checked = validate(new URL(location, current).toString());
-      if (!checked.ok) return { ok: false, code: 'REDIRECT_TARGET_BLOCKED', reason: checked.code };
+      if (!checked.ok) { clearTimeout(timer); return { ok: false, code: 'REDIRECT_TARGET_BLOCKED', reason: checked.code }; }
       current = checked.url;
+      clearTimeout(timer);
       continue;
     }
-    if (!response.ok) return { ok: false, code: 'HTTP_ERROR', status: response.status, finalUrl: current.toString() };
+    if (!response.ok) { clearTimeout(timer); return { ok: false, code: 'HTTP_ERROR', status: response.status, finalUrl: current.toString() }; }
     const type = (response.headers.get('content-type') || '').toLowerCase();
-    if (!type.includes('text/html') && !type.includes('application/xhtml+xml'))
+    if (!type.includes('text/html') && !type.includes('application/xhtml+xml')) {
+      clearTimeout(timer);
       return { ok: false, code: 'CONTENT_TYPE_NOT_HTML', contentType: type.slice(0, 100) };
+    }
     try {
       const html = await readBounded(response, maxBytes);
       return { ok: true, status: response.status, finalUrl: current.toString(), contentType: type, html };
     } catch (error) {
-      return { ok: false, code: error?.message === 'HTML_TOO_LARGE' ? 'HTML_TOO_LARGE' : 'BODY_READ_FAILED' };
-    }
+      return { ok: false, code: error?.name === 'AbortError' ? 'FETCH_TIMEOUT' : error?.message === 'HTML_TOO_LARGE' ? 'HTML_TOO_LARGE' : 'BODY_READ_FAILED' };
+    } finally { clearTimeout(timer); }
   }
   return { ok: false, code: 'TOO_MANY_REDIRECTS' };
 }
