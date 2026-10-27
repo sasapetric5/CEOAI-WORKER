@@ -68,3 +68,21 @@ test("skills only declare registered capabilities", () => {
   assert.throws(() => createSkillRegistry({ toolRegistry: tools, skills: [{ id: "bad_skill", version: "1.0.0", description: "Invalid.", allowedToolIds: ["missing"] }] }), /UNKNOWN_SKILL_TOOL/);
   assert.throws(() => createSkillRegistry({ toolRegistry: tools, skills: [{ id: "bad_skill", version: "1.0.0", description: "Duplicate.", allowedToolIds: ["local_lookup", "local_lookup"] }] }), /DUPLICATE_SKILL_TOOL/);
 });
+
+test("session budget is enforced atomically across concurrent tools", async () => {
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  let started = 0;
+  const tool = (id) => ({ id, description: "Concurrent fixture.", inputSchema: { type: "object", properties: {}, additionalProperties: false }, handler: async () => { started++; await gate; return { id }; } });
+  const r = createToolRegistry({ enabled: true, tools: [tool("first_tool"), tool("second_tool")] });
+  const ctx = { allowToolExecution: true, allowedToolIds: ["first_tool", "second_tool"], session: session(1) };
+  const a = r.execute("first_tool", {}, ctx);
+  const b = r.execute("second_tool", {}, ctx);
+  const early = await Promise.all([a, b]);
+  release();
+  const results = await Promise.all([a, b]);
+  assert.equal(results.filter((x) => x.ok).length, 1);
+  assert.equal(results.filter((x) => x.code === "TOOL_SESSION_CALL_LIMIT").length, 1);
+  assert.equal(started, 1);
+  assert.equal(early.filter((x) => x.code === "TOOL_SESSION_CALL_LIMIT").length, 1);
+});
