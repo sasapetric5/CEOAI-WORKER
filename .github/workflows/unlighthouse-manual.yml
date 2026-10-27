@@ -1,0 +1,75 @@
+name: CEOAI Unlighthouse browser audit
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ceoai-unlighthouse-manual
+  cancel-in-progress: true
+
+jobs:
+  browser-audit:
+    name: Run bounded Unlighthouse smoke audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24.13.1'
+          cache: pnpm
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@fe02b34f77f2bc7e4e2f0c6f9f3b4a6f6a6f2c8b # v4.0.0
+        with:
+          version: 10
+
+      - name: Check fixed smoke-test target
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error \
+            --connect-timeout 8 --max-time 20 --max-filesize 1048576 \
+            --proto '=https' --output /tmp/unlighthouse-target.html \
+            https://example.com
+          grep -Eqi '<html|<!doctype' /tmp/unlighthouse-target.html
+
+      - name: Install Unlighthouse CI CLI
+        shell: bash
+        run: pnpm add --global unlighthouse@beta
+
+      - name: Run real browser audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          unlighthouse-ci --site https://example.com --reporter json --no-cache --output-path .unlighthouse
+          test -s .unlighthouse/ci-result.json
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const file = '.unlighthouse/ci-result.json';
+          const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+          if (!Array.isArray(data) || data.length < 1) {
+            throw new Error('Unlighthouse report is empty or has an unexpected shape');
+          }
+          const rows = data.filter((row) => row && typeof row === 'object' && typeof row.path === 'string');
+          if (rows.length !== data.length) {
+            throw new Error('Unlighthouse report contains invalid rows');
+          }
+          console.log(JSON.stringify({
+            rows: rows.length,
+            paths: rows.slice(0, 10).map((row) => row.path),
+            scoredRows: rows.filter((row) => typeof row.score === 'number').length,
+          }, null, 2));
+          NODE
+
+      - name: Upload bounded report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ceoai-unlighthouse-smoke-report
+          path: .unlighthouse/ci-result.json
+          if-no-files-found: warn
+          retention-days: 7
