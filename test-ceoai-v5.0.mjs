@@ -1824,10 +1824,11 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
     const { cookie } = await getSession(env);
     const response = await worker.fetch(apiRequest(cookie, JSON.stringify({ prompt: "Server error fallback" })), env);
     assert.equal(response.status, 200);
-    assert.equal((await response.json()).reply, "Fallback posle greške servera.");
+    const payload = await response.json();
+    assert.equal(payload.reply, "Fallback posle greške servera.");
     assert.equal(calls.length, 2);
     assert.ok(await env.KV_MEMORY.get("cooldown:gemini-1"));
-    assert.equal(JSON.stringify(await response.json()).includes("do-not-leak"), false);
+    assert.equal(JSON.stringify(payload).includes("do-not-leak"), false);
   } finally {
     globalThis.fetch = originalFetch;
     console.warn = originalWarn;
