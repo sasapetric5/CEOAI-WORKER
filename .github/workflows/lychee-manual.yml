@@ -21,7 +21,11 @@ jobs:
         run: |
           set -euo pipefail
           curl --fail --silent --show-error \
-            --max-time 12 \
+            --connect-timeout 8 \
+            --max-time 30 \
+            --retry 2 \
+            --retry-all-errors \
+            --retry-delay 2 \
             --max-filesize 1048576 \
             --proto '=https' \
             --output index.html \
