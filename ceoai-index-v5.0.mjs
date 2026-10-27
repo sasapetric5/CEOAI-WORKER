@@ -23,6 +23,7 @@ import { prepareConversation, appendReply, withSummary } from "./src/v5-modules/
 import { handleMemoryReset } from "./src/v5-modules/session.mjs";
 import { parseRetryAfterSeconds, providerFailureCooldown } from "./src/v5-modules/provider-policy.mjs";
 import { recordProviderOutcome } from "./src/v5-modules/agent-health.mjs";
+import { providerHealthRoutingAdjustment } from "./src/v5-modules/provider-recovery.mjs";
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
 // Quota cooldowns differ by provider signal: monthly exhaustion must not be retried every few hours.
@@ -1257,8 +1258,18 @@ export default {
 
       // Capability-aware ranking: highest score for the detected intent first.
       // Stable secondary sort by original order to keep key rotation predictable.
-      candidates = candidates
-        .map((p, idx) => ({ p, idx, score: scoreProviderForIntent(p.provider, intent) }))
+      // Recent provider health is a bounded tie-breaker; capability fit remains dominant.
+      // Health telemetry is advisory: a KV read error falls back to the original capability score.
+      const rankedCandidates = await Promise.all(candidates.map(async (p, idx) => {
+        const baseScore = scoreProviderForIntent(p.provider, intent);
+        let adjustment = 0;
+        try {
+          const health = await env.KV_MEMORY.get(`health:provider:${p.id}`, "json");
+          adjustment = providerHealthRoutingAdjustment(health, Date.now());
+        } catch {}
+        return { p, idx, score: baseScore + adjustment };
+      }));
+      candidates = rankedCandidates
         .sort((a, b) => b.score - a.score || a.idx - b.idx)
         .map(x => x.p);
 
