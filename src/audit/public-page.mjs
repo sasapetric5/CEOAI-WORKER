@@ -76,9 +76,26 @@ async function readBounded(response, maxBytes, signal) {
 
 function publicUrlForOutput(url) {
   const safe = new URL(url.toString());
+  safe.username = '';
+  safe.password = '';
   safe.search = '';
   safe.hash = '';
   return safe.toString();
+}
+
+function safeCanonicalUrl(raw, pageUrl) {
+  try {
+    const candidate = new URL(decodeEntities(raw), pageUrl);
+    if (!['http:', 'https:'].includes(candidate.protocol) || candidate.username || candidate.password ||
+        isBlockedHostname(candidate.hostname)) return null;
+    return publicUrlForOutput(candidate);
+  } catch {
+    return null;
+  }
+}
+
+async function discardResponseBody(response) {
+  try { await response.body?.cancel('response not needed'); } catch {}
 }
 
 export async function fetchPublicHtml(input, options = {}) {
@@ -104,19 +121,21 @@ export async function fetchPublicHtml(input, options = {}) {
     }
 
     if (REDIRECT_STATUSES.has(response.status)) {
-      if (redirects === MAX_REDIRECTS) { clearTimeout(timer); return { ok: false, code: 'TOO_MANY_REDIRECTS' }; }
+      if (redirects === MAX_REDIRECTS) { clearTimeout(timer); await discardResponseBody(response); return { ok: false, code: 'TOO_MANY_REDIRECTS' }; }
       const location = response.headers.get('location');
-      if (!location) { clearTimeout(timer); return { ok: false, code: 'REDIRECT_WITHOUT_LOCATION' }; }
+      if (!location) { clearTimeout(timer); await discardResponseBody(response); return { ok: false, code: 'REDIRECT_WITHOUT_LOCATION' }; }
       checked = validate(new URL(location, current).toString());
-      if (!checked.ok) { clearTimeout(timer); return { ok: false, code: 'REDIRECT_TARGET_BLOCKED', reason: checked.code }; }
+      if (!checked.ok) { clearTimeout(timer); await discardResponseBody(response); return { ok: false, code: 'REDIRECT_TARGET_BLOCKED', reason: checked.code }; }
+      await discardResponseBody(response);
       current = checked.url;
       clearTimeout(timer);
       continue;
     }
-    if (!response.ok) { clearTimeout(timer); return { ok: false, code: 'HTTP_ERROR', status: response.status, finalUrl: publicUrlForOutput(current) }; }
+    if (!response.ok) { clearTimeout(timer); await discardResponseBody(response); return { ok: false, code: 'HTTP_ERROR', status: response.status, finalUrl: publicUrlForOutput(current) }; }
     const type = (response.headers.get('content-type') || '').toLowerCase();
     if (!type.includes('text/html') && !type.includes('application/xhtml+xml')) {
       clearTimeout(timer);
+      await discardResponseBody(response);
       return { ok: false, code: 'CONTENT_TYPE_NOT_HTML', contentType: type.slice(0, 100) };
     }
     try {
@@ -149,7 +168,7 @@ export function extractHtmlObservations(html, pageUrl) {
   const canonicalRaw = firstMatch(html, /<link\b(?=[^>]*\brel\s*=\s*["']canonical["'])[^>]*\bhref\s*=\s*["']([^"']+)["'][^>]*>/i) ||
     firstMatch(html, /<link\b(?=[^>]*\bhref\s*=\s*["']([^"']+)["'])(?=[^>]*\brel\s*=\s*["']canonical["'])[^>]*>/i);
   let canonical = null;
-  try { if (canonicalRaw) canonical = publicUrlForOutput(new URL(decodeEntities(canonicalRaw), pageUrl)); } catch {}
+  if (canonicalRaw) canonical = safeCanonicalUrl(canonicalRaw, pageUrl);
   const robots = firstMatch(html, /<meta\b(?=[^>]*\bname\s*=\s*["']robots["'])[^>]*\bcontent\s*=\s*["']([^"']*)["'][^>]*>/i) ||
     firstMatch(html, /<meta\b(?=[^>]*\bcontent\s*=\s*["']([^"']*)["'])(?=[^>]*\bname\s*=\s*["']robots["'])[^>]*>/i);
   const headings = {};

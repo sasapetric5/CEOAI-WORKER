@@ -245,3 +245,45 @@ test('URL validator rejects encoded and unusual host representations before fetc
     assert.equal(calls, 0, input);
   }
 });
+
+
+test('canonical URLs reject credentials, non-web schemes, and blocked hosts', () => {
+  for (const href of [
+    'https://user:password@example.com/private?token=secret',
+    'javascript:alert(1)',
+    'data:text/html,secret',
+    'http://127.0.0.1/admin',
+    'https://example.com/safe?token=secret#fragment',
+  ]) {
+    const result = extractHtmlObservations(`<link rel="canonical" href="${href}">`, 'https://example.com/page');
+    if (href.includes('/safe')) assert.equal(result.canonical.value, 'https://example.com/safe');
+    else assert.equal(result.canonical.value, null, href);
+    assert.equal(JSON.stringify(result).includes('password'), false);
+    assert.equal(JSON.stringify(result).includes('token=secret'), false);
+  }
+});
+
+test('redirect response bodies are cancelled when target is rejected', async () => {
+  let cancelled = false;
+  const body = new ReadableStream({
+    cancel() { cancelled = true; },
+  });
+  const result = await fetchPublicHtml('https://example.com/start', {
+    fetchImpl: async () => new Response(body, { status: 302, headers: { location: 'http://127.0.0.1/private' } }),
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'REDIRECT_TARGET_BLOCKED');
+  assert.equal(cancelled, true);
+});
+
+test('non-HTML response bodies are cancelled rather than left unread', async () => {
+  let cancelled = false;
+  const body = new ReadableStream({
+    cancel() { cancelled = true; },
+  });
+  const result = await fetchPublicHtml('https://example.com/not-html', {
+    fetchImpl: async () => new Response(body, { headers: { 'content-type': 'application/octet-stream' } }),
+  });
+  assert.equal(result.code, 'CONTENT_TYPE_NOT_HTML');
+  assert.equal(cancelled, true);
+});
