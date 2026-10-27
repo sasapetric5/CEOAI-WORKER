@@ -18,17 +18,17 @@ export function createAgentBudget({ maxToolCalls = 4 } = {}) {
   return token;
 }
 
-export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, maxToolCalls = 4, auditLog = null } = {}) {
+export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, maxToolCalls = 4, auditLog = null, healthMonitor = null } = {}) {
   if (!toolRegistry || typeof toolRegistry.execute !== "function" || typeof toolRegistry.get !== "function") throw new TypeError("TOOL_REGISTRY_REQUIRED");
   if (!skillRegistry || typeof skillRegistry.allows !== "function" || typeof skillRegistry.get !== "function") throw new TypeError("SKILL_REGISTRY_REQUIRED");
   if (!Number.isSafeInteger(maxSteps) || maxSteps < 1 || maxSteps > 8) throw new TypeError("INVALID_MAX_STEPS");
   if (!Number.isSafeInteger(maxToolCalls) || maxToolCalls < 1 || maxToolCalls > 8) throw new TypeError("INVALID_MAX_TOOL_CALLS");
 
   if (auditLog !== null && typeof auditLog.record !== "function") throw new TypeError("INVALID_AUDIT_LOG");
+  if (healthMonitor !== null && typeof healthMonitor.record !== "function") throw new TypeError("INVALID_HEALTH_MONITOR");
   const audit = (event) => { try { auditLog?.record(event); } catch { /* auditing must not change agent results */ } };
 
-  return Object.freeze({
-    async run({ skillId, input, plan, allowToolExecution = false, allowedToolIds = [], budget, runId = crypto.randomUUID() } = {}) {
+  const runAgent = async ({ skillId, input, plan, allowToolExecution = false, allowedToolIds = [], budget, runId = crypto.randomUUID() } = {}) => {
       if (allowToolExecution !== true) return fail("EXECUTION_NOT_APPROVED", 0, 0);
       const skill = skillRegistry.get(skillId);
       if (!skill) return fail("SKILL_NOT_FOUND", 0, 0);
@@ -86,6 +86,36 @@ export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, max
         current = nextContext;
       }
       return failRun("AGENT_STEP_LIMIT", maxSteps, toolCalls);
-    },
-  });
+  };
+
+  // Metrics are optional, aggregate-only, and never allowed to change the run result.
+  const run = async (args = {}) => {
+    const startedAt = Date.now();
+    let result;
+    try {
+      result = await runAgent(args);
+    } catch {
+      result = fail("AGENT_INTERNAL_ERROR", 0, 0);
+    }
+    if (healthMonitor) {
+      const elapsed = Date.now() - startedAt;
+      const durationMs = Number.isFinite(elapsed) ? Math.max(0, Math.min(86_400_000, Math.trunc(elapsed))) : 0;
+      const skillId = args && typeof args.skillId === "string" ? args.skillId : "unknown";
+      try {
+        healthMonitor.record({
+          agentId: skillId,
+          outcome: result?.ok === true ? "succeeded" : "failed",
+          durationMs,
+          budgetUnits: Number.isSafeInteger(result?.budgetUsed) && result.budgetUsed >= 0
+            ? Math.min(result.budgetUsed, 1_000_000)
+            : Number.isSafeInteger(result?.toolCalls) && result.toolCalls >= 0
+              ? Math.min(result.toolCalls, 1_000_000) : 0,
+          ...((result?.ok !== true && typeof result?.code === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(result.code))
+            ? { code: result.code } : {}),
+        });
+      } catch { /* Health telemetry must never interrupt agent execution. */ }
+    }
+    return result;
+  };
+  return Object.freeze({ run });
 }
