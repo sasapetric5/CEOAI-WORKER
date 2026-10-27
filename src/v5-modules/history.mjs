@@ -14,7 +14,11 @@ export function sanitizeStored(messages) {
     .filter(m => m.content.length > 0);
 }
 export function trimHistory(messages, max = MAX_HISTORY_MESSAGES) {
-  const out = sanitizeStored(messages).slice(-max);
+  const requestedLimit = Number.isSafeInteger(max) && max > 0
+    ? max
+    : MAX_HISTORY_MESSAGES;
+  const limit = Math.min(requestedLimit, MAX_HISTORY_MESSAGES);
+  const out = sanitizeStored(messages).slice(-limit);
   while (out.length && out[0].role !== "user") out.shift();
   return out;
 }
