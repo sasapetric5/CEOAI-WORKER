@@ -22,11 +22,12 @@ import { handleOpenAIChatCompletions } from "./src/openai-compat.mjs";
 import { prepareConversation, appendReply, withSummary } from "./src/v5-modules/history.mjs";
 import { handleMemoryReset } from "./src/v5-modules/session.mjs";
 import { parseRetryAfterSeconds, providerFailureCooldown } from "./src/v5-modules/provider-policy.mjs";
-import { recordProviderOutcome } from "./src/v5-modules/agent-health.mjs";
+import { recordProviderOutcome, recordProviderLatency } from "./src/v5-modules/agent-health.mjs";
 import { providerHealthRoutingAdjustment } from "./src/v5-modules/provider-recovery.mjs";
 import { providerCircuitDecision } from "./src/v5-modules/provider-circuit-breaker.mjs";
 import { classifyProviderFailure } from "./src/v5-modules/failure-classification.mjs";
 import { recordRecoveryMetric } from "./src/v5-modules/recovery-metrics.mjs";
+import { providerLatencyRoutingAdjustment } from "./src/v5-modules/provider-latency.mjs";
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
 // Quota cooldowns differ by provider signal: monthly exhaustion must not be retried every few hours.
@@ -1270,7 +1271,7 @@ export default {
         try {
           const health = await env.KV_MEMORY.get(`health:provider:${p.id}`, "json");
           if (health && typeof health === "object") providerHealthById.set(p.id, health);
-          adjustment = providerHealthRoutingAdjustment(health, Date.now());
+          adjustment = providerHealthRoutingAdjustment(health, Date.now()) + providerLatencyRoutingAdjustment(health, Date.now());
         } catch {}
         return { p, idx, score: baseScore + adjustment };
       }));
@@ -1336,8 +1337,10 @@ export default {
         // This is intentionally best-effort; separate Worker isolates can still race.
         if (inFlightProviders.has(candidate.id)) { sawCooldownSkip = true; continue; }
         inFlightProviders.add(candidate.id);
+        const providerStartedAt = Date.now();
         try {
           reply = await executeModel(candidate, messages, remainingMs);
+          await recordProviderLatency(env.KV_MEMORY, candidate.id, Date.now() - providerStartedAt);
           if (!reply.trim()) throw new Error("Prazan odgovor");
           await recordProviderOutcome(env.KV_MEMORY, candidate.id, { kind: "success" });
           if (failedInThisRequest) await recordRecoveryMetric(env.KV_MEMORY, "failover_success");
@@ -1346,6 +1349,7 @@ export default {
           usedProviderId = candidate.id;
           break;
         } catch (error) {
+          await recordProviderLatency(env.KV_MEMORY, candidate.id, Date.now() - providerStartedAt);
           lastStatus = Number(error?.status) || 0;
           const msg = String(error?.message || "");
           const failure = classifyProviderFailure({
