@@ -11,10 +11,19 @@ export function parseRetryAfterSeconds(value, nowMs = Date.now(), maxSeconds = M
     if (!Number.isSafeInteger(seconds) || seconds < 0) return null;
     return Math.min(seconds, maxSeconds);
   }
-  // Date.parse accepts non-HTTP strings such as "-1"; require an HTTP-date shape first.
-  if (!/^[A-Za-z]{3}, [0-9]{2} [A-Za-z]{3} [0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2} GMT$/.test(raw)) return null;
-  const at = Date.parse(raw);
-  if (!Number.isFinite(at)) return null;
+  // Validate the full HTTP-date instead of relying on Date.parse normalizing invalid dates.
+  const match = /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), ([0-9]{2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ([0-9]{4}) ([0-9]{2}):([0-9]{2}):([0-9]{2}) GMT$/.exec(raw);
+  if (!match) return null;
+  const months = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
+  const [, weekday, dayText, monthText, yearText, hourText, minuteText, secondText] = match;
+  const day = Number(dayText), year = Number(yearText), hour = Number(hourText), minute = Number(minuteText), second = Number(secondText);
+  if (hour > 23 || minute > 59 || second > 59) return null;
+  const at = Date.UTC(year, months[monthText], day, hour, minute, second);
+  const date = new Date(at);
+  if (!Number.isFinite(at) || date.getUTCFullYear() !== year || date.getUTCMonth() !== months[monthText] ||
+      date.getUTCDate() !== day || date.getUTCHours() !== hour || date.getUTCMinutes() !== minute ||
+      date.getUTCSeconds() !== second ||
+      ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][date.getUTCDay()] !== weekday) return null;
   const seconds = Math.ceil((at - nowMs) / 1000);
   if (seconds <= 0) return 0;
   return Math.min(seconds, maxSeconds);
