@@ -74,6 +74,13 @@ async function readBounded(response, maxBytes, signal) {
   return new TextDecoder('utf-8', { fatal: false }).decode(joined);
 }
 
+function publicUrlForOutput(url) {
+  const safe = new URL(url.toString());
+  safe.search = '';
+  safe.hash = '';
+  return safe.toString();
+}
+
 export async function fetchPublicHtml(input, options = {}) {
   const validate = options.validateUrl || validatePublicPageUrl;
   const fetchImpl = options.fetchImpl || globalThis.fetch;
@@ -106,7 +113,7 @@ export async function fetchPublicHtml(input, options = {}) {
       clearTimeout(timer);
       continue;
     }
-    if (!response.ok) { clearTimeout(timer); return { ok: false, code: 'HTTP_ERROR', status: response.status, finalUrl: current.toString() }; }
+    if (!response.ok) { clearTimeout(timer); return { ok: false, code: 'HTTP_ERROR', status: response.status, finalUrl: publicUrlForOutput(current) }; }
     const type = (response.headers.get('content-type') || '').toLowerCase();
     if (!type.includes('text/html') && !type.includes('application/xhtml+xml')) {
       clearTimeout(timer);
@@ -167,7 +174,7 @@ export function extractHtmlObservations(html, pageUrl) {
     catch { invalidLinks++; }
   }
   return {
-    schemaVersion: 'ceoai.audit.observations.v1', source: 'FETCHED_HTML', pageUrl,
+    schemaVersion: 'ceoai.audit.observations.v1', source: 'FETCHED_HTML', pageUrl: (() => { try { return publicUrlForOutput(new URL(pageUrl)); } catch { return null; } })(),
     title: { value: title || null, status: title ? 'MEASURED' : 'MISSING' },
     metaDescription: { value: metaDescription || null, status: metaDescription ? 'MEASURED' : 'MISSING' },
     canonical: { value: canonical, status: canonical ? 'MEASURED' : 'MISSING' },

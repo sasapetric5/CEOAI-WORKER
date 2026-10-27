@@ -62,3 +62,50 @@ test('malformed input URL fails without invoking network', async () => {
   const result = await fetchPublicHtml('not a URL', { fetchImpl: async () => { calls++; throw new Error('should not run'); } });
   assert.equal(result.code, 'URL_INVALID'); assert.equal(calls, 0);
 });
+
+test('fetch result never echoes query parameters or fragments from the requested URL', async () => {
+  const success = await fetchPublicHtml('https://example.com/private?token=topsecret&session=abc#fragment', {
+    fetchImpl: async (url) => {
+      assert.equal(url, 'https://example.com/private?token=topsecret&session=abc');
+      return new Response('<title>OK</title>', { headers: { 'content-type': 'text/html' } });
+    },
+  });
+  assert.equal(success.ok, true);
+  assert.equal(success.finalUrl, 'https://example.com/private');
+  assert.equal(JSON.stringify(success).includes('topsecret'), false);
+  assert.equal(JSON.stringify(success).includes('session=abc'), false);
+  assert.equal(JSON.stringify(success).includes('fragment'), false);
+});
+
+test('HTTP error result strips URL query secrets and fragments', async () => {
+  const result = await fetchPublicHtml('https://example.com/private?api_key=hidden#internal', {
+    fetchImpl: async () => new Response('upstream body is private', { status: 503 }),
+  });
+  assert.equal(result.code, 'HTTP_ERROR');
+  assert.equal(result.finalUrl, 'https://example.com/private');
+  assert.equal(JSON.stringify(result).includes('hidden'), false);
+  assert.equal(JSON.stringify(result).includes('private'), false);
+});
+
+test('observation report sanitizes pageUrl query and fragment', () => {
+  const { extractHtmlObservations } = await import('../src/audit/public-page.mjs');
+  const result = extractHtmlObservations('<title>Example</title>', 'https://example.com/path?token=secret#frag');
+  assert.equal(result.pageUrl, 'https://example.com/path');
+  assert.equal(JSON.stringify(result).includes('secret'), false);
+  assert.equal(JSON.stringify(result).includes('frag'), false);
+});
+
+test('redirect responses without location return a stable error', async () => {
+  const result = await fetchPublicHtml('https://example.com/start', {
+    fetchImpl: async () => new Response(null, { status: 302 }),
+  });
+  assert.deepEqual(result, { ok: false, code: 'REDIRECT_WITHOUT_LOCATION' });
+});
+
+test('unsupported redirect status is treated as a non-success HTTP response', async () => {
+  const result = await fetchPublicHtml('https://example.com/start', {
+    fetchImpl: async () => new Response(null, { status: 300 }),
+  });
+  assert.equal(result.code, 'HTTP_ERROR');
+  assert.equal(result.status, 300);
+});
