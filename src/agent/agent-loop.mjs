@@ -1,5 +1,12 @@
 // Bounded orchestration primitive. Does not call an LLM or external services.
-const plain = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
+const plain = (v) => v !== null && typeof v === "object" && !Array.isArray(v) && (Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null);
+const MAX_CONTEXT_BYTES = 8192;
+function withinContextLimit(value) {
+  try {
+    const serialized = JSON.stringify(value);
+    return typeof serialized === "string" && new TextEncoder().encode(serialized).byteLength <= MAX_CONTEXT_BYTES;
+  } catch { return false; }
+}
 const fail = (code, steps, toolCalls) => ({ ok: false, code, steps, toolCalls });
 const budgetState = new WeakMap();
 
@@ -23,6 +30,7 @@ export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, max
       if (!skill) return fail("SKILL_NOT_FOUND", 0, 0);
       if (typeof plan !== "function") return fail("PLANNER_REQUIRED", 0, 0);
       if (!Array.isArray(allowedToolIds) || allowedToolIds.some((id) => typeof id !== "string")) return fail("INVALID_CAPABILITIES", 0, 0);
+      if (!withinContextLimit(input)) return fail("INPUT_TOO_LARGE_OR_INVALID", 0, 0);
       const sharedBudget = budget === undefined ? createAgentBudget({ maxToolCalls }) : budget;
       const budgetData = budgetState.get(sharedBudget);
       if (!budgetData) return fail("INVALID_AGENT_BUDGET", 0, 0);
@@ -57,7 +65,9 @@ export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, max
         }
         if (!result || result.ok !== true) return fail(result?.code || "TOOL_EXECUTION_FAILED", step, toolCalls);
         toolCalls++;
-        current = { previous: current, tool: decision.toolId, result: result.result };
+        const nextContext = { previous: current, tool: decision.toolId, result: result.result };
+        if (!withinContextLimit(nextContext)) return fail("AGENT_CONTEXT_TOO_LARGE", step, toolCalls);
+        current = nextContext;
       }
       return fail("AGENT_STEP_LIMIT", maxSteps, toolCalls);
     },

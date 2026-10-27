@@ -70,6 +70,19 @@ test("executor malformed result fails closed", async () => {
   const { loop } = setup({ executeOverride: async () => null });
   assert.equal((await runArgs(loop, async () => ({ type: "tool", toolId: "local_echo", arguments: { value: "x" } }))).code, "TOOL_EXECUTION_FAILED");
 });
+test("rejects oversized or non-serializable initial planner context", async () => {
+  const { loop } = setup();
+  assert.equal((await loop.run({ skillId: "safe_research", input: "x".repeat(9000), allowToolExecution: true, allowedToolIds: ["local_echo"], plan: async () => ({ type: "final", output: "ok" }) })).code, "INPUT_TOO_LARGE_OR_INVALID");
+  const cyclic = {}; cyclic.self = cyclic;
+  assert.equal((await loop.run({ skillId: "safe_research", input: cyclic, allowToolExecution: true, allowedToolIds: ["local_echo"], plan: async () => ({ type: "final", output: "ok" }) })).code, "INPUT_TOO_LARGE_OR_INVALID");
+});
+test("bounds accumulated planner context after tool results", async () => {
+  const toolRegistry = createToolRegistry({ enabled: true, tools: [{ id: "local_echo", description: "Large result fixture.", inputSchema: { type: "object", properties: {}, additionalProperties: false }, handler: async () => "z".repeat(7000) }] });
+  const skillRegistry = createSkillRegistry({ toolRegistry, skills: [{ id: "safe_research", version: "1.0.0", description: "Bounded fixture.", allowedToolIds: ["local_echo"] }] });
+  const loop = createAgentLoop({ toolRegistry, skillRegistry, maxSteps: 3, maxToolCalls: 2 });
+  const result = await loop.run({ skillId: "safe_research", input: {}, allowToolExecution: true, allowedToolIds: ["local_echo"], plan: async () => ({ type: "tool", toolId: "local_echo", arguments: {} }) });
+  assert.equal(result.code, "AGENT_CONTEXT_TOO_LARGE");
+});
 test("invalid budget and unsafe limit settings are rejected", async () => {
   const { loop } = setup();
   assert.equal((await runArgs(loop, async () => ({ type: "final", output: "ok" }), { budget: {} })).code, "INVALID_AGENT_BUDGET");
