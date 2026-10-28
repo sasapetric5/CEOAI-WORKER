@@ -98,3 +98,26 @@ test("invalid latency samples and KV outages are ignored safely", async () => {
   const broken = { async get() { throw new Error("private storage detail"); }, async put() { throw new Error("private storage detail"); } };
   assert.equal(await recordProviderLatency(broken, "gemini-1", 200, 1000), false);
 });
+
+test("malformed persisted health metadata cannot spoof routing status or inject unbounded fields", async () => {
+  const kv = new MemoryKV();
+  kv.data.set("health:provider:gemini-1", JSON.stringify({
+    provider: "gemini-1", status: "healthy", updatedAt: "not-a-time",
+    lastOutcomeAt: "yesterday", lastSuccessAt: -1, lastFailureAt: 9e99,
+    lastStatusCode: 999, lastFailureClass: "x".repeat(5000),
+    latencyEwmaMs: -50, latencySamples: -3, unexpected: "must-not-survive",
+    attempts: 2, successes: 1, failures: 1, consecutiveFailures: 1,
+  }));
+  const health = await readProviderHealth(kv, "gemini-1");
+  assert.equal(health.status, "unknown");
+  assert.equal(health.updatedAt > 0, true);
+  assert.equal(health.lastOutcomeAt, null);
+  assert.equal(health.lastSuccessAt, null);
+  assert.equal(health.lastFailureAt, null);
+  assert.equal(health.lastStatusCode, null);
+  assert.equal(health.lastFailureClass, null);
+  assert.equal(health.latencyEwmaMs, undefined);
+  assert.equal(health.latencySamples, undefined);
+  assert.equal(health.unexpected, undefined);
+});
+
