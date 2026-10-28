@@ -39,6 +39,9 @@ test("daily limit parsing is safe and defaults to no additional cap", () => {
   assert.equal(dailyProviderCallLimit({ CEOAI_FREE_DAILY_CALL_LIMIT: "25" }), 25);
   assert.equal(dailyProviderCallLimit({ CEOAI_FREE_DAILY_CALL_LIMIT: "-1" }), -1);
   assert.equal(dailyProviderCallLimit({ CEOAI_FREE_DAILY_CALL_LIMIT: "1e4" }), -1);
+  assert.equal(dailyProviderCallLimit({ CEOAI_FREE_DAILY_CALL_LIMIT: "20", CEOAI_FREE_DAILY_CALL_LIMIT_GEMINI: "3" }, "gemini"), 3);
+  assert.equal(dailyProviderCallLimit({ CEOAI_FREE_DAILY_CALL_LIMIT: "20", CEOAI_FREE_DAILY_CALL_LIMIT_TOKENHARBOR: "7" }, "tokenharbor"), 7);
+  assert.equal(dailyProviderCallLimit({ CEOAI_FREE_DAILY_CALL_LIMIT: "20", CEOAI_FREE_DAILY_CALL_LIMIT_GEMINI: "bad" }, "gemini"), -1);
 });
 
 test("daily usage reserves calls and blocks once the configured cap is reached", async () => {
