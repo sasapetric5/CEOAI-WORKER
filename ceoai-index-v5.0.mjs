@@ -1198,14 +1198,21 @@ export default {
       // Advisory-only routing: never load or execute skill instructions here.
       // Execution remains blocked unless every registry review gate passes.
       let skillCandidates = [];
+      let taskPlan = {
+        mode: "plan-only",
+        task_type: "general",
+        execution_allowed: false,
+        eligible_skill_ids: [],
+        blocked_skill_ids: [],
+      };
       try {
         const skillRegistry = await loadSkillRegistry();
         skillCandidates = selectSkillCandidates(skillRegistry, prompt);
+        taskPlan = createTaskPlan(skillRegistry, prompt);
       } catch (error) {
         // Routing failure must not break ordinary chat or relax provider safety gates.
         console.warn("CEOAI_DIAG skill_routing_unavailable", String(error?.message || error).slice(0, 120));
       }
-      const taskPlan = createTaskPlan(skillRegistry, prompt);
       const eligibleSkillCount = taskPlan.eligible_skill_ids.length;
       const routingNote = skillCandidates.length
         ? `\n\n[SKILL ROUTING — planning metadata only; do not claim skill execution. Candidates: ${skillCandidates.map(skill => skill.id).join(", ")}. Eligible for execution: ${eligibleSkillCount}. Do not use skill instructions unless enabled and approved by runtime policy.]`
