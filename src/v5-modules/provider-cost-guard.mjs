@@ -56,3 +56,54 @@ export async function reserveProviderCall(kv, providerId, env = {}, now = Date.n
     return { allowed: false, reason: "usage_store_unavailable", count: null };
   }
 }
+
+
+function textForTokenEstimate(value) {
+  if (typeof value === "string") return value;
+  try { return JSON.stringify(value ?? ""); } catch { return ""; }
+}
+
+// Heuristic only: roughly four characters per token. Never present this as provider-reported usage.
+export function estimateTokenCount(value) {
+  const text = textForTokenEstimate(value);
+  if (!text) return 0;
+  return Math.min(10_000_000, Math.ceil(text.length / 4));
+}
+
+export function dailyTokenEstimateKey(providerId, now = Date.now()) {
+  const usageKey = dailyProviderUsageKey(providerId, now);
+  return usageKey ? usageKey.replace("free-usage:v1:", "free-token-estimate:v1:") : null;
+}
+
+// Diagnostic daily estimates. Provider-reported usage, when available, should take precedence.
+export async function recordProviderTokenEstimate(kv, providerId, input, output, now = Date.now()) {
+  try {
+    if (!kv || typeof kv.get !== "function" || typeof kv.put !== "function") {
+      return { recorded: false, reason: "usage_store_unavailable" };
+    }
+    const key = dailyTokenEstimateKey(providerId, now);
+    if (!key) return { recorded: false, reason: "invalid_provider_id" };
+    const inputTokens = estimateTokenCount(input);
+    const outputTokens = estimateTokenCount(output);
+    let previous = null;
+    try { previous = await kv.get(key, "json"); } catch { previous = null; }
+    if (typeof previous === "string") {
+      try { previous = JSON.parse(previous); } catch { previous = null; }
+    }
+    if (!previous || typeof previous !== "object" || Array.isArray(previous)) previous = {};
+    const safe = value => Number.isSafeInteger(value) && value >= 0 ? Math.min(value, 1_000_000_000) : 0;
+    const next = {
+      provider: providerId,
+      estimatedInputTokens: Math.min(1_000_000_000, safe(previous.estimatedInputTokens) + inputTokens),
+      estimatedOutputTokens: Math.min(1_000_000_000, safe(previous.estimatedOutputTokens) + outputTokens),
+      estimatedTotalTokens: Math.min(1_000_000_000, safe(previous.estimatedTotalTokens) + inputTokens + outputTokens),
+      samples: Math.min(1_000_000_000, safe(previous.samples) + 1),
+      updatedAt: now,
+      source: "character_heuristic",
+    };
+    await kv.put(key, JSON.stringify(next), { expirationTtl: 60 * 60 * 24 * 35 });
+    return { recorded: true, ...next };
+  } catch {
+    return { recorded: false, reason: "usage_store_unavailable" };
+  }
+}
