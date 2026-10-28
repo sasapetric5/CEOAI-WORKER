@@ -1,0 +1,210 @@
+{
+  "schema_version": "1.0.0",
+  "library_id": "ceoai-shared-skills",
+  "status": "catalog-design",
+  "routing_policy": {
+    "load_all_skills": false,
+    "default_max_skills_per_task": 4,
+    "require_review_before_runtime_enable": true,
+    "default_external_actions": "disabled",
+    "default_paid_services": "disabled",
+    "provenance_required": true,
+    "license_review_required": true
+  },
+  "categories": [
+    {
+      "id": "research-and-sources",
+      "label": "Research and source verification",
+      "tags": [
+        "research",
+        "web",
+        "sources",
+        "fact-checking",
+        "freshness"
+      ]
+    },
+    {
+      "id": "seo-and-site-auditing",
+      "label": "SEO and website audits",
+      "tags": [
+        "seo",
+        "technical-seo",
+        "indexability",
+        "structured-data",
+        "accessibility",
+        "site-audit"
+      ]
+    },
+    {
+      "id": "software-engineering-and-testing",
+      "label": "Software engineering and testing",
+      "tags": [
+        "coding",
+        "debugging",
+        "code-review",
+        "tdd",
+        "unit-tests",
+        "integration-tests",
+        "api"
+      ]
+    },
+    {
+      "id": "science-and-data-analysis",
+      "label": "Science and data analysis",
+      "tags": [
+        "scientific-research",
+        "statistics",
+        "data-analysis",
+        "methodology",
+        "reproducibility"
+      ]
+    },
+    {
+      "id": "content-and-marketing",
+      "label": "Content and marketing",
+      "tags": [
+        "copywriting",
+        "content",
+        "marketing",
+        "customer-research",
+        "conversion"
+      ]
+    },
+    {
+      "id": "agent-orchestration-and-quality",
+      "label": "Agent orchestration and quality",
+      "tags": [
+        "planning",
+        "workflow",
+        "agent-health",
+        "evaluation",
+        "quality-assurance"
+      ]
+    },
+    {
+      "id": "security-and-privacy",
+      "label": "Security and privacy",
+      "tags": [
+        "security",
+        "privacy",
+        "threat-model",
+        "secret-handling",
+        "permissions"
+      ]
+    },
+    {
+      "id": "product-and-business-analysis",
+      "label": "Product and business analysis",
+      "tags": [
+        "product",
+        "business",
+        "requirements",
+        "market-analysis"
+      ]
+    },
+    {
+      "id": "data-extraction-and-scraping",
+      "label": "Data extraction and scraping",
+      "tags": [
+        "scraping",
+        "extraction",
+        "scrapling",
+        "robots",
+        "rate-limits"
+      ]
+    },
+    {
+      "id": "app-specific-adapters",
+      "label": "Application adapters",
+      "tags": [
+        "rankgeo",
+        "safe-automaton",
+        "contentcraft",
+        "aiforce"
+      ]
+    }
+  ],
+  "skills": [
+    {
+      "id": "seo-audit",
+      "name": "SEO Audit",
+      "path": "skills/seo-audit/SKILL.md",
+      "category": "seo-and-site-auditing",
+      "intents": [
+        "research",
+        "complex"
+      ],
+      "tags": [
+        "seo",
+        "technical-seo",
+        "indexability",
+        "structured-data",
+        "site-audit"
+      ],
+      "source": {
+        "repository": "sasapetric5/safe-automaton",
+        "ref": "integration/main-consolidation",
+        "path": "skills/seo-audit/SKILL.md"
+      },
+      "license_status": "review-required-for-migration",
+      "security_status": "source-reviewed-not-runtime-tested",
+      "runtime_status": "not-enabled",
+      "risk": "low",
+      "external_actions": false
+    },
+    {
+      "id": "customer-research",
+      "name": "Customer Research",
+      "path": "skills/customer-research/SKILL.md",
+      "category": "research-and-sources",
+      "intents": [
+        "research",
+        "reasoning",
+        "complex"
+      ],
+      "tags": [
+        "customer-research",
+        "public-sources",
+        "evidence",
+        "market-hypotheses"
+      ],
+      "source": {
+        "repository": "sasapetric5/safe-automaton",
+        "ref": "integration/main-consolidation",
+        "path": "skills/customer-research/SKILL.md"
+      },
+      "license_status": "review-required-for-migration",
+      "security_status": "source-reviewed-not-runtime-tested",
+      "runtime_status": "not-enabled",
+      "risk": "low",
+      "external_actions": false
+    },
+    {
+      "id": "copywriting",
+      "name": "Copywriting",
+      "path": "skills/copywriting/SKILL.md",
+      "category": "content-and-marketing",
+      "intents": [
+        "fast",
+        "reasoning",
+        "complex"
+      ],
+      "tags": [
+        "copywriting",
+        "landing-page",
+        "product-copy",
+        "conversion"
+      ],
+      "source": {
+        "repository": "sasapetric5/safe-automaton",
+        "ref": "integration/main-consolidation",
+        "path": "skills/copywriting/SKILL.md"
+      },
+      "license_status": "review-required-for-migration",
+      "security_status": "source-reviewed-not-runtime-tested",
+      "runtime_status": "not-enabled",
+      "risk": "low",
+      "external_actions": false
+    }
+  ]
+}
