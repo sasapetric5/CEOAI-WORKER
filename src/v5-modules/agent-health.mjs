@@ -43,9 +43,10 @@ export async function readProviderHealth(kv, providerId) {
   // Treat KV as untrusted persisted input: only expose known, bounded fields.
   const allowedStatuses = new Set(["unknown", "healthy", "rate_limited", "unavailable", "degraded"]);
   const safeTimestamp = value => Number.isSafeInteger(value) && value >= 0 && value <= now + 60_000 ? value : null;
+  const persistedUpdatedAt = safeTimestamp(raw.updatedAt);
   const result = {
     ...emptyHealth(providerId, now),
-    status: allowedStatuses.has(raw.status) ? raw.status : "unknown",
+    status: persistedUpdatedAt !== null && allowedStatuses.has(raw.status) ? raw.status : "unknown",
     attempts: validCounter(raw.attempts),
     successes: validCounter(raw.successes),
     failures: validCounter(raw.failures),
@@ -57,7 +58,7 @@ export async function readProviderHealth(kv, providerId) {
       ? raw.lastStatusCode : null,
     lastFailureClass: typeof raw.lastFailureClass === "string" && /^[a-z0-9_-]{1,80}$/i.test(raw.lastFailureClass)
       ? raw.lastFailureClass : null,
-    updatedAt: safeTimestamp(raw.updatedAt) ?? now,
+    updatedAt: persistedUpdatedAt ?? now,
   };
   if (Number.isFinite(raw.latencyEwmaMs) && raw.latencyEwmaMs >= 1 && raw.latencyEwmaMs <= 120_000) {
     result.latencyEwmaMs = Math.round(raw.latencyEwmaMs);
