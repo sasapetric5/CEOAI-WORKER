@@ -1,13 +1,11 @@
 // Deterministic skill candidate routing. This module selects metadata only;
 // it does not execute skill instructions, grant tools, or enable disabled skills.
-import { readFile } from "node:fs/promises";
+import skillRegistry from "../../skills/registry.json" with { type: "json" };
 
 const DEFAULT_MAX_SKILLS = 4;
 const TOKEN_RE = /[a-z0-9]+/g;
 
 function tokens(value) {
-  // Make Serbian/Croatian/Bosnian Latin text comparable to ASCII skill metadata.
-  // Split hyphenated tags into words so "technical-seo" matches "technical SEO".
   const normalized = String(value ?? "")
     .toLocaleLowerCase("sr-Latn")
     .replace(/đ/g, "d")
@@ -24,12 +22,10 @@ export function selectSkillCandidates(registry, request, options = {}) {
   if (!Number.isInteger(maxSkills) || maxSkills < 1 || maxSkills > 8) {
     throw new RangeError("maxSkills must be an integer between 1 and 8");
   }
-
   const requestTokens = tokens(request);
   if (requestTokens.size === 0) return [];
   const categoryById = new Map(registry.categories.map((category) => [category.id, category]));
   const ranked = [];
-
   for (const skill of registry.skills) {
     if (!skill || typeof skill.id !== "string" || typeof skill.path !== "string") continue;
     const category = categoryById.get(skill.category);
@@ -41,14 +37,8 @@ export function selectSkillCandidates(registry, request, options = {}) {
     let score = 0;
     for (const token of requestTokens) if (searchable.has(token)) score += 1;
     if (score === 0) continue;
-    // Runtime status is intentionally not promoted here. A candidate may be
-    // shown for planning while remaining unavailable for execution.
     ranked.push({
-      id: skill.id,
-      name: skill.name,
-      path: skill.path,
-      category: skill.category,
-      score,
+      id: skill.id, name: skill.name, path: skill.path, category: skill.category, score,
       runtime_status: skill.runtime_status ?? "not-enabled",
       eligible_for_execution:
         skill.runtime_status === "enabled" &&
@@ -57,14 +47,13 @@ export function selectSkillCandidates(registry, request, options = {}) {
         skill.external_actions === false
     });
   }
-
   ranked.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
   return ranked.slice(0, maxSkills);
 }
 
-export async function loadSkillRegistry(path = new URL("../../skills/registry.json", import.meta.url)) {
-  const content = await readFile(path, "utf8");
-  const registry = JSON.parse(content);
-  if (registry.library_id !== "ceoai-shared-skills") throw new Error("Unexpected skill registry");
-  return registry;
+export async function loadSkillRegistry() {
+  if (skillRegistry.library_id !== "ceoai-shared-skills") {
+    throw new Error("Unexpected skill registry");
+  }
+  return skillRegistry;
 }

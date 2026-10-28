@@ -31,6 +31,7 @@ import { providerLatencyRoutingAdjustment } from "./src/v5-modules/provider-late
 import { createRequestDeadline, remainingRequestBudget, adaptiveProviderTimeout, canStartProviderAttempt } from "./src/v5-modules/adaptive-timeout.mjs";
 import { checkFreeQuotaEligibility, reserveProviderCall, recordProviderTokenEstimate } from "./src/v5-modules/provider-cost-guard.mjs";
 import { getProviderCapability } from "./src/v5-modules/provider-registry.mjs";
+import { selectSkillCandidates, loadSkillRegistry } from "./src/v5-modules/skills-router.mjs";
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
 // Quota cooldowns differ by provider signal: monthly exhaustion must not be retried every few hours.
@@ -1193,6 +1194,22 @@ export default {
 
       const intent = chooseIntent(prompt);
 
+      // Advisory-only routing: never load or execute skill instructions here.
+      // Execution remains blocked unless every registry review gate passes.
+      let skillCandidates = [];
+      try {
+        const skillRegistry = await loadSkillRegistry();
+        skillCandidates = selectSkillCandidates(skillRegistry, prompt);
+      } catch (error) {
+        // Routing failure must not break ordinary chat or relax provider safety gates.
+        console.warn("CEOAI_DIAG skill_routing_unavailable", String(error?.message || error).slice(0, 120));
+      }
+      const eligibleSkillCount = skillCandidates.filter(skill => skill.eligible_for_execution).length;
+      const routingNote = skillCandidates.length
+        ? `\n\n[SKILL ROUTING — planning metadata only; do not claim skill execution. Candidates: ${skillCandidates.map(skill => skill.id).join(", ")}. Eligible for execution: ${eligibleSkillCount}. Do not use skill instructions unless enabled and approved by runtime policy.]`
+        : "\n\n[SKILL ROUTING — no candidate selected; continue with normal assistant behavior.]";
+      messages.push({ role: "system", content: routingNote });
+
       // Research enrichment with automatic search-provider failover (Jina → Tavily → Google CSE → Exa).
       // When one free quota is exhausted, the next configured free source takes over.
       let researchContext = "";
@@ -1471,6 +1488,12 @@ export default {
           messagesLeft: Math.max(0, COMPRESSION_THRESHOLD - nextMemory.messages.length),
           provider: usedProviderId,
           researchSource,
+          skillRouting: {
+            candidateCount: skillCandidates.length,
+            eligibleCount: eligibleSkillCount,
+            candidateIds: skillCandidates.map(skill => skill.id),
+            mode: "advisory-only",
+          },
         },
       }, 200, corsHeaders(origin));
       } catch (error) {
