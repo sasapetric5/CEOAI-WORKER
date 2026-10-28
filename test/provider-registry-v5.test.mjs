@@ -38,3 +38,24 @@ test("registry extensions require valid explicit adapter and known safe model po
     { id:"test-provider", adapter:"openai-compatible", confirmationEnv:"TEST_FREE", keyRequired:true, modelRule:"openrouter", capabilities:[], quotaMode:"none" },
   ]), /Invalid or duplicate/);
 });
+
+
+test("non-OpenRouter providers accept only reviewed model IDs, not arbitrary syntactically valid names", () => {
+  const cases = [
+    ["workers-ai", "@cf/meta/llama-3-8b-instruct", true],
+    ["workers-ai", "@cf/vendor/paid-premium-model", false],
+    ["glm-flash", "glm-4.5-flash", true],
+    ["glm-flash", "glm-5.3", false],
+    ["gemini", "gemini-1.5-flash", true],
+    ["gemini", "gemini-2.5-pro", false],
+    ["xai", "grok-beta", true],
+    ["xai", "grok-4", false],
+    ["nvidia", "meta/llama-3.1-8b-instruct", true],
+    ["nvidia", "vendor/premium-model", false],
+    ["huggingface", "Qwen/Qwen2.5-7B-Instruct", true],
+    ["huggingface", "org/unknown-paid-model", false],
+  ];
+  for (const [provider, model, expected] of cases) {
+    assert.equal(isRegisteredModelAllowed(provider, model), expected, provider + ":" + model);
+  }
+});
