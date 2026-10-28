@@ -32,6 +32,7 @@ import { createRequestDeadline, remainingRequestBudget, adaptiveProviderTimeout,
 import { checkFreeQuotaEligibility, reserveProviderCall, recordProviderTokenEstimate } from "./src/v5-modules/provider-cost-guard.mjs";
 import { getProviderCapability } from "./src/v5-modules/provider-registry.mjs";
 import { selectSkillCandidates, loadSkillRegistry } from "./src/v5-modules/skills-router.mjs";
+import { createTaskPlan } from "./src/v5-modules/task-orchestrator.mjs";
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
 // Quota cooldowns differ by provider signal: monthly exhaustion must not be retried every few hours.
@@ -1204,7 +1205,8 @@ export default {
         // Routing failure must not break ordinary chat or relax provider safety gates.
         console.warn("CEOAI_DIAG skill_routing_unavailable", String(error?.message || error).slice(0, 120));
       }
-      const eligibleSkillCount = skillCandidates.filter(skill => skill.eligible_for_execution).length;
+      const taskPlan = createTaskPlan(skillRegistry, prompt);
+      const eligibleSkillCount = taskPlan.eligible_skill_ids.length;
       const routingNote = skillCandidates.length
         ? `\n\n[SKILL ROUTING — planning metadata only; do not claim skill execution. Candidates: ${skillCandidates.map(skill => skill.id).join(", ")}. Eligible for execution: ${eligibleSkillCount}. Do not use skill instructions unless enabled and approved by runtime policy.]`
         : "\n\n[SKILL ROUTING — no candidate selected; continue with normal assistant behavior.]";
@@ -1492,7 +1494,10 @@ export default {
             candidateCount: skillCandidates.length,
             eligibleCount: eligibleSkillCount,
             candidateIds: skillCandidates.map(skill => skill.id),
-            mode: "advisory-only",
+            mode: taskPlan.mode,
+            taskType: taskPlan.task_type,
+            executionAllowed: taskPlan.execution_allowed,
+            blockedSkillIds: taskPlan.blocked_skill_ids,
           },
         },
       }, 200, corsHeaders(origin));

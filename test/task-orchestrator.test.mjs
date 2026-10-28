@@ -1,0 +1,40 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createTaskPlan } from "../src/v5-modules/task-orchestrator.mjs";
+import { loadSkillRegistry } from "../src/v5-modules/skills-router.mjs";
+
+test("orchestrator creates a bounded plan and never enables unreviewed skills", async () => {
+  const registry = await loadSkillRegistry();
+  const plan = createTaskPlan(registry, "Pregledaj SEO sajta i pronađi tehničke greške");
+  assert.equal(plan.mode, "plan-only");
+  assert.equal(plan.task_type, "seo");
+  assert.equal(plan.execution_allowed, false);
+  assert.ok(plan.blocked_skill_ids.includes("seo-audit"));
+  assert.equal(plan.external_actions_allowed, false);
+  assert.equal(plan.paid_services_allowed, false);
+  assert.ok(plan.steps.length <= 6);
+});
+
+test("orchestrator rejects empty, oversized, and invalid plans", async () => {
+  const registry = await loadSkillRegistry();
+  assert.throws(() => createTaskPlan(registry, ""), TypeError);
+  assert.throws(() => createTaskPlan(registry, "x".repeat(2001)), TypeError);
+  assert.throws(() => createTaskPlan(registry, "SEO", { maxSteps: 7 }), RangeError);
+});
+
+test("orchestrator permits execution only when the registry satisfies all gates", () => {
+  const registry = {
+    library_id: "ceoai-shared-skills",
+    routing_policy: { default_max_skills_per_task: 4 },
+    categories: [{ id: "seo", label: "SEO", tags: ["seo", "sajt"] }],
+    skills: [{
+      id: "seo-audit", name: "SEO audit", path: "skills/seo/SKILL.md",
+      category: "seo", tags: ["seo", "sajt"], intents: [],
+      runtime_status: "enabled", license_status: "approved",
+      security_status: "verified", external_actions: false
+    }]
+  };
+  assert.equal(createTaskPlan(registry, "SEO audit sajta").execution_allowed, true);
+  registry.skills[0].external_actions = true;
+  assert.equal(createTaskPlan(registry, "SEO audit sajta").execution_allowed, false);
+});
