@@ -5,15 +5,15 @@ const SAFE_ID = /^[a-z0-9][a-z0-9_-]{0,79}$/;
 const MODEL_RULES = Object.freeze({
   "openrouter": model => /^[A-Za-z0-9._/-]{1,180}:free$/.test(model),
   "mistral": model => ["open-mistral-nemo", "mistral-small-latest", "ministral-8b-latest"].includes(model),
-  "workers-ai": model => model.startsWith("@cf/"),
-  "glm-flash": model => /^[A-Za-z0-9._-]{1,80}$/.test(model),
-  "gemini": model => /^gemini-[A-Za-z0-9.-]+$/.test(model),
+  "workers-ai": model => model === "@cf/meta/llama-3-8b-instruct",
+  "glm-flash": model => model === "glm-4.5-flash",
+  "gemini": model => model === "gemini-1.5-flash",
   "deepseek": model => model === "deepseek-flash",
   // Token Harbor model IDs are exact-allowlisted; only explicit free routes are permitted.
   "tokenharbor": model => model === "deepseek-v4.1-flash:free",
-  "xai": model => /^[A-Za-z0-9._-]{1,80}$/.test(model),
-  "nvidia": model => /^[A-Za-z0-9._/-]{1,120}$/.test(model),
-  "huggingface": model => /^[A-Za-z0-9._/-]{1,120}$/.test(model),
+  "xai": model => model === "grok-beta",
+  "nvidia": model => model === "meta/llama-3.1-8b-instruct",
+  "huggingface": model => model === "Qwen/Qwen2.5-7B-Instruct",
 });
 const BUILT_INS = [
   { id:"workers-ai", adapter:"workers-ai", confirmationEnv:"WORKERS_AI_FREE_CONFIRMED", keyRequired:false, modelRule:"workers-ai", capabilities:["fast"], quotaMode:"local-counter" },
