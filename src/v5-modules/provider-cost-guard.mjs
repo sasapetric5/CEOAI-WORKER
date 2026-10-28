@@ -21,8 +21,11 @@ export function checkFreeQuotaEligibility(candidate, env = {}) {
   return { allowed: true, reason: "free_tier_confirmed" };
 }
 
-export function dailyProviderCallLimit(env = {}) {
-  const raw = env.CEOAI_FREE_DAILY_CALL_LIMIT;
+export function dailyProviderCallLimit(env = {}, providerId = "") {
+  const suffix = typeof providerId === "string" && /^[a-z0-9][a-z0-9_-]{0,79}$/i.test(providerId)
+    ? providerId.toUpperCase().replace(/-/g, "_") : "";
+  const specific = suffix ? env["CEOAI_FREE_DAILY_CALL_LIMIT_" + suffix] : undefined;
+  const raw = specific !== undefined && specific !== null && specific !== "" ? specific : env.CEOAI_FREE_DAILY_CALL_LIMIT;
   if (raw === undefined || raw === null || raw === "") return 0;
   if (!/^[0-9]{1,7}$/.test(String(raw))) return -1;
   const value = Number(raw);
@@ -37,7 +40,7 @@ export function dailyProviderUsageKey(providerId, now = Date.now()) {
 
 // KV is eventually consistent; this is a best-effort circuit guard, not an atomic distributed quota.
 export async function reserveProviderCall(kv, providerId, env = {}, now = Date.now()) {
-  const limit = dailyProviderCallLimit(env);
+  const limit = dailyProviderCallLimit(env, providerId);
   if (limit < 0) return { allowed: false, reason: "invalid_daily_limit", count: null };
   if (!kv || typeof kv.get !== "function" || typeof kv.put !== "function") {
     return { allowed: false, reason: "usage_store_unavailable", count: null };
