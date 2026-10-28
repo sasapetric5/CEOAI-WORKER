@@ -93,7 +93,7 @@ export async function recordProviderTokenEstimate(kv, providerId, input, output,
     if (typeof previous === "string") {
       try { previous = JSON.parse(previous); } catch { previous = null; }
     }
-    if (!previous || typeof previous !== "object" || Array.isArray(previous)) previous = {};
+    if (!previous || typeof previous !== "object" || Array.isArray(previous) || previous.provider !== providerId) previous = {};
     const safe = value => Number.isSafeInteger(value) && value >= 0 ? Math.min(value, 1_000_000_000) : 0;
     const next = {
       provider: providerId,
