@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   isFreeModelAllowed, checkFreeQuotaEligibility, dailyProviderCallLimit,
-  dailyProviderUsageKey, reserveProviderCall,
+  dailyProviderUsageKey, reserveProviderCall, estimateTokenCount, dailyTokenEstimateKey, recordProviderTokenEstimate,
 } from "../src/v5-modules/provider-cost-guard.mjs";
 
 class MemoryKV {
@@ -54,4 +54,23 @@ test("usage storage failures fail closed and expose no internal details", async 
   const kv = { async get() { throw new Error("secret internal detail"); }, async put() {} };
   const result = await reserveProviderCall(kv, "gemini-1", {}, Date.UTC(2026, 0, 2));
   assert.deepEqual(result, { allowed: false, reason: "usage_store_unavailable", count: null });
+});
+
+
+test("token estimate ledger records bounded daily estimates separately from provider-reported usage", async () => {
+  const kv = new MemoryKV();
+  const now = Date.UTC(2026, 0, 2);
+  assert.equal(estimateTokenCount("12345678"), 2);
+  assert.equal(estimateTokenCount(""), 0);
+  const first = await recordProviderTokenEstimate(kv, "tokenharbor", "abcdefgh", "ijklmnop", now);
+  assert.equal(first.recorded, true);
+  assert.equal(first.estimatedInputTokens, 2);
+  assert.equal(first.estimatedOutputTokens, 2);
+  assert.equal(first.estimatedTotalTokens, 4);
+  assert.equal(first.source, "character_heuristic");
+  const second = await recordProviderTokenEstimate(kv, "tokenharbor", "abcd", "efgh", now);
+  assert.equal(second.estimatedTotalTokens, 6);
+  assert.equal(second.samples, 2);
+  assert.equal(dailyTokenEstimateKey("tokenharbor", now), "free-token-estimate:v1:2026-01-02:tokenharbor");
+  assert.equal((await recordProviderTokenEstimate(null, "tokenharbor", "x", "y", now)).recorded, false);
 });
