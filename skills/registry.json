@@ -146,7 +146,7 @@
         "ref": "integration/main-consolidation",
         "path": "skills/seo-audit/SKILL.md"
       },
-      "license_status": "review-required-for-migration",
+      "license_status": "pending-final-review",
       "security_status": "source-reviewed-not-runtime-tested",
       "runtime_status": "not-enabled",
       "risk": "low",
@@ -155,7 +155,7 @@
     {
       "id": "customer-research",
       "name": "Customer Research",
-      "path": "skills/customer-research/SKILL.md",
+      "path": "skills/research-and-sources/customer-research/SKILL.md",
       "category": "research-and-sources",
       "intents": [
         "research",
@@ -173,7 +173,7 @@
         "ref": "integration/main-consolidation",
         "path": "skills/customer-research/SKILL.md"
       },
-      "license_status": "review-required-for-migration",
+      "license_status": "pending-final-review",
       "security_status": "source-reviewed-not-runtime-tested",
       "runtime_status": "not-enabled",
       "risk": "low",
@@ -182,7 +182,7 @@
     {
       "id": "copywriting",
       "name": "Copywriting",
-      "path": "skills/copywriting/SKILL.md",
+      "path": "skills/content-and-marketing/copywriting/SKILL.md",
       "category": "content-and-marketing",
       "intents": [
         "fast",
@@ -200,7 +200,7 @@
         "ref": "integration/main-consolidation",
         "path": "skills/copywriting/SKILL.md"
       },
-      "license_status": "review-required-for-migration",
+      "license_status": "pending-final-review",
       "security_status": "source-reviewed-not-runtime-tested",
       "runtime_status": "not-enabled",
       "risk": "low",
