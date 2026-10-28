@@ -29,7 +29,7 @@ import { classifyProviderFailure } from "./src/v5-modules/failure-classification
 import { recordRecoveryMetric } from "./src/v5-modules/recovery-metrics.mjs";
 import { providerLatencyRoutingAdjustment } from "./src/v5-modules/provider-latency.mjs";
 import { createRequestDeadline, remainingRequestBudget, adaptiveProviderTimeout, canStartProviderAttempt } from "./src/v5-modules/adaptive-timeout.mjs";
-import { checkFreeQuotaEligibility, reserveProviderCall } from "./src/v5-modules/provider-cost-guard.mjs";
+import { checkFreeQuotaEligibility, reserveProviderCall, recordProviderTokenEstimate } from "./src/v5-modules/provider-cost-guard.mjs";
 import { getProviderCapability } from "./src/v5-modules/provider-registry.mjs";
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
@@ -1373,6 +1373,8 @@ export default {
           reply = await executeModel(candidate, messages, providerTimeoutMs);
           await recordProviderLatency(env.KV_MEMORY, candidate.id, Date.now() - providerStartedAt);
           if (!reply.trim()) throw new Error("Prazan odgovor");
+          // Record a clearly labeled heuristic estimate; never confuse it with provider-reported tokens.
+          await recordProviderTokenEstimate(env.KV_MEMORY, candidate.id, messages, reply);
           await recordProviderOutcome(env.KV_MEMORY, candidate.id, { kind: "success" });
           if (failedInThisRequest) await recordRecoveryMetric(env.KV_MEMORY, "failover_success");
           if (failedInThisRequest || circuit.state === "half_open") await recordRecoveryMetric(env.KV_MEMORY, "recovered_request");
