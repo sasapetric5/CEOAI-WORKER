@@ -3,10 +3,17 @@
 import { readFile } from "node:fs/promises";
 
 const DEFAULT_MAX_SKILLS = 4;
-const TOKEN_RE = /[a-z0-9][a-z0-9_-]{1,}/g;
+const TOKEN_RE = /[a-z0-9]+/g;
 
 function tokens(value) {
-  return new Set(String(value ?? "").toLowerCase().match(TOKEN_RE) ?? []);
+  // Make Serbian/Croatian/Bosnian Latin text comparable to ASCII skill metadata.
+  // Split hyphenated tags into words so "technical-seo" matches "technical SEO".
+  const normalized = String(value ?? "")
+    .toLocaleLowerCase("sr-Latn")
+    .replace(/đ/g, "d")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  return new Set(normalized.match(TOKEN_RE) ?? []);
 }
 
 export function selectSkillCandidates(registry, request, options = {}) {

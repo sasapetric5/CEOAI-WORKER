@@ -43,3 +43,20 @@ test("execution eligibility requires all review gates", () => {
   registry.skills[0].security_status = "pending";
   assert.equal(selectSkillCandidates(registry, "code review")[0].eligible_for_execution, false);
 });
+
+test("skill router normalizes Serbian Latin diacritics and hyphenated metadata", async () => {
+  const registry = {
+    library_id: "ceoai-shared-skills",
+    routing_policy: { default_max_skills_per_task: 4 },
+    categories: [{ id: "seo-and-site-auditing", label: "SEO i provera sajta", tags: ["tehnicki-seo"] }],
+    skills: [{
+      id: "tehnicki-seo", name: "Tehnički SEO", path: "skills/seo/SKILL.md",
+      category: "seo-and-site-auditing", tags: ["indeksiranje"], intents: ["provera"],
+      runtime_status: "not-enabled", license_status: "pending", security_status: "pending",
+      external_actions: false
+    }]
+  };
+  const candidates = selectSkillCandidates(registry, "tehnicki SEO provera sajta indeksiranje");
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].id, "tehnicki-seo");
+});
