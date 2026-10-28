@@ -77,3 +77,24 @@ test("token estimate ledger records bounded daily estimates separately from prov
   assert.equal(dailyTokenEstimateKey("tokenharbor", now), "free-token-estimate:v1:2026-01-02:tokenharbor");
   assert.equal((await recordProviderTokenEstimate(null, "tokenharbor", "x", "y", now)).recorded, false);
 });
+
+
+test("token estimate ledger resets malformed or cross-provider persisted data", async () => {
+  const kv = new MemoryKV();
+  const now = Date.UTC(2026, 0, 2);
+  const key = dailyTokenEstimateKey("gemini", now);
+  kv.data.set(key, JSON.stringify({
+    provider: "openrouter",
+    estimatedInputTokens: 900000,
+    estimatedOutputTokens: 900000,
+    estimatedTotalTokens: 1800000,
+    samples: 500,
+  }));
+  const result = await recordProviderTokenEstimate(kv, "gemini", "1234", "5678", now);
+  assert.equal(result.recorded, true);
+  assert.equal(result.estimatedInputTokens, 1);
+  assert.equal(result.estimatedOutputTokens, 1);
+  assert.equal(result.estimatedTotalTokens, 2);
+  assert.equal(result.samples, 1);
+  assert.equal(result.provider, "gemini");
+});
