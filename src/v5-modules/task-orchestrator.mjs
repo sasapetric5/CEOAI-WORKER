@@ -31,7 +31,7 @@ export function createTaskPlan(registry, request, options = {}) {
   const steps = [
     { id: "classify", status: "ready", description: "Razvrstaj zahtev i definiši kriterijume uspeha." },
     { id: "select", status: "ready", description: "Izaberi relevantne veštine i proveri njihove dozvole." },
-    { id: "execute", status: eligible.length ? "requires-runtime" : "blocked-no-approved-skill", description: "Izvrši samo odobrene korake preko eksplicitno dozvoljenih alata." },
+    { id: "execute", status: "blocked-plan-only-no-runtime", description: "Izvrši samo odobrene korake preko eksplicitno dozvoljenih alata." },
     { id: "verify", status: "requires-execution", description: "Proveri rezultat prema kriterijumima uspeha." },
     { id: "recover", status: "requires-execution", description: "Ponovi bezbedne, ponovljive korake ako provera ne prođe." },
     { id: "report", status: "ready", description: "Prikaži šta je urađeno, testove, greške i preostale blokade." },
