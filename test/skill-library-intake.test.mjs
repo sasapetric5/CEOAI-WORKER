@@ -48,7 +48,7 @@ test("deduplicates by stable ID, content hash, and pinned source", () => {
 });
 
 test("intake report keeps inventory and runtime counts separate", () => {
-  const report = buildSkillIntakeReport([approved, {...approved, id:"untrusted", license_status:"unknown"}]);
+  const report = buildSkillIntakeReport([approved, {...approved, id:"untrusted", content_hash:"hash-untrusted", source:{...source, path:"skills/untrusted/SKILL.md"}, license_status:"unknown"}]);
   assert.equal(report.summary.input_count, 2);
   assert.equal(report.summary.unique_count, 2);
   assert.equal(report.summary.runtime_enabled_count, 0);
