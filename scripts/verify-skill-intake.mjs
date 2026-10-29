@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 const MANIFEST = "skills/intake-batch-001.json";
 const REPORT = ".reports/skill-intake-verification.json";
 const MAX_BYTES = 256 * 1024;
+const FETCH_CONCURRENCY = 5;
 
 export function gitBlobSha(content) {
   const bytes = Buffer.from(content, "utf8");
@@ -28,6 +29,19 @@ export function scanSkillContent(content) {
   };
 }
 
+async function mapLimit(items, limit, worker) {
+  const output = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const index = next++;
+      if (index >= items.length) return;
+      output[index] = await worker(items[index], index);
+    }
+  }));
+  return output;
+}
+
 export async function verifyManifest(manifest, fetcher = async url => {
   const response = await fetch(url, { signal: AbortSignal.timeout(15000), headers: { "user-agent": "CEOAI-Skill-Intake-Verifier/1.0" } });
   if (!response.ok) throw new Error(`HTTP ${response.status}: ${url}`);
@@ -41,7 +55,7 @@ export async function verifyManifest(manifest, fetcher = async url => {
     throw new Error("Invalid manifest: pinned repository, 40-character commit and candidates are required");
   }
   if (new Set(candidates.map(item => item.id)).size !== candidates.length) throw new Error("Duplicate candidate IDs");
-  const results = await Promise.all(candidates.map(async candidate => {
+  const results = await mapLimit(candidates, FETCH_CONCURRENCY, async candidate => {
     if (candidate.source?.repository !== source.repository || candidate.source?.ref !== source.commit || !candidate.source?.path) {
       return { id: candidate.id, status: "invalid-source-reference", git_blob_match: false, manual_review_required: true };
     }
@@ -61,7 +75,7 @@ export async function verifyManifest(manifest, fetcher = async url => {
     } catch (error) {
       return { id: candidate.id, source: candidate.source, status: "fetch-failed", error: String(error), git_blob_match: false, manual_review_required: true };
     }
-  }));
+  });
   let license = { status: "unverified", git_blob_match: false };
   try {
     const body = await fetcher(`https://raw.githubusercontent.com/${source.repository}/${source.commit}/LICENSE`);
