@@ -100,6 +100,47 @@ test("daily free-call cap blocks provider network access when quota is already r
   } finally { globalThis.fetch = originalFetch; }
 });
 
+test("provider timeout aborts a stalled fetch and falls back without exposing provider details", async () => {
+  const kv = new MemoryKV();
+  const env = {
+    ...makeEnv(kv),
+    GEMINI_FREE_CONFIRMED: "true",
+    GEMINI_API_KEY_PRIMARY: "test-gemini-timeout",
+  };
+  const originalFetch = globalThis.fetch;
+  const called = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const target = String(url);
+    called.push(target);
+    if (target.includes("generativelanguage.googleapis.com")) {
+      return await new Promise((resolve, reject) => {
+        const signal = options.signal;
+        const abort = () => reject(new DOMException("aborted", "AbortError"));
+        if (signal?.aborted) return abort();
+        signal?.addEventListener("abort", abort, { once: true });
+      });
+    }
+    if (target.includes("openrouter.ai")) {
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: "Odgovor nakon timeout fallback-a" } }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    throw new Error("Unexpected provider endpoint");
+  };
+  try {
+    const cookie = await makeSession(env);
+    const response = await chat(env, cookie);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).reply, "Odgovor nakon timeout fallback-a");
+    assert.ok(called.some(url => url.includes("generativelanguage.googleapis.com")));
+    assert.ok(called.some(url => url.includes("openrouter.ai")));
+    const failedHealth = await kv.get("health:provider:gemini-1", "json");
+    const recoveredHealth = await kv.get("health:provider:openrouter-1", "json");
+    assert.equal(failedHealth.status, "unavailable");
+    assert.equal(recoveredHealth.status, "healthy");
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 test("parallel turns for the same session are rejected without a second provider call", async () => {
   const kv = new MemoryKV();
   const env = makeEnv(kv);
