@@ -38,7 +38,7 @@ test("missing atomic quota reservation blocks runtime", () => {
   const gate = evaluateAgentRuntimeGate(enabledEnv, missing);
   assert.equal(gate.allowed, false);
   assert.ok(gate.blockers.includes("atomic_quota_reserver_missing"));
-  assert.ok(gate.blockers.includes("atomic_quota_not_confirmed"));
+  assert.equal(gate.blockers.includes("atomic_quota_not_confirmed"), false);
 });
 test("KV-style best-effort quota is not accepted as atomic quota", () => {
   const gate = evaluateAgentRuntimeGate(enabledEnv, { ...dependencies, atomicQuota: false });
