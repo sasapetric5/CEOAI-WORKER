@@ -1219,6 +1219,11 @@ export default {
         ? `\n\n[SKILL ROUTING — planning metadata only; do not claim skill execution. Candidates: ${skillCandidates.map(skill => skill.id).join(", ")}. Eligible for execution: ${eligibleSkillCount}. Do not use skill instructions unless enabled and approved by runtime policy.]`
         : "\n\n[SKILL ROUTING — no candidate selected; continue with normal assistant behavior.]";
       messages.push({ role: "system", content: routingNote });
+      const plannedAgents = Array.isArray(taskPlan.selected_agents) ? taskPlan.selected_agents : [];
+      const agentRoutingNote = plannedAgents.length
+        ? `\\n\\n[AGENT ROUTING — planned handoffs only; these are role assignments, not separate model executions. Planned roles: ${plannedAgents.map(agent => agent.id).join(", ")}. No agent runtime, tool execution, paid service, or external action is enabled.]`
+        : "\\n\\n[AGENT ROUTING — no specialist plan available; continue with normal assistant behavior.]";
+      messages.push({ role: "system", content: agentRoutingNote });
 
       // Research enrichment with automatic search-provider failover (Jina → Tavily → Google CSE → Exa).
       // When one free quota is exhausted, the next configured free source takes over.
@@ -1510,6 +1515,13 @@ export default {
             mode: taskPlan.mode,
             taskType: taskPlan.task_type,
             executionAllowed: taskPlan.execution_allowed,
+            plannedAgents: plannedAgents.map(agent => ({
+              id: agent.id,
+              role: agent.role,
+              runtimeStatus: agent.runtime_status,
+              executionAllowed: agent.execution_allowed,
+            })),
+            handoffMode: taskPlan.handoff_policy?.mode ?? "unavailable",
             blockedSkillIds: taskPlan.blocked_skill_ids,
           },
         },
