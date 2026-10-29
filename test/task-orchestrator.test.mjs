@@ -8,6 +8,13 @@ test("orchestrator creates a bounded plan and never enables unreviewed skills", 
   const plan = createTaskPlan(registry, "Pregledaj SEO sajta i pronađi tehničke greške");
   assert.equal(plan.mode, "plan-only");
   assert.equal(plan.task_type, "seo");
+  assert.deepEqual(plan.selected_agents.map(agent => agent.id), [
+    "content-seo-agent", "research-agent", "qa-agent",
+  ]);
+  assert.equal(plan.handoff_policy.mode, "planned-only");
+  assert.equal(plan.handoff_policy.agent_execution_enabled, false);
+  assert.equal(plan.handoff_policy.external_actions_allowed, false);
+  assert.equal(plan.handoff_policy.paid_services_allowed, false);
   assert.equal(plan.execution_allowed, false);
   assert.equal(plan.execution_block_reason, "plan-only-no-runtime-executor");
   assert.equal(plan.execution_policy.container_executor_available, false);
@@ -28,6 +35,7 @@ test("orchestrator rejects empty, oversized, and invalid plans", async () => {
   assert.throws(() => createTaskPlan(registry, ""), TypeError);
   assert.throws(() => createTaskPlan(registry, "x".repeat(2001)), TypeError);
   assert.throws(() => createTaskPlan(registry, "SEO", { maxSteps: 7 }), RangeError);
+  assert.throws(() => createTaskPlan(registry, "SEO", { maxAgents: 5 }), RangeError);
 });
 
 test("orchestrator permits execution only when the registry satisfies all gates", () => {
