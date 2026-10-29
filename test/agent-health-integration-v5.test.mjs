@@ -136,7 +136,7 @@ test("provider timeout aborts a stalled fetch and falls back without exposing pr
     assert.ok(called.some(url => url.includes("openrouter.ai")));
     const failedHealth = await kv.get("health:provider:gemini-1", "json");
     const recoveredHealth = await kv.get("health:provider:openrouter-1", "json");
-    assert.equal(failedHealth.status, "unavailable");
+    assert.equal(failedHealth.status, "degraded"); // one timeout is recorded as degraded, not fully unavailable
     assert.equal(recoveredHealth.status, "healthy");
   } finally { globalThis.fetch = originalFetch; }
 });
