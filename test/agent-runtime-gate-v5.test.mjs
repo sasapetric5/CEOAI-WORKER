@@ -21,6 +21,8 @@ test("runtime gate is blocked by default and never claims execution", () => {
   assert.equal(gate.allowed, false);
   assert.equal(gate.mode, "blocked");
   assert.equal(gate.execution_started, false);
+  assert.equal(gate.readiness_only, true);
+  assert.equal(gate.can_execute_agents, false);
   assert.equal(gate.external_actions_allowed, false);
   assert.equal(gate.paid_services_allowed, false);
   assert.ok(gate.blockers.includes("runtime_not_explicitly_enabled"));
