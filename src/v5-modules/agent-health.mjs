@@ -77,7 +77,7 @@ export async function recordProviderLatency(kv, providerId, durationMs, now = Da
     const key = keyFor(providerId);
     let previous;
     try { previous = await readProviderHealth(kv, providerId); }
-    catch { previous = emptyHealth(providerId, now); }
+    catch { return false; }
     const oldLatency = Number.isFinite(previous.latencyEwmaMs) &&
       previous.latencyEwmaMs >= 1 && previous.latencyEwmaMs <= 120_000
       ? previous.latencyEwmaMs : null;
@@ -104,7 +104,7 @@ export async function recordProviderOutcome(kv, providerId, outcome, now = Date.
     const key = keyFor(providerId);
     let previous;
     try { previous = await readProviderHealth(kv, providerId); }
-    catch { previous = emptyHealth(providerId, now); }
+    catch { return false; }
 
     const success = outcome.kind === "success";
     const statusCode = Number.isInteger(outcome.statusCode) && outcome.statusCode >= 100 && outcome.statusCode <= 599
