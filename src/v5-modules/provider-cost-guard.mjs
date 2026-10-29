@@ -42,6 +42,7 @@ export function dailyProviderUsageKey(providerId, now = Date.now()) {
 export async function reserveProviderCall(kv, providerId, env = {}, now = Date.now()) {
   const limit = dailyProviderCallLimit(env, providerId);
   if (limit < 0) return { allowed: false, reason: "invalid_daily_limit", count: null };
+  if (limit === 0) return { allowed: false, reason: "daily_limit_not_configured_or_zero", count: 0 };
   if (!kv || typeof kv.get !== "function" || typeof kv.put !== "function") {
     return { allowed: false, reason: "usage_store_unavailable", count: null };
   }
@@ -51,7 +52,7 @@ export async function reserveProviderCall(kv, providerId, env = {}, now = Date.n
     const raw = await kv.get(key);
     const count = raw === null || raw === undefined ? 0 : Number(raw);
     if (!Number.isSafeInteger(count) || count < 0) return { allowed: false, reason: "usage_state_invalid", count: null };
-    if (limit > 0 && count >= limit) return { allowed: false, reason: "daily_limit_reached", count };
+    if (count >= limit) return { allowed: false, reason: "daily_limit_reached", count };
     const next = count + 1;
     await kv.put(key, String(next), { expirationTtl: 60 * 60 * 24 * 3 });
     return { allowed: true, reason: "reserved", count: next };
