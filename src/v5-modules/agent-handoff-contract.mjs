@@ -106,3 +106,42 @@ export const AGENT_HANDOFF_LIMITS = Object.freeze({
   external_actions_enabled: false,
   paid_services_enabled: false,
 });
+
+export function createValidatedNextHandoff(input) {
+  if (!isPlainObject(input)) throw new TypeError("handoff transition input must be an object");
+  const validation = validateAgentResult(input.result, {
+    task_id: input.task_id,
+    agent_id: input.expected_agent_id,
+  });
+  if (!validation.valid) {
+    return {
+      allowed: false,
+      reasons: validation.reasons,
+      handoff: null,
+      execution_started: false,
+    };
+  }
+  const result = input.result;
+  const artifactText = (result.artifacts ?? []).join(", ");
+  const payload = "Validated prior-agent result. Status: " + result.status +
+    ". Summary: " + result.summary +
+    (artifactText ? ". Artifacts: " + artifactText : "") +
+    ". Review this material only; do not execute external actions.";
+  try {
+    const handoff = createAgentHandoff({
+      task_id: input.task_id,
+      from: input.expected_agent_id,
+      to: input.next_agent_id,
+      payload,
+      created_at: input.created_at,
+    });
+    return { allowed: true, reasons: [], handoff, execution_started: false };
+  } catch (error) {
+    return {
+      allowed: false,
+      reasons: [error instanceof TypeError ? error.message : "handoff-rejected"],
+      handoff: null,
+      execution_started: false,
+    };
+  }
+}
