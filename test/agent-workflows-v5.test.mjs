@@ -4,7 +4,7 @@ import { executeAgentWorkflow, listExecutableWorkflows } from "../src/v5-modules
 
 test("exposes six real local workflows across five apps", () => {
   const workflows = listExecutableWorkflows();
-  assert.equal(workflows.length, 6);
+  assert.equal(workflows.length, 20);
   assert.deepEqual(new Set(workflows.map(x => x.app)), new Set(["ceoai", "contentcraft", "aiforce", "rankgeo", "safe-automaton"]));
   assert.ok(workflows.every(x => x.execution_mode === "local-deterministic" && !x.network_access && !x.paid_services && !x.external_actions));
 });
@@ -134,4 +134,86 @@ test("result metadata includes check totals consistent with checks", () => {
   assert.equal(r.check_count, r.checks.length);
   assert.equal(r.failed_count, r.checks.filter(x => !x.ok).length);
   assert.equal(r.warning_count, r.checks.filter(x => x.severity === "warning").length);
+});
+
+test("CEOAI intake produces bounded task with safety gates", () => {
+ const r=executeAgentWorkflow("ceoai.task-intake",{objective:"Review app",constraints:["free only"],acceptance_criteria:["tests pass"],risk:"low"});
+ assert.equal(r.artifacts.task.execution_authorized,false);
+ assert.ok(r.artifacts.task.safety_gates.includes("no paid services"));
+});
+test("CEOAI intake flags high risk and rejects missing objective", () => {
+ assert.equal(executeAgentWorkflow("ceoai.task-intake",{objective:"x",risk:"high"}).status,"passed-with-warnings");
+ assert.throws(()=>executeAgentWorkflow("ceoai.task-intake",{}),TypeError);
+});
+test("CEOAI retry planner retries only transient idempotent failures", () => {
+ const r=executeAgentWorkflow("ceoai.retry-plan",{failures:[{kind:"timeout",idempotent:true},{kind:"validation",idempotent:true},{kind:"rate-limit",idempotent:false}]});
+ assert.equal(r.artifacts.retry_plan[0].retryable,true);
+ assert.equal(r.artifacts.retry_plan[1].retryable,false);
+ assert.equal(r.artifacts.retry_plan[2].retryable,false);
+});
+test("CEOAI retry planner bounds retries and rejects unsafe input", () => {
+ assert.throws(()=>executeAgentWorkflow("ceoai.retry-plan",{failures:[],maxRetries:4}),RangeError);
+ assert.throws(()=>executeAgentWorkflow("ceoai.retry-plan",{failures:[null]}),TypeError);
+});
+test("CEOAI output verification finds missing fields and errors", () => {
+ const r=executeAgentWorkflow("ceoai.output-verification",{output:{status:"error"},requiredFields:["answer"]});
+ assert.equal(r.artifacts.valid,false);
+ assert.ok(r.checks.some(x=>x.code==="output-signals-error"));
+});
+test("ContentCraft generates five bounded headline variants", () => {
+ const r=executeAgentWorkflow("contentcraft.headline-variants",{topic:"SEO",audience:"mala preduzeća",benefit:"više upita"});
+ assert.equal(r.artifacts.variants.length,5);
+});
+test("ContentCraft quality review flags unsupported absolute claims and short copy", () => {
+ const r=executeAgentWorkflow("contentcraft.quality-review",{draft:"Uvek zagarantovano. https://example.com",minWords:10});
+ assert.equal(r.status,"passed-with-warnings");
+ assert.equal(r.artifacts.publish_allowed,false);
+});
+test("ContentCraft editorial calendar uses bounded cadence and draft-only status", () => {
+ const r=executeAgentWorkflow("contentcraft.editorial-calendar",{topics:["A","B"],startDate:"2026-11-01",cadenceDays:3});
+ assert.equal(r.artifacts.entries[1].date,"2026-11-04");
+ assert.equal(r.artifacts.entries[0].status,"draft");
+});
+test("ContentCraft calendar rejects invalid dates and cadence", () => {
+ assert.throws(()=>executeAgentWorkflow("contentcraft.editorial-calendar",{topics:["A"],startDate:"tomorrow"}),TypeError);
+ assert.throws(()=>executeAgentWorkflow("contentcraft.editorial-calendar",{topics:["A"],startDate:"2026-11-01",cadenceDays:32}),RangeError);
+});
+test("AI Force redacts email and token patterns without storing original", () => {
+ const r=executeAgentWorkflow("aiforce.prompt-redaction",{prompt:"Contact a@example.com using api_ABCDEFGHIJKLMNOPQRSTUVWXYZ"});
+ assert.equal(r.artifacts.original_prompt_stored,false);
+ assert.equal(r.artifacts.redacted_prompt.includes("a@example.com"),false);
+ assert.equal(r.artifacts.redactions_applied,true);
+});
+test("AI Force structured output validator enforces required fields and types", () => {
+ const r=executeAgentWorkflow("aiforce.structured-output-validation",{output:{age:"old"},schema:{required:["name"],properties:{age:"number"}}});
+ assert.equal(r.artifacts.valid,false);
+ assert.equal(r.artifacts.errors.length,2);
+});
+test("RankGeo keyword map groups order-independent token variants", () => {
+ const r=executeAgentWorkflow("rankgeo.keyword-map",{keywords:["SEO lokalni","lokalni SEO","SEO tehnicki"]});
+ assert.equal(r.artifacts.clusters[0].duplicate_or_variant_count,2);
+});
+test("RankGeo local listing audit detects missing data and owner verification", () => {
+ const r=executeAgentWorkflow("rankgeo.local-listing-audit",{listing:{name:"A",address:"B"}});
+ assert.equal(r.artifacts.ready_for_human_review,false);
+ assert.ok(r.artifacts.missing_fields.includes("phone"));
+});
+test("RankGeo JSON-LD validation distinguishes valid JSON from missing schema context", () => {
+ assert.equal(executeAgentWorkflow("rankgeo.jsonld-validation",{jsonLd:'{"@context":"https://schema.org","@type":"LocalBusiness"}'}).artifacts.valid,true);
+ assert.equal(executeAgentWorkflow("rankgeo.jsonld-validation",{jsonLd:'{"name":"x"}'}).artifacts.valid,false);
+});
+test("Safe Automaton permission review flags broad permissions without mutation", () => {
+ const r=executeAgentWorkflow("safe-automaton.permission-review",{permissions:[{name:"repo",scope:"admin",required:true}]});
+ assert.equal(r.artifacts.mutations_performed,false);
+ assert.equal(r.artifacts.permissions[0].decision,"remove-or-narrow");
+});
+test("Safe Automaton incident triage prioritizes secret leaks without executing actions", () => {
+ const r=executeAgentWorkflow("safe-automaton.incident-triage",{description:"credential leak detected"});
+ assert.equal(r.artifacts.severity,"critical");
+ assert.equal(r.external_actions_performed,false);
+});
+test("Safe Automaton rollback plan requires backup and approval and never executes", () => {
+ const r=executeAgentWorkflow("safe-automaton.rollback-plan",{currentVersion:"v2",previousKnownGoodVersion:"v1",healthCheck:"GET /health",backupVerified:false,ownerApproval:false});
+ assert.equal(r.artifacts.execution_started,false);
+ assert.equal(r.status,"passed-with-warnings");
 });
