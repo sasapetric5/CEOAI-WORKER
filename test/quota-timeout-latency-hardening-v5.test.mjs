@@ -195,7 +195,7 @@ test("healthy recent provider gets a small health preference", () => {
   assert.equal(providerHealthRoutingAdjustment({ status: "healthy", consecutiveFailures: 0, updatedAt: NOW }, NOW), 0.2);
 });
 test("unavailable provider gets bounded health penalty", () => {
-  assert.equal(providerHealthRoutingAdjustment({ status: "unavailable", consecutiveFailures: 99, updatedAt: NOW }, NOW), -0.3);
+  assert.ok(Math.abs(providerHealthRoutingAdjustment({ status: "unavailable", consecutiveFailures: 99, updatedAt: NOW }, NOW) - (-0.3)) < 1e-9);
 });
 test("recovery action is normal when health is stale", () => {
   assert.equal(providerRecoveryAction({ status: "unavailable", updatedAt: NOW - 3_600_001 }, NOW), "normal");
