@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   createAgentHandoff,
+  createValidatedNextHandoff,
   validateAgentResult,
   AGENT_HANDOFF_LIMITS,
 } from "../src/v5-modules/agent-handoff-contract.mjs";
@@ -153,4 +154,56 @@ test("documents hard limits and disabled runtime capabilities", () => {
   assert.equal(AGENT_HANDOFF_LIMITS.execution_enabled, false);
   assert.equal(AGENT_HANDOFF_LIMITS.external_actions_enabled, false);
   assert.equal(AGENT_HANDOFF_LIMITS.paid_services_enabled, false);
+});
+
+test("validated Code Agent result may be handed to QA Agent", () => {
+  const result = {
+    task_id: base.task_id, agent_id: "coding-agent", status: "completed",
+    summary: "Predlog izmene je spreman za nezavisnu proveru.",
+    artifacts: ["patch-review.txt"],
+    external_actions_performed: false, paid_services_used: false, execution_started: false,
+  };
+  const transition = createValidatedNextHandoff({
+    task_id: base.task_id, expected_agent_id: "coding-agent", next_agent_id: "qa-agent", result,
+    created_at: "2026-10-29T12:00:00.000Z",
+  });
+  assert.equal(transition.allowed, true);
+  assert.deepEqual(transition.reasons, []);
+  assert.equal(transition.handoff.from, "coding-agent");
+  assert.equal(transition.handoff.to, "qa-agent");
+  assert.equal(transition.execution_started, false);
+});
+test("invalid or mismatched prior result blocks handoff", () => {
+  const result = {
+    task_id: "wrong-task", agent_id: "coding-agent", status: "completed", summary: "Patch ready",
+    external_actions_performed: false, paid_services_used: false, execution_started: false,
+  };
+  const transition = createValidatedNextHandoff({
+    task_id: base.task_id, expected_agent_id: "coding-agent", next_agent_id: "qa-agent", result,
+  });
+  assert.equal(transition.allowed, false);
+  assert.equal(transition.handoff, null);
+  assert.ok(transition.reasons.includes("task-id-mismatch"));
+});
+test("result claiming paid service or external action cannot be handed off", () => {
+  const result = {
+    task_id: base.task_id, agent_id: "coding-agent", status: "completed", summary: "Patch ready",
+    external_actions_performed: true, paid_services_used: false, execution_started: false,
+  };
+  const transition = createValidatedNextHandoff({
+    task_id: base.task_id, expected_agent_id: "coding-agent", next_agent_id: "qa-agent", result,
+  });
+  assert.equal(transition.allowed, false);
+  assert.ok(transition.reasons.includes("external-actions-must-be-false"));
+});
+test("transition blocks unapproved next-agent route", () => {
+  const result = {
+    task_id: base.task_id, agent_id: "coding-agent", status: "completed", summary: "Patch ready",
+    external_actions_performed: false, paid_services_used: false, execution_started: false,
+  };
+  const transition = createValidatedNextHandoff({
+    task_id: base.task_id, expected_agent_id: "coding-agent", next_agent_id: "research-agent", result,
+  });
+  assert.equal(transition.allowed, false);
+  assert.equal(transition.handoff, null);
 });
