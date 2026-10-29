@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0.0",
   "batch_id": "ceoai-skill-intake-001",
-  "status": "discovery-only",
+  "status": "source-paths-verified-license-security-review-pending",
   "policy": "metadata-only; no third-party skill bodies copied; no execution or runtime enablement",
   "source_snapshot": {
     "repository": "hummbl-io/agent-skills",
@@ -18,7 +18,10 @@
     "license_reviews_complete": 0,
     "security_reviews_complete": 0,
     "tests_complete": 0,
-    "runtime_enabled": 0
+    "runtime_enabled": 0,
+    "source_files_verified": 50,
+    "source_files_missing": 0,
+    "git_blob_pins_verified": 50
   },
   "candidates": [
     {
@@ -47,7 +50,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "f6c6a9906193f96e0d23f620514dc5b203f899ca",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -55,7 +58,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 2446
     },
     {
       "id": "hummbl-a11y-fix",
@@ -83,7 +88,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "2ec3e5ca5c6385a480e7c42ef93149358f5c92d3",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -91,7 +96,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 2120
     },
     {
       "id": "hummbl-absence-audit",
@@ -119,7 +126,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "72127dcf837802a9ad52beade1c79e7acdf8f7de",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -127,7 +134,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 3573
     },
     {
       "id": "hummbl-adr-review",
@@ -155,7 +164,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "a0924cb485538c6008de71f580aeb2237d260ec1",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -163,7 +172,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 3222
     },
     {
       "id": "hummbl-agent-audit",
@@ -190,7 +201,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "d39a5f76bf052a98361b7e5d0c03a62a493c3945",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -198,7 +209,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 2762
     },
     {
       "id": "hummbl-agent-compare",
@@ -225,7 +238,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "a5f7f8a4511ea873bdd1bfdd59db956a3c9a5a92",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -233,7 +246,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 6918
     },
     {
       "id": "hummbl-agent-design",
@@ -260,7 +275,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "c94bba50a82a9e3aef7091ca80ff25875268ea01",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -268,7 +283,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 2984
     },
     {
       "id": "hummbl-agent-grade",
@@ -295,7 +312,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "f55793d4fe37c62a263084191652c70fbc0a458e",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -303,7 +320,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 13911
     },
     {
       "id": "hummbl-agent-guardrail",
@@ -332,7 +351,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "de7249d8e3840b032fbfd0ce540c4cc2cdc90fc9",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -340,7 +359,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 3281
     },
     {
       "id": "hummbl-agent-metrics",
@@ -367,7 +388,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "f80cbd4352dadf17f0e5cd3db585689242e76134",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -375,7 +396,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 3744
     },
     {
       "id": "hummbl-agent-trace",
@@ -402,7 +425,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "94e5518e03d32bb6a40395de8231005cc4add7fb",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -410,7 +433,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 3110
     },
     {
       "id": "hummbl-ai-cost-optimize",
@@ -437,7 +462,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "78e294c4059a82efa966a85a6b79ee7acaddd7f0",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -445,7 +470,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 2998
     },
     {
       "id": "hummbl-ai-policy-review",
@@ -474,7 +501,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "9b4bb4374b5e825427962b008e283d3d94b06131",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -482,7 +509,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 6749
     },
     {
       "id": "hummbl-ai-safety-check",
@@ -511,7 +540,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "b015cd027e66c4c78e4cc06c11cdacde99671631",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -519,7 +548,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 5549
     },
     {
       "id": "hummbl-alignment-check",
@@ -546,7 +577,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "1738c1a799e56e312341f7157b929e98801cd136",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -554,7 +585,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 9108
     },
     {
       "id": "hummbl-api-design",
@@ -582,7 +615,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "0d87b3490b43f7894f012fb02dc58c6a9305dcfc",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -590,7 +623,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 2782
     },
     {
       "id": "hummbl-api-docs",
@@ -618,7 +653,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "f72e961829d19cae006cd2250855f207dd9a4f54",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -626,7 +661,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 3072
     },
     {
       "id": "hummbl-aria-label-audit",
@@ -654,7 +691,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "cf630b2e3238c6075181dcd005bfc00dfee0fb79",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -662,7 +699,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 4840
     },
     {
       "id": "hummbl-assumption-audit",
@@ -691,7 +730,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "22e38a69fcb15c86fa7cc80f1e5e701e13ac1754",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -699,7 +738,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 3377
     },
     {
       "id": "hummbl-auth-audit",
@@ -728,7 +769,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "010e293b3de204d00f9adcecccedc45fd74e912b",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -736,7 +777,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 3347
     },
     {
       "id": "hummbl-aws-observability",
@@ -763,7 +806,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "2996ab7a53ea70c5cdc199cfd326586e8ecb4dd4",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -771,7 +814,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 6618
     },
     {
       "id": "hummbl-aws-security",
@@ -800,7 +845,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "aa0253fb3ff13ffec333e777a976bded0f1ac6bb",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -808,7 +853,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 13839
     },
     {
       "id": "hummbl-bki-cite-audit",
@@ -837,7 +884,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "477eae80c09c9ab1306b738f52dbd45d9d14c66b",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -845,7 +892,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 14317
     },
     {
       "id": "hummbl-blog-draft",
@@ -872,7 +921,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "0e8a6bc32a2927d983c3e0891e00b09f1f4eb4cd",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -880,7 +929,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 3311
     },
     {
       "id": "hummbl-bus-analytics",
@@ -907,7 +958,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "acfa4d4cc8727a661029068baf111e4f17b2e921",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -915,7 +966,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 3113
     },
     {
       "id": "hummbl-business-review",
@@ -943,7 +996,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "bf2bfc928e38e3b719c3b157e10a52a6885ab96c",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -951,7 +1004,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 6518
     },
     {
       "id": "hummbl-changelog-subscribe",
@@ -980,7 +1035,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "7c22d67749bbed7a825d3f2f252fc4a18b0e01fc",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -988,7 +1043,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 2652
     },
     {
       "id": "hummbl-claim-verify",
@@ -1017,7 +1074,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "295ce9780fe2518e97ec23466bb16b18fa040580",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -1025,7 +1082,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 16590
     },
     {
       "id": "hummbl-code-review",
@@ -1053,7 +1112,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "fc71b9b09bf806bbfe1a898559ca0aabbd370c0b",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -1061,7 +1120,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 5568
     },
     {
       "id": "hummbl-codegen-eval",
@@ -1089,7 +1150,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "1371ef1643861650419d16d5268f1d9a8e73e805",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -1097,7 +1158,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 6200
     },
     {
       "id": "hummbl-competitive-intel",
@@ -1126,7 +1189,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "b6690caa9bd12f4ce69c5d17c957f530ec38aac4",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -1134,7 +1197,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 4183
     },
     {
       "id": "hummbl-content-calendar",
@@ -1161,7 +1226,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "f9c26bf0763c1baed319860a7fad28fa5a6ce99d",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -1169,7 +1234,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 2825
     },
     {
       "id": "hummbl-content-design",
@@ -1196,7 +1263,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "980772a33556eb8d8a718040f10441c82e478052",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -1204,7 +1271,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 1293
     },
     {
       "id": "hummbl-content-review",
@@ -1231,7 +1300,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "fee6bf0f2b8947ef4a393bc5cc52aa27e87a1125",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -1239,7 +1308,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 5094
     },
     {
       "id": "hummbl-coverage",
@@ -1267,7 +1338,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "ea114caf6805a701a8b2756c94a320cd9ab078ab",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -1275,7 +1346,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 2620
     },
     {
       "id": "hummbl-coverage-gate",
@@ -1303,7 +1376,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "8831cc115484d54efb72b53682188734fc3f6c36",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -1311,7 +1384,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 6895
     },
     {
       "id": "hummbl-crucible-telemetry",
@@ -1338,7 +1413,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "708460683ee709b8e767bdb6179d3158f8ca25b7",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -1346,7 +1421,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 5376
     },
     {
       "id": "hummbl-daily-research",
@@ -1375,7 +1452,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "16b4b1235cdaf1b4ce26dafe23c0b0176bf03277",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -1383,7 +1460,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 10262
     },
     {
       "id": "hummbl-data-lineage",
@@ -1412,7 +1491,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "1b11f7ada851d0dfd7a8f68529e0f924c7d76816",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -1420,7 +1499,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 2763
     },
     {
       "id": "hummbl-data-masking",
@@ -1449,7 +1530,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "95908337e6f3b9fb15ea8679e64d418b58ef7b65",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -1457,7 +1538,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 2962
     },
     {
       "id": "hummbl-data-quality",
@@ -1486,7 +1569,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "2b0c27e4c8da9b47615a20c255960d872b930e24",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -1494,7 +1577,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 2353
     },
     {
       "id": "hummbl-debug-test",
@@ -1522,7 +1607,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "d1c449df4b00008f61d7ce52ce707518eee7bd7c",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -1530,7 +1615,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 2265
     },
     {
       "id": "hummbl-deep-research-mode",
@@ -1559,7 +1646,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "31053756f7f13b3130ff57bfd111db0f68d50a22",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -1567,7 +1654,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 2542
     },
     {
       "id": "hummbl-diff-explain",
@@ -1595,7 +1684,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "3f2a435c0096548944b171b1f85ada4e62612a7d",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -1603,7 +1692,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 2548
     },
     {
       "id": "hummbl-doc-coauthoring",
@@ -1630,7 +1721,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "6b29413d84e00657f871c4a30c8b79d7a507891c",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -1638,7 +1729,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 16119
     },
     {
       "id": "hummbl-doc-drift",
@@ -1666,7 +1759,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "d92a44082c5daaac3d06afdc1b7fc180cb01753c",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -1674,7 +1767,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 4648
     },
     {
       "id": "hummbl-doc-harden",
@@ -1703,7 +1798,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "a3f1595b772e0e044b432b70e4eae7173854933c",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -1711,7 +1806,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 5289
     },
     {
       "id": "hummbl-doc-self-check",
@@ -1740,7 +1837,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "3bb23cb7e5a06697f0dd7a8bdec05570d42476ea",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -1748,7 +1845,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 5976
     },
     {
       "id": "hummbl-etl-design",
@@ -1776,7 +1875,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "8fab1ace05603131c278a1257bf62a0d6ca880b0",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -1784,7 +1883,9 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 3211
     },
     {
       "id": "hummbl-frontend-design",
@@ -1812,7 +1913,7 @@
       "license_evidence": "README.md catalog at pinned upstream commit; individual file/license notice still requires review",
       "license_status": "pending-review",
       "content_hash": null,
-      "git_blob_sha": null,
+      "git_blob_sha": "3a97e44e0faadef0cdbfb34034f0a6e53bc66756",
       "security_status": "pending",
       "test_status": "pending",
       "input_contract": null,
@@ -1820,7 +1921,16 @@
       "external_actions": null,
       "paid_services": null,
       "runtime_status": "not-enabled",
-      "review_status": "candidate"
+      "review_status": "candidate",
+      "source_file_verified": true,
+      "source_bytes": 4628
     }
+  ],
+  "notes": [
+    "All 50 SKILL.md paths were fetched successfully at the pinned upstream commit.",
+    "git_blob_sha is GitHub's Git blob identifier, not SHA-256.",
+    "SHA-256 content hashes remain pending until content is ingested into the approved local hash pipeline.",
+    "The upstream catalog declares Apache-2.0 for these entries; individual skill notices and bundled resources still require review.",
+    "No third-party skill bodies were copied; no skill was enabled or executed."
   ]
 }
