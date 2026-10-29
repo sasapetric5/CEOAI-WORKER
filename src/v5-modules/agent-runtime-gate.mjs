@@ -15,6 +15,9 @@ export function evaluateAgentRuntimeGate(env = {}, dependencies = {}) {
     allowed: blockers.length === 0,
     blockers,
     mode: blockers.length === 0 ? "prerequisites-present" : "blocked",
+    // This module is a prerequisite check only; it never authorizes execution.
+    readiness_only: true,
+    can_execute_agents: false,
     execution_started: false,
     external_actions_allowed: false,
     paid_services_allowed: false,
