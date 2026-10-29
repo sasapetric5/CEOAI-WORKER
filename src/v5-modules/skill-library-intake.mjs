@@ -23,8 +23,14 @@ const PRIORITY_TERMS = Object.freeze({
   "content-and-marketing": ["content", "copywriting", "headline", "brand voice", "editorial", "marketing"]
 });
 
-const BLOCKED_LICENSE_STATES = new Set(["unknown", "incompatible", "rejected", "missing"]);
+const BLOCKED_LICENSE_STATES = new Set(["incompatible", "rejected", "missing"]);
 const BLOCKED_SECURITY_STATES = new Set(["blocked", "rejected", "unsafe", "failed"]);
+const APPROVED_LICENSE_STATES = new Set(["approved", "mit", "apache-2.0", "bsd-2-clause", "bsd-3-clause", "isc", "mpl-2.0", "cc0-1.0"]);
+const APPROVED_SECURITY_STATES = new Set(["passed", "approved"]);
+
+function hasPinnedSource(source) {
+  return Boolean(source?.repository && source?.path && /^[a-f0-9]{7,40}$/i.test(String(source?.ref || "")));
+}
 
 function normalized(value) {
   return String(value ?? "").toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
@@ -65,9 +71,12 @@ export function classifySkillCandidate(candidate = {}) {
   const applications = appScores.length ? appScores.map(item => item.app) : ["ceoai"];
   const licenseStatus = normalized(candidate.license_status || "unknown");
   const securityStatus = normalized(candidate.security_status || "pending");
-  const hasSource = Boolean(candidate.source?.repository && candidate.source?.ref && candidate.source?.path);
+  const hasSource = Boolean(candidate.source?.repository && candidate.source?.path);
+  const pinnedSource = hasPinnedSource(candidate.source);
+  const licenseApproved = APPROVED_LICENSE_STATES.has(licenseStatus);
+  const securityApproved = APPROVED_SECURITY_STATES.has(securityStatus);
   const blocked = BLOCKED_LICENSE_STATES.has(licenseStatus) || BLOCKED_SECURITY_STATES.has(securityStatus);
-  const hardGatePassed = hasSource && !blocked && candidate.external_actions !== true && candidate.paid_services !== true;
+  const hardGatePassed = hasSource && pinnedSource && licenseApproved && securityApproved && candidate.test_status === "passed" && Boolean(candidate.content_hash && candidate.input_contract && candidate.output_contract) && candidate.external_actions === false && candidate.paid_services === false;
   const signals = [
     candidate.name ? 8 : 0,
     candidate.description ? 8 : 0,
@@ -82,10 +91,12 @@ export function classifySkillCandidate(candidate = {}) {
   const readinessScore = Math.min(100, signals.reduce((sum, score) => sum + score, 0));
   const priorityScore = Math.min(100, (categoryScore * 12) + (appScores.length ? Math.min(20, appScores[0].score * 5) : 0) + (candidate.criticality === "high" ? 20 : 0));
   const status = !hasSource ? "needs-provenance" : blocked ? "blocked-review" :
-    !candidate.license_status || licenseStatus === "unknown" ? "license-review" :
-    !candidate.content_hash || !candidate.source?.ref ? "needs-pinning" :
-    candidate.security_status !== "passed" && candidate.security_status !== "approved" ? "security-review" :
-    candidate.test_status !== "passed" ? "testing-required" : "eligible-for-owner-review";
+    !licenseApproved ? "license-review" :
+    !pinnedSource || !candidate.content_hash ? "needs-pinning" :
+    !securityApproved ? "security-review" :
+    candidate.test_status !== "passed" ? "testing-required" :
+    !(candidate.input_contract && candidate.output_contract) ? "contract-review" :
+    candidate.external_actions !== false || candidate.paid_services !== false ? "policy-review" : "eligible-for-owner-review";
   return {
     id: String(candidate.id || ""),
     category,
@@ -97,9 +108,9 @@ export function classifySkillCandidate(candidate = {}) {
     missing: [
       !candidate.name ? "name" : null,
       !candidate.description ? "description" : null,
-      !hasSource ? "source.repository/ref/path" : null,
+      !hasSource || !pinnedSource ? "pinned_source.repository/commit_sha/path" : null,
       !candidate.content_hash ? "content_hash" : null,
-      !candidate.license_status || licenseStatus === "unknown" ? "license_review" : null,
+      !licenseApproved ? "license_review" : null,
       candidate.security_status !== "passed" && candidate.security_status !== "approved" ? "security_review" : null,
       candidate.test_status !== "passed" ? "tests" : null,
       !(candidate.input_contract && candidate.output_contract) ? "input/output_contract" : null
@@ -173,11 +184,13 @@ export function selectRelevantSkills(skills = [], task = {}, options = {}) {
   const scored = [];
   for (const skill of skills) {
     if (skill.runtime_status !== "enabled" || skill.review_status !== "approved") continue;
-    if (BLOCKED_LICENSE_STATES.has(normalized(skill.license_status))) continue;
-    if (BLOCKED_SECURITY_STATES.has(normalized(skill.security_status))) continue;
-    if (skill.external_actions === true || skill.paid_services === true) continue;
+    if (!APPROVED_LICENSE_STATES.has(normalized(skill.license_status))) continue;
+    if (!APPROVED_SECURITY_STATES.has(normalized(skill.security_status))) continue;
+    if (skill.test_status !== "passed" || !skill.content_hash || !hasPinnedSource(skill.source)) continue;
+    if (!(skill.input_contract && skill.output_contract)) continue;
+    if (skill.external_actions !== false || skill.paid_services !== false) continue;
     const allowedApps = uniqueStrings(skill.applications || []);
-    if (app && allowedApps.length && !allowedApps.map(normalized).includes(app)) continue;
+    if (app && !allowedApps.map(normalized).includes(app)) continue;
     const skillText = [skill.name, skill.description, skill.category, ...(skill.tags || []), ...(skill.intents || [])].join(" ");
     const lexical = overlap(taskTokens, tokens(skillText));
     const tagHits = (skill.tags || []).filter(tag => taskTokens.has(normalized(tag))).length;
