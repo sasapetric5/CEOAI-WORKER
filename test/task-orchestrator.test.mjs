@@ -13,6 +13,7 @@ test("orchestrator creates a bounded plan and never enables unreviewed skills", 
   assert.equal(plan.execution_policy.container_executor_available, false);
   assert.equal(plan.execution_policy.execution_started, false);
   assert.ok(plan.steps.some(step => step.id === "execute" && step.status === "blocked-plan-only-no-runtime"));
+  assert.ok(plan.steps.filter(step => ["verify", "recover"].includes(step.id)).every(step => step.status === "blocked-until-runtime"));
   assert.ok(plan.blocked_skill_ids.includes("seo-audit"));
   assert.equal(plan.external_actions_allowed, false);
   assert.equal(plan.paid_services_allowed, false);
