@@ -2,6 +2,11 @@
 // KV read/modify/write is not atomic; counters are diagnostic, never used as a security boundary.
 const HEALTH_TTL_SECONDS = 60 * 60 * 24 * 30;
 const MAX_PROVIDER_ID_LENGTH = 80;
+const MAX_FUTURE_SKEW_MS = 60_000;
+
+function validEventTimestamp(value) {
+  return Number.isSafeInteger(value) && value >= 0 && value <= Date.now() + MAX_FUTURE_SKEW_MS;
+}
 
 function keyFor(providerId) {
   const id = String(providerId || "");
@@ -42,7 +47,7 @@ export async function readProviderHealth(kv, providerId) {
 
   // Treat KV as untrusted persisted input: only expose known, bounded fields.
   const allowedStatuses = new Set(["unknown", "healthy", "rate_limited", "unavailable", "degraded"]);
-  const safeTimestamp = value => Number.isSafeInteger(value) && value >= 0 && value <= now + 60_000 ? value : null;
+  const safeTimestamp = value => Number.isSafeInteger(value) && value >= 0 && value <= now + MAX_FUTURE_SKEW_MS ? value : null;
   const persistedUpdatedAt = safeTimestamp(raw.updatedAt);
   const result = {
     ...emptyHealth(providerId, now),
@@ -72,7 +77,7 @@ export async function readProviderHealth(kv, providerId) {
 export async function recordProviderLatency(kv, providerId, durationMs, now = Date.now()) {
   try {
     if (!kv || typeof kv.get !== "function" || typeof kv.put !== "function" ||
-        !Number.isFinite(now) || now < 0 || !Number.isFinite(durationMs) ||
+        !validEventTimestamp(now) || !Number.isFinite(durationMs) ||
         durationMs < 1 || durationMs > 120_000) return false;
     const key = keyFor(providerId);
     let previous;
@@ -98,7 +103,7 @@ export async function recordProviderLatency(kv, providerId, durationMs, now = Da
 export async function recordProviderOutcome(kv, providerId, outcome, now = Date.now()) {
   try {
     if (!kv || typeof kv.get !== "function" || typeof kv.put !== "function") return false;
-    if (!Number.isFinite(now) || now < 0) return false;
+    if (!validEventTimestamp(now)) return false;
     if (!outcome || !["success", "failure"].includes(outcome.kind)) return false;
 
     const key = keyFor(providerId);
