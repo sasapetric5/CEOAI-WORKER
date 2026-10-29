@@ -34,6 +34,7 @@ import { getProviderCapability } from "./src/v5-modules/provider-registry.mjs";
 import { selectSkillCandidates, loadSkillRegistry } from "./src/v5-modules/skills-router.mjs";
 import { createTaskPlan } from "./src/v5-modules/task-orchestrator.mjs";
 import { executeAgentWorkflow, listExecutableWorkflows } from "./src/v5-modules/agent-workflows.mjs";
+import { executeAiAssistedWorkflow, agentAiRuntimeReadiness } from "./src/v5-modules/agent-ai-runtime.mjs";
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
 // Quota cooldowns differ by provider signal: monthly exhaustion must not be retried every few hours.
@@ -1002,7 +1003,7 @@ export default {
     // Parse the allowlist once per request; do not cache mutable environment config globally.
     const requestAllowedOrigins = allowedOrigins(env);
     const originAllowed = isAllowedOrigin(origin, requestAllowedOrigins);
-    const isApi = ["/api/chat", "/api/agents", "/api/agents/run"].includes(url.pathname);
+    const isApi = ["/api/chat", "/api/agents", "/api/agents/run", "/api/agents/run-ai"].includes(url.pathname);
 
     // Safe diagnostics: never log prompts, cookies, IP addresses, origins, or secret values.
     if (isApi) {
@@ -1061,7 +1062,8 @@ export default {
     }
 
     const isAgentList = url.pathname === "/api/agents";
-    const isAgentRun = url.pathname === "/api/agents/run";
+    const isAgentAiRun = url.pathname === "/api/agents/run-ai";
+    const isAgentRun = url.pathname === "/api/agents/run" || isAgentAiRun;
     if (url.pathname !== "/api/chat" && !isAgentList && !isAgentRun) {
       return new Response("Not Found", { status: 404, headers: { "Cache-Control": "no-store" } });
     }
@@ -1120,6 +1122,9 @@ export default {
           !body.input || typeof body.input !== "object" || Array.isArray(body.input)) {
         return json({ success: false, error: "Očekuje se workflowId i input objekat." }, 400, corsHeaders(origin));
       }
+      if (isAgentAiRun && (typeof body.task !== "string" || !body.task.trim() || body.task.length > 3000)) {
+        return json({ success: false, error: "AI predaja zahteva task od 1 do 3000 karaktera." }, 400, corsHeaders(origin));
+      }
       const ip = request.headers.get("CF-Connecting-IP");
       if (!ip) return json({ success: false, error: "Nije moguće proveriti ograničenje zahteva." }, 503, corsHeaders(origin));
       try {
@@ -1127,6 +1132,33 @@ export default {
         if (!allowed) return json({ success: false, error: "Dostigli ste limit od 20 zahteva u minutu." }, 429, { ...corsHeaders(origin), "Retry-After": "60" });
       } catch {
         return json({ success: false, error: "Zaštita od preopterećenja je privremeno nedostupna." }, 503, corsHeaders(origin));
+      }
+      if (isAgentAiRun) {
+        const readiness = agentAiRuntimeReadiness(env);
+        if (!readiness.allowed) {
+          return json({
+            success: false,
+            error: "AI agentski runtime je blokiran dok vlasnik ne potvrdi sve uslove besplatnog rada.",
+            execution_mode: "blocked",
+            runtime_ai_calls: false,
+            external_actions: false,
+            blockers: readiness.blockers,
+          }, 503, { ...corsHeaders(origin), "Cache-Control": "no-store" });
+        }
+        try {
+          const result = await executeAiAssistedWorkflow(env, body.workflowId, body.input, body.task);
+          return json({ success: true, ...result }, 200, { ...corsHeaders(origin), "Cache-Control": "no-store" });
+        } catch (error) {
+          const blocked = error?.code === "AI_AGENT_RUNTIME_BLOCKED";
+          const status = blocked ? 503 : (error instanceof RangeError || error instanceof TypeError ? 400 : 502);
+          return json({
+            success: false,
+            error: blocked ? "AI agentski runtime je blokiran." : "AI workflow nije mogao bezbedno da završi zadatak.",
+            execution_mode: blocked ? "blocked" : "failed",
+            runtime_ai_calls: false,
+            external_actions: false,
+          }, status, { ...corsHeaders(origin), "Cache-Control": "no-store" });
+        }
       }
       try {
         const result = executeAgentWorkflow(body.workflowId, body.input);

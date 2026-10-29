@@ -72,3 +72,74 @@ test("agent execution fails closed when native rate limiter rejects the request"
   }), envFor({ rateAllowed: false }));
   assert.equal(response.status, 429);
 });
+
+
+test("AI-assisted agent route fails closed unless free Workers AI is explicitly confirmed", async () => {
+  const response = await worker.fetch(request("/api/agents/run-ai", {
+    method: "POST",
+    body: JSON.stringify({ workflowId: "contentcraft.cta-generator", input: { goal: "grow", audience: "small teams" }, task: "Proveri predlog" }),
+  }), envFor());
+  const data = await response.json();
+  assert.equal(response.status, 503);
+  assert.equal(data.success, false);
+  assert.equal(data.runtime_ai_calls, false);
+  assert.equal(data.external_actions, false);
+  assert.ok(data.blockers.includes("agent_ai_not_explicitly_enabled"));
+});
+
+test("AI-assisted agent route validates bounded task before any provider call", async () => {
+  const env = {
+    ...envFor(),
+    CEOAI_AGENT_AI_ENABLED: "true",
+    AI_ENABLED: "true",
+    EXTERNAL_AI_ENABLED: "true",
+    CEOAI_AGENT_RUNTIME_FREE_ONLY: "true",
+    CEOAI_AGENT_RUNTIME_EXTERNAL_ACTIONS: "false",
+    CEOAI_AGENT_RUNTIME_PAID_SERVICES: "false",
+    WORKERS_AI_ENABLED: "true",
+    WORKERS_AI_FREE_CONFIRMED: "true",
+    AI: { async run() { throw new Error("should not be called"); } },
+  };
+  const response = await worker.fetch(request("/api/agents/run-ai", {
+    method: "POST",
+    body: JSON.stringify({ workflowId: "contentcraft.cta-generator", input: { goal: "grow", audience: "teams" }, task: " " }),
+  }), env);
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).success, false);
+});
+
+test("AI-assisted agent route completes deterministic-to-model handoff when explicit free gates are enabled", async () => {
+  let calls = 0;
+  const env = {
+    ...envFor(),
+    CEOAI_AGENT_AI_ENABLED: "true",
+    AI_ENABLED: "true",
+    EXTERNAL_AI_ENABLED: "true",
+    CEOAI_AGENT_RUNTIME_FREE_ONLY: "true",
+    CEOAI_AGENT_RUNTIME_EXTERNAL_ACTIONS: "false",
+    CEOAI_AGENT_RUNTIME_PAID_SERVICES: "false",
+    WORKERS_AI_ENABLED: "true",
+    WORKERS_AI_FREE_CONFIRMED: "true",
+    AI: { async run(model, payload, options) {
+      calls++;
+      assert.equal(model, "@cf/meta/llama-3-8b-instruct");
+      assert.equal(options.rejectIfBusy, true);
+      assert.match(payload.messages[1].content, /PROVERENI REZULTAT WORKFLOW-A/);
+      return { response: "Nalaz: predlog je pripremljen. Sledeći korak: ljudska provera." };
+    } },
+  };
+  const response = await worker.fetch(request("/api/agents/run-ai", {
+    method: "POST",
+    body: JSON.stringify({ workflowId: "contentcraft.cta-generator", input: { goal: "grow", audience: "small teams" }, task: "Sažmi rezultat" }),
+  }), env);
+  const data = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(data.success, true);
+  assert.equal(calls, 1);
+  assert.equal(data.execution_mode, "workers-ai-assisted-workflow");
+  assert.equal(data.workflow.workflow_id, "contentcraft.cta-generator");
+  assert.equal(data.runtime_ai_calls, true);
+  assert.equal(data.external_actions, false);
+  assert.equal(data.paid_services, false);
+  assert.equal(data.handoff.tools_available, false);
+});
