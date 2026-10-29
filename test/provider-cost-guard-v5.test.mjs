@@ -55,7 +55,7 @@ test("daily usage reserves calls and blocks once the configured cap is reached",
 
 test("usage storage failures fail closed and expose no internal details", async () => {
   const kv = { async get() { throw new Error("secret internal detail"); }, async put() {} };
-  const result = await reserveProviderCall(kv, "gemini-1", {}, Date.UTC(2026, 0, 2));
+  const result = await reserveProviderCall(kv, "gemini-1", { CEOAI_FREE_DAILY_CALL_LIMIT: "2" }, Date.UTC(2026, 0, 2));
   assert.deepEqual(result, { allowed: false, reason: "usage_store_unavailable", count: null });
 });
 
