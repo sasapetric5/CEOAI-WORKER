@@ -68,7 +68,6 @@ test("invalid counters are sanitized and never expose raw provider errors", asyn
   assert.equal("rawError" in metrics, false);
 });
 
-
 test("recovery metrics do not replace counters with zero when KV read fails", async () => {
   let writeCalled = false;
   const brokenRead = {
@@ -78,7 +77,6 @@ test("recovery metrics do not replace counters with zero when KV read fails", as
   assert.equal(await recordRecoveryMetric(brokenRead, "failover_success", 300), false);
   assert.equal(writeCalled, false);
 });
-
 
 test("malformed recovery timestamps are bounded and unknown fields are discarded", async () => {
   const kv = new MemoryKV();
@@ -110,4 +108,12 @@ test("invalid recovery timestamp types do not escape into metrics", async () => 
   assert.equal(metrics.providerFailures, 1);
   assert.equal(Number.isSafeInteger(metrics.lastEventAt), true);
   assert.equal(metrics.lastEventAt >= 0, true);
+});
+
+test("recording rejects fractional, non-finite, and excessively future timestamps", async () => {
+  const kv = new MemoryKV();
+  assert.equal(await recordRecoveryMetric(kv, "failover_success", 12.5), false);
+  assert.equal(await recordRecoveryMetric(kv, "failover_success", Number.POSITIVE_INFINITY), false);
+  assert.equal(await recordRecoveryMetric(kv, "failover_success", Date.now() + 61_000), false);
+  assert.equal(kv.data.has(RECOVERY_METRICS_KEY), false);
 });
