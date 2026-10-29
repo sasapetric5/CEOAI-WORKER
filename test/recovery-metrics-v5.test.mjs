@@ -67,3 +67,14 @@ test("invalid counters are sanitized and never expose raw provider errors", asyn
   assert.equal(metrics.halfOpenProbes, 3);
   assert.equal("rawError" in metrics, false);
 });
+
+
+test("recovery metrics do not replace counters with zero when KV read fails", async () => {
+  let writeCalled = false;
+  const brokenRead = {
+    async get() { throw new Error("read unavailable"); },
+    async put() { writeCalled = true; },
+  };
+  assert.equal(await recordRecoveryMetric(brokenRead, "failover_success", 300), false);
+  assert.equal(writeCalled, false);
+});
