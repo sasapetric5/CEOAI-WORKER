@@ -33,7 +33,10 @@ export async function readRecoveryMetrics(kv) {
   try {
     const raw = await kv.get(METRICS_KEY, "json");
     if (!raw || typeof raw !== "object" || raw.version !== 1) return emptyMetrics(Date.now());
-    const base = emptyMetrics(Number.isFinite(raw.lastEventAt) ? raw.lastEventAt : Date.now());
+    const now = Date.now();
+    const lastEventAt = Number.isSafeInteger(raw.lastEventAt) && raw.lastEventAt >= 0 && raw.lastEventAt <= now + 60_000
+      ? raw.lastEventAt : now;
+    const base = emptyMetrics(lastEventAt);
     for (const field of ["providerFailures", "circuitOpenSkips", "halfOpenProbes", "failoverSuccesses", "recoveredRequests"]) {
       base[field] = safeCounter(raw[field]);
     }
