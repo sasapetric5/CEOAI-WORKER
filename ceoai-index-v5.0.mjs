@@ -424,6 +424,7 @@ async function executeModel(provider, messages, timeoutMs = PROVIDER_TIMEOUT_MS)
     "xai":         { url: "https://api.x.ai/v1/chat/completions" },
     "nvidia":      { url: "https://integrate.api.nvidia.com/v1/chat/completions" },
     "huggingface": { url: "https://router.huggingface.co/v1/chat/completions" },
+    "dahl": { url: "https://inference.dahl.global/v1/chat/completions" },
   };
   if (openaiCompat[provider.provider]) {
     const meta = openaiCompat[provider.provider];
@@ -1257,6 +1258,8 @@ export default {
         ? env.NVIDIA_MODEL.trim() : "meta/llama-3.1-8b-instruct";
       const hfModel = typeof env.HF_MODEL === "string" && /^[A-Za-z0-9._\/-]{1,120}$/.test(env.HF_MODEL.trim())
         ? env.HF_MODEL.trim() : "Qwen/Qwen2.5-7B-Instruct";
+      // Dahl models rotate; default is documented, exact allowlist prevents arbitrary model use.
+      const dahlModel = env.DAHL_MODEL === "MiniMaxAI/MiniMax-M2.7" ? env.DAHL_MODEL : "MiniMaxAI/MiniMax-M2.7";
 
       // Free-only pool: potentially billable providers require explicit account-level free-quota confirmation.
       // API keys alone never authorize a provider call; runtime quota errors still trigger cooldown and fallback.
@@ -1290,6 +1293,9 @@ export default {
           : []),
         ...(validFreeConfirmedFlag(env, "HF_FREE_CONFIRMED") && typeof env.HF_TOKEN === "string" && env.HF_TOKEN.trim()
           ? [{ id: "hf-1", provider: "huggingface", model: hfModel, key: env.HF_TOKEN, tier: "fast" }]
+          : []),
+        ...(validFreeConfirmedFlag(env, "DAHL_FREE_CONFIRMED") && typeof env.DAHL_API_KEY === "string" && env.DAHL_API_KEY.trim()
+          ? [{ id: "dahl-1", provider: "dahl", model: dahlModel, key: env.DAHL_API_KEY, tier: "complex" }]
           : []),
       ].filter(p => p.provider === "workers-ai" ? p.enabled : (typeof p.key === "string" && p.key.trim()));
 
