@@ -634,9 +634,35 @@ const WORKFLOWS = Object.freeze({
   "safe-automaton.security-header-review": { app: "safe-automaton", run: securityHeaderReview },
 });
 
+
+const APP_GROUPS = Object.freeze({
+  ceoai: "ceoai",
+  contentcraft: "contentcraft",
+  aiforce: "aiforce",
+  rankgeo: "rankgeo-safe-automaton",
+  "safe-automaton": "rankgeo-safe-automaton",
+});
+const APP_LABELS = Object.freeze({
+  ceoai: "CEOAI",
+  contentcraft: "ContentCraft",
+  aiforce: "AI Force",
+  "rankgeo-safe-automaton": "RankGeo / Safe Automaton",
+});
+export function listAgentApplicationGroups() {
+  const workflows = Object.entries(WORKFLOWS);
+  return Object.entries(APP_LABELS).map(([id, label]) => ({
+    id, label,
+    workflow_count: workflows.filter(([, value]) => APP_GROUPS[value.app] === id).length,
+    runtime_mode: "local-deterministic",
+    ai_assisted_runtime_available: true,
+    autonomous_tool_execution: false,
+    external_actions: false,
+  }));
+}
+
 export function listExecutableWorkflows() {
   return Object.entries(WORKFLOWS).map(([id, value]) => ({
-    id, app: value.app, execution_mode: "local-deterministic",
+    id, app: value.app, application_group: APP_GROUPS[value.app] || value.app, execution_mode: "local-deterministic",
     network_access: false, paid_services: false, external_actions: false,
   }));
 }

@@ -33,7 +33,7 @@ import { checkFreeQuotaEligibility, reserveProviderCall, recordProviderTokenEsti
 import { getProviderCapability } from "./src/v5-modules/provider-registry.mjs";
 import { selectSkillCandidates, loadSkillRegistry } from "./src/v5-modules/skills-router.mjs";
 import { createTaskPlan } from "./src/v5-modules/task-orchestrator.mjs";
-import { executeAgentWorkflow, listExecutableWorkflows } from "./src/v5-modules/agent-workflows.mjs";
+import { executeAgentWorkflow, listExecutableWorkflows, listAgentApplicationGroups } from "./src/v5-modules/agent-workflows.mjs";
 import { executeAiAssistedWorkflow, agentAiRuntimeReadiness } from "./src/v5-modules/agent-ai-runtime.mjs";
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
@@ -1096,6 +1096,7 @@ export default {
         runtime_ai_calls: false,
         external_actions: false,
         workflows: listExecutableWorkflows(),
+        application_groups: listAgentApplicationGroups(),
       }, 200, { ...corsHeaders(origin), "Cache-Control": "no-store" });
     }
 
