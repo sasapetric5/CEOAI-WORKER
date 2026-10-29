@@ -77,7 +77,6 @@ test("invalid provider IDs and outcomes are rejected safely", async () => {
   assert.equal(await recordProviderOutcome(kv, "gemini-1", { kind: "success" }, -1), false);
 });
 
-
 test("latency samples update bounded EWMA without changing outcome counters", async () => {
   const kv = new MemoryKV();
   assert.equal(await recordProviderLatency(kv, "gemini-1", 1000, 1000), true);
@@ -121,8 +120,6 @@ test("malformed persisted health metadata cannot spoof routing status or inject 
   assert.equal(health.unexpected, undefined);
 });
 
-
-
 test("health outcome does not reset counters when KV read fails but write would succeed", async () => {
   const brokenRead = {
     async get() { throw new Error("read unavailable"); },
@@ -132,4 +129,14 @@ test("health outcome does not reset counters when KV read fails but write would 
     kind: "failure", statusCode: 503,
   }, 9000), false);
   assert.equal(await recordProviderLatency(brokenRead, "gemini-1", 200, 9000), false);
+});
+
+test("health monitor rejects fractional, non-finite, and excessive future timestamps", async () => {
+  const kv = new MemoryKV();
+  assert.equal(await recordProviderOutcome(kv, "gemini-1", { kind: "success" }, 12.5), false);
+  assert.equal(await recordProviderOutcome(kv, "gemini-1", { kind: "success" }, Number.POSITIVE_INFINITY), false);
+  assert.equal(await recordProviderOutcome(kv, "gemini-1", { kind: "success" }, Date.now() + 61_000), false);
+  assert.equal(await recordProviderLatency(kv, "gemini-1", 200, 12.5), false);
+  assert.equal(await recordProviderLatency(kv, "gemini-1", 200, Date.now() + 61_000), false);
+  assert.equal(kv.data.has("health:provider:gemini-1"), false);
 });
