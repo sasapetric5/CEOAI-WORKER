@@ -50,6 +50,13 @@ export function createTaskPlan(registry, request, options = {}) {
     skill_execution_eligible: eligible.length > 0,
     execution_allowed: false,
     execution_block_reason: "plan-only-no-runtime-executor",
+    health_monitor: {
+      provider_health_module: "src/v5-modules/agent-health.mjs",
+      recovery_metrics_module: "src/v5-modules/recovery-metrics.mjs",
+      metrics_are_diagnostic_only: true,
+      raw_prompts_or_secrets_in_metrics: false,
+      health_status_grants_execution: false,
+    },
     execution_policy: {
       container_policy_module: "src/v5-modules/execution-policy.mjs",
       container_jobs_must_be_validated: true,
