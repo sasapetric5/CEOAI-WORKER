@@ -23,7 +23,7 @@ const PRIORITY_TERMS = Object.freeze({
   "content-and-marketing": ["content", "copywriting", "headline", "brand voice", "editorial", "marketing"]
 });
 
-const BLOCKED_LICENSE_STATES = new Set(["incompatible", "rejected", "missing"]);
+const BLOCKED_LICENSE_STATES = new Set(["unknown", "incompatible", "rejected", "missing"]);
 const BLOCKED_SECURITY_STATES = new Set(["blocked", "rejected", "unsafe", "failed"]);
 const APPROVED_LICENSE_STATES = new Set(["approved", "mit", "apache-2.0", "bsd-2-clause", "bsd-3-clause", "isc", "mpl-2.0", "cc0-1.0"]);
 const APPROVED_SECURITY_STATES = new Set(["passed", "approved"]);
