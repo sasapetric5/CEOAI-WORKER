@@ -35,6 +35,11 @@ test("blocks candidates with unknown licenses or unsafe security status", () => 
   assert.equal(unsafe.hard_gate_passed, false);
 });
 
+test("respects explicit supported application compatibility from the intake record", () => {
+  const result = classifySkillCandidate({...approved, name:"Agent orchestration", applications:["contentcraft", "unknown-app"]});
+  assert.deepEqual(result.applications, ["contentcraft"]);
+});
+
 test("deduplicates by stable ID, content hash, and pinned source", () => {
   const result = deduplicateSkillCandidates([
     approved,
