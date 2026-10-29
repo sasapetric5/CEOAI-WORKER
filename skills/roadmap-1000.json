@@ -1,0 +1,349 @@
+{
+  "schema_version": "1.0.0",
+  "plan_id": "ceoai-1000-skill-library",
+  "target_skill_count": 1000,
+  "status": "intake-plan",
+  "created_for_branch": "v5.0",
+  "policy": {
+    "free_only": true,
+    "auto_import": false,
+    "auto_execute": false,
+    "load_all_skills_per_task": false,
+    "max_skills_per_task_default": 4,
+    "max_skills_per_task_hard_limit": 8,
+    "third_party_content_requires_provenance": true,
+    "skill_level_license_review_required": true,
+    "security_review_required": true,
+    "deduplication_required": true,
+    "tests_required_before_runtime_enable": true,
+    "explicit_owner_approval_before_runtime_enable": true,
+    "paid_services_enabled": false,
+    "external_actions_enabled": false
+  },
+  "counting_rules": [
+    "Count a skill only when it has a unique stable ID and a concrete, non-duplicative capability.",
+    "A repository, agent profile, MCP server, prompt list, or link is not automatically a skill.",
+    "A candidate is not a verified skill until provenance, license, security, compatibility, and tests are recorded.",
+    "Do not copy third-party skill content when license terms are unknown or incompatible; retain discovery metadata instead.",
+    "Do not claim that target counts are current inventory counts."
+  ],
+  "category_targets": [
+    {
+      "id": "software-engineering-and-testing",
+      "target": 180,
+      "apps": [
+        "CEOAI",
+        "Safe Automaton"
+      ],
+      "focus": [
+        "coding",
+        "debugging",
+        "refactoring",
+        "TDD",
+        "unit and integration tests",
+        "code review",
+        "API contracts"
+      ]
+    },
+    {
+      "id": "research-and-sources",
+      "target": 100,
+      "apps": [
+        "CEOAI",
+        "AI Force",
+        "RankGeo"
+      ],
+      "focus": [
+        "source verification",
+        "fact checking",
+        "research plans",
+        "citation quality",
+        "freshness checks"
+      ]
+    },
+    {
+      "id": "seo-and-site-auditing",
+      "target": 120,
+      "apps": [
+        "RankGeo / Safe Automaton"
+      ],
+      "focus": [
+        "technical SEO",
+        "indexability",
+        "structured data",
+        "internal links",
+        "local SEO",
+        "content audits"
+      ]
+    },
+    {
+      "id": "content-and-marketing",
+      "target": 120,
+      "apps": [
+        "ContentCraft"
+      ],
+      "focus": [
+        "briefs",
+        "copywriting",
+        "editing",
+        "repurposing",
+        "brand voice",
+        "metadata",
+        "editorial planning"
+      ]
+    },
+    {
+      "id": "security-and-privacy",
+      "target": 100,
+      "apps": [
+        "CEOAI",
+        "AI Force",
+        "Safe Automaton"
+      ],
+      "focus": [
+        "threat modeling",
+        "prompt injection",
+        "secret hygiene",
+        "permissions",
+        "privacy",
+        "supply chain"
+      ]
+    },
+    {
+      "id": "agent-orchestration-and-quality",
+      "target": 90,
+      "apps": [
+        "CEOAI"
+      ],
+      "focus": [
+        "task decomposition",
+        "routing",
+        "handoffs",
+        "evaluation",
+        "health monitoring",
+        "retry and recovery"
+      ]
+    },
+    {
+      "id": "data-and-science",
+      "target": 70,
+      "apps": [
+        "CEOAI",
+        "AI Force"
+      ],
+      "focus": [
+        "data analysis",
+        "statistics",
+        "reproducibility",
+        "data validation",
+        "research methodology"
+      ]
+    },
+    {
+      "id": "product-and-business-analysis",
+      "target": 60,
+      "apps": [
+        "CEOAI",
+        "ContentCraft"
+      ],
+      "focus": [
+        "requirements",
+        "product discovery",
+        "market analysis",
+        "prioritization",
+        "business workflows"
+      ]
+    },
+    {
+      "id": "design-and-accessibility",
+      "target": 50,
+      "apps": [
+        "AI Force",
+        "ContentCraft"
+      ],
+      "focus": [
+        "UI review",
+        "accessibility",
+        "design systems",
+        "UX audits",
+        "responsive behavior"
+      ]
+    },
+    {
+      "id": "data-extraction-and-automation",
+      "target": 40,
+      "apps": [
+        "CEOAI",
+        "Safe Automaton",
+        "RankGeo"
+      ],
+      "focus": [
+        "structured extraction",
+        "robots policy",
+        "rate limits",
+        "input validation",
+        "safe job planning"
+      ]
+    },
+    {
+      "id": "documents-and-knowledge",
+      "target": 35,
+      "apps": [
+        "CEOAI",
+        "ContentCraft",
+        "AI Force"
+      ],
+      "focus": [
+        "document processing",
+        "summarization",
+        "knowledge extraction",
+        "schema validation"
+      ]
+    },
+    {
+      "id": "app-integration-and-adapters",
+      "target": 35,
+      "apps": [
+        "CEOAI",
+        "ContentCraft",
+        "AI Force",
+        "RankGeo / Safe Automaton"
+      ],
+      "focus": [
+        "cross-app contracts",
+        "API adapters",
+        "data mapping",
+        "observability",
+        "compatibility checks"
+      ]
+    }
+  ],
+  "rollout_phases": [
+    {
+      "phase": 1,
+      "name": "Foundation and representative pilot",
+      "candidate_target": 50,
+      "verified_target": 25,
+      "runtime_enabled_target": 0,
+      "exit_criteria": [
+        "registry schema and duplicate checks pass",
+        "provenance and license recorded",
+        "security review complete",
+        "tests pass locally/in CI",
+        "no paid service or external-action dependency"
+      ]
+    },
+    {
+      "phase": 2,
+      "name": "Core coverage",
+      "candidate_target": 250,
+      "verified_target": 150,
+      "runtime_enabled_target": 25,
+      "exit_criteria": [
+        "four application groups covered",
+        "skill selection and output contracts tested",
+        "runtime enablement is explicit and least-privilege"
+      ]
+    },
+    {
+      "phase": 3,
+      "name": "Broad library",
+      "candidate_target": 600,
+      "verified_target": 400,
+      "runtime_enabled_target": 100,
+      "exit_criteria": [
+        "deduplication and quality scoring operational",
+        "retrieval latency/context budget measured",
+        "failure and fallback behavior tested"
+      ]
+    },
+    {
+      "phase": 4,
+      "name": "Initial 1,000-skill target",
+      "candidate_target": 1000,
+      "verified_target": 800,
+      "runtime_enabled_target": 200,
+      "exit_criteria": [
+        "candidate inventory reaches 1000",
+        "at least 800 have completed review and tests",
+        "runtime-enabled subset individually approved",
+        "coverage gaps and rejected candidates documented"
+      ]
+    }
+  ],
+  "quality_score": {
+    "scale": "0-100",
+    "dimensions": [
+      {
+        "id": "task_fit",
+        "weight": 25
+      },
+      {
+        "id": "correctness_and_test_evidence",
+        "weight": 20
+      },
+      {
+        "id": "security_and_permissions",
+        "weight": 20
+      },
+      {
+        "id": "license_and_provenance",
+        "weight": 15
+      },
+      {
+        "id": "portability_and_dependencies",
+        "weight": 10
+      },
+      {
+        "id": "maintainability_and_freshness",
+        "weight": 10
+      }
+    ],
+    "gate": "A high score never overrides a failed license, security, free-only, or owner-approval gate."
+  },
+  "intake_record_required_fields": [
+    "id",
+    "name",
+    "description",
+    "category",
+    "tags",
+    "intents",
+    "input_contract",
+    "output_contract",
+    "source_repository",
+    "source_commit_sha",
+    "source_path",
+    "content_hash",
+    "license_status",
+    "attribution",
+    "dependencies",
+    "network_requirements",
+    "secret_requirements",
+    "risk_level",
+    "security_status",
+    "test_status",
+    "runtime_status",
+    "reviewed_at",
+    "review_notes"
+  ],
+  "first_batch_priorities": [
+    "software-engineering-and-testing",
+    "security-and-privacy",
+    "agent-orchestration-and-quality",
+    "seo-and-site-auditing",
+    "research-and-sources",
+    "content-and-marketing"
+  ],
+  "measurement": {
+    "report_separately": [
+      "candidate_count",
+      "reviewed_count",
+      "verified_count",
+      "runtime_enabled_count",
+      "rejected_count",
+      "duplicate_count"
+    ],
+    "never_conflate_catalogued_with_verified": true,
+    "never_conflate_verified_with_runtime_enabled": true
+  }
+}
