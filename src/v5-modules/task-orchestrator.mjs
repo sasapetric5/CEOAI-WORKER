@@ -46,7 +46,16 @@ export function createTaskPlan(registry, request, options = {}) {
       ({ id, name, category, score, runtime_status })),
     eligible_skill_ids: eligible.map(skill => skill.id),
     blocked_skill_ids: blocked.map(skill => skill.id),
-    execution_allowed: eligible.length > 0,
+    // Eligibility is not permission to run: this orchestrator is deliberately plan-only.
+    skill_execution_eligible: eligible.length > 0,
+    execution_allowed: false,
+    execution_block_reason: "plan-only-no-runtime-executor",
+    execution_policy: {
+      container_policy_module: "src/v5-modules/execution-policy.mjs",
+      container_jobs_must_be_validated: true,
+      container_executor_available: false,
+      execution_started: false,
+    },
     external_actions_allowed: false,
     paid_services_allowed: false,
     requires_owner_approval_for_external_actions: true,
