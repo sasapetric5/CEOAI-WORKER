@@ -79,6 +79,27 @@ test("chat success updates provider health without changing successful response"
   } finally { globalThis.fetch = originalFetch; }
 });
 
+test("daily free-call cap blocks provider network access when quota is already reserved", async () => {
+  const kv = new MemoryKV();
+  const day = new Date().toISOString().slice(0, 10);
+  kv.data.set(`free-usage:v1:${day}:openrouter-1`, "1");
+  const env = { ...makeEnv(kv), CEOAI_FREE_DAILY_CALL_LIMIT: "1" };
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  globalThis.fetch = async url => {
+    if (String(url).includes("openrouter.ai")) providerCalls += 1;
+    throw new Error("Provider network call must be blocked by the daily quota guard");
+  };
+  try {
+    const cookie = await makeSession(env);
+    const response = await chat(env, cookie);
+    assert.equal(response.status, 503);
+    assert.equal(providerCalls, 0, "quota guard must prevent provider network access");
+    const count = await kv.get(`free-usage:v1:${day}:openrouter-1`);
+    assert.equal(count, "1", "blocked attempt must not reserve another call");
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 test("provider outage updates health and normal failover error remains controlled", async () => {
   const kv = new MemoryKV();
   const env = makeEnv(kv);
