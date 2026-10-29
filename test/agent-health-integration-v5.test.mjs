@@ -59,7 +59,18 @@ test("chat success updates provider health without changing successful response"
     const cookie = await makeSession(env);
     const response = await chat(env, cookie);
     assert.equal(response.status, 200);
-    assert.equal((await response.json()).reply, "Odgovor iz testnog provajdera");
+    const payload = await response.json();
+    assert.equal(payload.reply, "Odgovor iz testnog provajdera");
+    // Agent handoffs are surfaced as metadata only: one model request, no separate agent executions.
+    assert.equal(payload.stats.skillRouting.mode, "plan-only");
+    assert.equal(payload.stats.skillRouting.handoffMode, "planned-only");
+    assert.deepEqual(payload.stats.skillRouting.plannedAgents.map(agent => agent.id), [
+      "research-agent", "qa-agent",
+    ]);
+    assert.ok(payload.stats.skillRouting.plannedAgents.every(agent =>
+      agent.runtimeStatus === "plan-only" && agent.executionAllowed === false
+    ));
+    assert.equal(payload.stats.skillRouting.executionAllowed, false);
     const health = await kv.get("health:provider:openrouter-1", "json");
     assert.equal(health.status, "healthy");
     assert.equal(health.attempts, 1);
