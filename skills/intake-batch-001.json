@@ -9,7 +9,11 @@
     "catalog_path": "README.md",
     "catalog_rows": 1283,
     "repository_license": "Apache-2.0",
-    "per_skill_license": "catalog-declared; individual notice review required"
+    "per_skill_license": "catalog-declared; individual notice review required",
+    "license_file": "LICENSE",
+    "license_file_git_blob_sha": "ed0695ac817d99ab526e68b4fdeaa9eb0bff63ae",
+    "license_file_type": "Apache-2.0",
+    "license_scope_note": "Repository-level Apache-2.0 license located at pinned upstream commit; individual skill-level notices, embedded assets, and third-party dependencies still require per-item review."
   },
   "counts": {
     "discovered": 50,
@@ -21,7 +25,9 @@
     "runtime_enabled": 0,
     "source_files_verified": 50,
     "source_files_missing": 0,
-    "git_blob_pins_verified": 50
+    "git_blob_pins_verified": 50,
+    "repository_license_files_verified": 1,
+    "individual_license_reviews_complete": 0
   },
   "candidates": [
     {
@@ -1931,6 +1937,7 @@
     "git_blob_sha is GitHub's Git blob identifier, not SHA-256.",
     "SHA-256 content hashes remain pending until content is ingested into the approved local hash pipeline.",
     "The upstream catalog declares Apache-2.0 for these entries; individual skill notices and bundled resources still require review.",
-    "No third-party skill bodies were copied; no skill was enabled or executed."
+    "No third-party skill bodies were copied; no skill was enabled or executed.",
+    "Confirmed upstream LICENSE file exists at the pinned commit and is Apache License 2.0; this does not complete per-skill or dependency license review."
   ]
 }
