@@ -78,3 +78,36 @@ test("recovery metrics do not replace counters with zero when KV read fails", as
   assert.equal(await recordRecoveryMetric(brokenRead, "failover_success", 300), false);
   assert.equal(writeCalled, false);
 });
+
+
+test("malformed recovery timestamps are bounded and unknown fields are discarded", async () => {
+  const kv = new MemoryKV();
+  kv.data.set(RECOVERY_METRICS_KEY, JSON.stringify({
+    version: 1,
+    providerFailures: 7,
+    circuitOpenSkips: 2,
+    halfOpenProbes: 1,
+    failoverSuccesses: 3,
+    recoveredRequests: 4,
+    lastEventAt: 9e99,
+    rawError: "must-not-propagate",
+    userPrompt: "must-not-propagate",
+  }));
+  const metrics = await readRecoveryMetrics(kv);
+  assert.equal(metrics.providerFailures, 7);
+  assert.equal(metrics.lastEventAt <= Date.now() + 60_000, true);
+  assert.equal(metrics.lastEventAt >= 0, true);
+  assert.equal("rawError" in metrics, false);
+  assert.equal("userPrompt" in metrics, false);
+});
+
+test("invalid recovery timestamp types do not escape into metrics", async () => {
+  const kv = new MemoryKV();
+  kv.data.set(RECOVERY_METRICS_KEY, JSON.stringify({
+    version: 1, providerFailures: 1, lastEventAt: "yesterday",
+  }));
+  const metrics = await readRecoveryMetrics(kv);
+  assert.equal(metrics.providerFailures, 1);
+  assert.equal(Number.isSafeInteger(metrics.lastEventAt), true);
+  assert.equal(metrics.lastEventAt >= 0, true);
+});
