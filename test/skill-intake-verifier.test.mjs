@@ -36,6 +36,21 @@ test("fails closed on duplicate IDs and rejects mismatched pinned source", async
   await assert.rejects(() => verifyManifest({ ...manifest, candidates: [candidate, candidate] }), /Duplicate candidate IDs/);
   const invalid = { ...candidate, source: { ...candidate.source, ref: "b".repeat(40) } };
   const report = await verifyManifest({ ...manifest, candidates: [invalid] }, async () => content);
-  assert.equal(report.results[0].status, "invalid-source-reference");
+  assert.equal(report.results[0].status, "invalid-source-reference-or-blob-pin");
   assert.equal(report.summary.git_blob_integrity_verified, 0);
+});
+
+test("rejects duplicate upstream paths and malformed Git blob pins before fetching", async () => {
+  let fetchCalls = 0;
+  const duplicatePath = { ...candidate, id: "second-id" };
+  const report = await verifyManifest({ ...manifest, candidates: [candidate, duplicatePath] }, async () => {
+    fetchCalls++;
+    return content;
+  });
+  assert.equal(report.results[1].status, "duplicate-source-path");
+  assert.equal(fetchCalls, 2); // first candidate plus the manifest LICENSE
+  const malformed = { ...candidate, git_blob_sha: "not-a-git-blob" };
+  const rejected = await verifyManifest({ ...manifest, candidates: [malformed] }, async () => content);
+  assert.equal(rejected.results[0].status, "invalid-source-reference-or-blob-pin");
+  assert.equal(rejected.summary.git_blob_integrity_verified, 0);
 });
