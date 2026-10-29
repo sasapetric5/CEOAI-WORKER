@@ -121,3 +121,15 @@ test("malformed persisted health metadata cannot spoof routing status or inject 
   assert.equal(health.unexpected, undefined);
 });
 
+
+
+test("health outcome does not reset counters when KV read fails but write would succeed", async () => {
+  const brokenRead = {
+    async get() { throw new Error("read unavailable"); },
+    async put() { throw new Error("write should not be attempted"); },
+  };
+  assert.equal(await recordProviderOutcome(brokenRead, "gemini-1", {
+    kind: "failure", statusCode: 503,
+  }, 9000), false);
+  assert.equal(await recordProviderLatency(brokenRead, "gemini-1", 200, 9000), false);
+});
