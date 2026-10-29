@@ -1,0 +1,315 @@
+{
+  "schema_version": "1.0.0",
+  "catalog_id": "ceoai-skill-source-intake",
+  "status": "discovery-only",
+  "policy": {
+    "free_only": true,
+    "auto_download": false,
+    "auto_install": false,
+    "auto_execute": false,
+    "require_commit_pin_before_import": true,
+    "require_skill_level_license_review": true,
+    "require_security_review": true,
+    "require_deduplication": true,
+    "owner_approval_before_runtime_enable": true,
+    "default_external_actions": false,
+    "default_paid_services": false
+  },
+  "license_statuses": {
+    "repo-license-reported": "Repository claims a license; individual files and upstream notices still require review.",
+    "mixed-per-skill": "Aggregate repository license does not automatically cover every included skill.",
+    "unknown": "No reliable license conclusion recorded; do not copy or enable."
+  },
+  "sources": [
+    {
+      "id": "pm-claude-skills",
+      "repository": "mohitagw15856/pm-claude-skills",
+      "url": "https://github.com/mohitagw15856/pm-claude-skills",
+      "domains": [
+        "product",
+        "engineering",
+        "marketing",
+        "research",
+        "security"
+      ],
+      "license_status": "repo-license-reported",
+      "reported_license": "MIT",
+      "license_evidence_url": "https://github.com/mohitagw15856/pm-claude-skills",
+      "review_status": "queued",
+      "imported_skill_count": 0,
+      "notes": "Promising self-contained SKILL.md corpus and SkillSpec/security CI claims; pin exact commit and independently validate selected skills."
+    },
+    {
+      "id": "awesome-omni-skills",
+      "repository": "diegosouzapw/awesome-omni-skills",
+      "url": "https://github.com/diegosouzapw/awesome-omni-skills",
+      "domains": [
+        "engineering",
+        "devops",
+        "design",
+        "research"
+      ],
+      "license_status": "mixed-per-skill",
+      "reported_license": "MIT tooling; CC BY 4.0 documentation/content; upstream exceptions possible",
+      "license_evidence_url": "https://github.com/diegosouzapw/awesome-omni-skills",
+      "review_status": "queued",
+      "imported_skill_count": 0,
+      "notes": "Large aggregator; inspect each skill's original license and source metadata; do not treat the entire catalog as MIT."
+    },
+    {
+      "id": "agentic-awesome-skills",
+      "repository": "sickn33/agentic-awesome-skills",
+      "url": "https://github.com/sickn33/agentic-awesome-skills",
+      "domains": [
+        "engineering",
+        "research",
+        "automation",
+        "security"
+      ],
+      "license_status": "mixed-per-skill",
+      "reported_license": "MIT code/tooling; CC BY 4.0 original non-code content unless a specific upstream license applies",
+      "license_evidence_url": "https://github.com/sickn33/agentic-awesome-skills/blob/main/LICENSE-CONTENT",
+      "review_status": "queued",
+      "imported_skill_count": 0,
+      "notes": "Track upstream attribution and per-skill exceptions; inspect scripts, permissions, and network requirements."
+    },
+    {
+      "id": "anthropic-skills",
+      "repository": "anthropics/skills",
+      "url": "https://github.com/anthropics/skills",
+      "domains": [
+        "documents",
+        "data",
+        "design",
+        "engineering"
+      ],
+      "license_status": "unknown",
+      "reported_license": "",
+      "license_evidence_url": "",
+      "review_status": "queued",
+      "imported_skill_count": 0,
+      "notes": "Review repository and individual skill licenses before reuse."
+    },
+    {
+      "id": "superpowers",
+      "repository": "obra/superpowers",
+      "url": "https://github.com/obra/superpowers",
+      "domains": [
+        "engineering",
+        "planning",
+        "testing",
+        "code-review"
+      ],
+      "license_status": "unknown",
+      "reported_license": "",
+      "license_evidence_url": "",
+      "review_status": "queued",
+      "imported_skill_count": 0,
+      "notes": "Adapt workflow ideas to CEOAI; do not assume original runtime conventions are compatible."
+    },
+    {
+      "id": "vercel-agent-skills",
+      "repository": "vercel-labs/agent-skills",
+      "url": "https://github.com/vercel-labs/agent-skills",
+      "domains": [
+        "engineering",
+        "frontend",
+        "react"
+      ],
+      "license_status": "unknown",
+      "reported_license": "",
+      "license_evidence_url": "",
+      "review_status": "queued",
+      "imported_skill_count": 0,
+      "notes": "Review skill-level license, scripts, and framework-specific assumptions."
+    },
+    {
+      "id": "ui-ux-pro-max",
+      "repository": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "url": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill",
+      "domains": [
+        "design",
+        "frontend",
+        "accessibility"
+      ],
+      "license_status": "unknown",
+      "reported_license": "",
+      "license_evidence_url": "",
+      "review_status": "queued",
+      "imported_skill_count": 0,
+      "notes": "Potential UI/UX domain; test outputs and dependencies before adaptation."
+    },
+    {
+      "id": "claude-skills-alirezarezvani",
+      "repository": "alirezarezvani/claude-skills",
+      "url": "https://github.com/alirezarezvani/claude-skills",
+      "domains": [
+        "engineering",
+        "product",
+        "marketing",
+        "operations"
+      ],
+      "license_status": "unknown",
+      "reported_license": "",
+      "license_evidence_url": "",
+      "review_status": "queued",
+      "imported_skill_count": 0,
+      "notes": "Broad domain pack; deduplicate against the existing CEOAI skill registry."
+    },
+    {
+      "id": "curated-skills",
+      "repository": "pedramgholizadeh/curated-skills",
+      "url": "https://github.com/pedramgholizadeh/curated-skills",
+      "domains": [
+        "general",
+        "engineering"
+      ],
+      "license_status": "unknown",
+      "reported_license": "",
+      "license_evidence_url": "",
+      "review_status": "queued",
+      "imported_skill_count": 0,
+      "notes": "Discovery source only until the selected skill and provenance are checked."
+    },
+    {
+      "id": "awesome-agent-skill",
+      "repository": "charlieviettq/awesome-agent-skill",
+      "url": "https://github.com/charlieviettq/awesome-agent-skill",
+      "domains": [
+        "general",
+        "engineering"
+      ],
+      "license_status": "unknown",
+      "reported_license": "",
+      "license_evidence_url": "",
+      "review_status": "queued",
+      "imported_skill_count": 0,
+      "notes": "Treat as an index; evaluate linked repositories independently."
+    },
+    {
+      "id": "free-ai-agent-skills",
+      "repository": "chirag2653/free-ai-agent-skills",
+      "url": "https://github.com/chirag2653/free-ai-agent-skills",
+      "domains": [
+        "general",
+        "engineering"
+      ],
+      "license_status": "unknown",
+      "reported_license": "",
+      "license_evidence_url": "",
+      "review_status": "queued",
+      "imported_skill_count": 0,
+      "notes": "Archive/maintenance state and license need re-check before any reuse."
+    },
+    {
+      "id": "proskillpacks",
+      "repository": "proskillpacks/skills",
+      "url": "https://github.com/proskillpacks/skills",
+      "domains": [
+        "general",
+        "business"
+      ],
+      "license_status": "unknown",
+      "reported_license": "",
+      "license_evidence_url": "",
+      "review_status": "queued",
+      "imported_skill_count": 0,
+      "notes": "Inspect actual content, provenance, and dependency footprint."
+    },
+    {
+      "id": "yemugua-agent-skills",
+      "repository": "yemugua/agent-skills",
+      "url": "https://github.com/yemugua/agent-skills",
+      "domains": [
+        "general",
+        "engineering"
+      ],
+      "license_status": "unknown",
+      "reported_license": "",
+      "license_evidence_url": "",
+      "review_status": "queued",
+      "imported_skill_count": 0,
+      "notes": "Large count is not a quality or compatibility signal; sample and deduplicate."
+    },
+    {
+      "id": "awesome-claude-skills-clanker25",
+      "repository": "clanker25/awesome-claude-skills",
+      "url": "https://github.com/clanker25/awesome-claude-skills",
+      "domains": [
+        "general",
+        "engineering"
+      ],
+      "license_status": "unknown",
+      "reported_license": "",
+      "license_evidence_url": "",
+      "review_status": "queued",
+      "imported_skill_count": 0,
+      "notes": "Discovery index; trace every chosen skill to its original source."
+    },
+    {
+      "id": "agentkit-dev-skills",
+      "repository": "agentkitco/agentkit-dev-skills",
+      "url": "https://github.com/agentkitco/agentkit-dev-skills",
+      "domains": [
+        "engineering",
+        "devops"
+      ],
+      "license_status": "unknown",
+      "reported_license": "",
+      "license_evidence_url": "",
+      "review_status": "queued",
+      "imported_skill_count": 0,
+      "notes": "MIT claim remains unverified in this intake record; verify upstream LICENSE and skill-level notices."
+    },
+    {
+      "id": "0n6k4v-skills",
+      "repository": "0n6k4v-Coder/skills",
+      "url": "https://github.com/0n6k4v-Coder/skills",
+      "domains": [
+        "figma",
+        "railway",
+        "google",
+        "nextjs",
+        "playwright"
+      ],
+      "license_status": "unknown",
+      "reported_license": "",
+      "license_evidence_url": "",
+      "review_status": "queued",
+      "imported_skill_count": 0,
+      "notes": "Framework and vendor-specific instructions require compatibility and license review."
+    },
+    {
+      "id": "scientific-agent-skills",
+      "repository": "K-Dense-AI/scientific-agent-skills",
+      "url": "https://github.com/K-Dense-AI/scientific-agent-skills",
+      "domains": [
+        "science",
+        "data-analysis",
+        "research"
+      ],
+      "license_status": "unknown",
+      "reported_license": "",
+      "license_evidence_url": "",
+      "review_status": "queued",
+      "imported_skill_count": 0,
+      "notes": "Prioritize reproducibility, citation quality, and dependency review."
+    },
+    {
+      "id": "context-engineering-skills",
+      "repository": "muratcankoylan/Agent-Skills-for-Context-Engineering",
+      "url": "https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering",
+      "domains": [
+        "context-engineering",
+        "agent-orchestration",
+        "evaluation"
+      ],
+      "license_status": "unknown",
+      "reported_license": "",
+      "license_evidence_url": "",
+      "review_status": "queued",
+      "imported_skill_count": 0,
+      "notes": "Potential fit for skill selection and context budgeting; verify license and runtime assumptions."
+    }
+  ]
+}
