@@ -12,6 +12,8 @@ class MemoryKV {
   async put(key, value) { this.data.set(key, String(value)); }
 }
 const makeEnv = (overrides = {}) => ({
+  // Explicitly bounded test quota: provider calls must never rely on an implicit unlimited default.
+  CEOAI_FREE_DAILY_CALL_LIMIT: "100",
   KV_MEMORY: new MemoryKV(),
   RATE_LIMITER: { async limit() { return { success: true }; } },
   // Legacy integration tests exercise provider routing with an explicitly approved test-only free-tier fixture.
