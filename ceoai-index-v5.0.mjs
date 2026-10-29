@@ -33,6 +33,7 @@ import { checkFreeQuotaEligibility, reserveProviderCall, recordProviderTokenEsti
 import { getProviderCapability } from "./src/v5-modules/provider-registry.mjs";
 import { selectSkillCandidates, loadSkillRegistry } from "./src/v5-modules/skills-router.mjs";
 import { createTaskPlan } from "./src/v5-modules/task-orchestrator.mjs";
+import { executeAgentWorkflow, listExecutableWorkflows } from "./src/v5-modules/agent-workflows.mjs";
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
 // Quota cooldowns differ by provider signal: monthly exhaustion must not be retried every few hours.
@@ -207,7 +208,7 @@ function json(data, status = 200, extraHeaders = {}) {
 function corsHeaders(origin) {
   return {
     "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Max-Age": "600",
     "Vary": "Origin",
@@ -1001,7 +1002,7 @@ export default {
     // Parse the allowlist once per request; do not cache mutable environment config globally.
     const requestAllowedOrigins = allowedOrigins(env);
     const originAllowed = isAllowedOrigin(origin, requestAllowedOrigins);
-    const isApi = url.pathname === "/api/chat";
+    const isApi = ["/api/chat", "/api/agents", "/api/agents/run"].includes(url.pathname);
 
     // Safe diagnostics: never log prompts, cookies, IP addresses, origins, or secret values.
     if (isApi) {
@@ -1059,16 +1060,18 @@ export default {
       return new Response(page, { status: 200, headers });
     }
 
-    if (url.pathname !== "/api/chat") {
+    const isAgentList = url.pathname === "/api/agents";
+    const isAgentRun = url.pathname === "/api/agents/run";
+    if (url.pathname !== "/api/chat" && !isAgentList && !isAgentRun) {
       return new Response("Not Found", { status: 404, headers: { "Cache-Control": "no-store" } });
     }
-    if (request.method !== "POST") {
+    if ((isAgentList && request.method !== "GET") || (isAgentRun && request.method !== "POST") || (url.pathname === "/api/chat" && request.method !== "POST")) {
       return json({ success: false, error: "Metod nije podržan." }, 405, originAllowed ? corsHeaders(origin) : {});
     }
     if (!originAllowed) {
       return json({ success: false, error: "Zabranjen zahtev." }, 403);
     }
-    if (request.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
+    if ((isAgentRun || url.pathname === "/api/chat") && request.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
       return json({ success: false, error: "Očekuje se JSON zahtev." }, 415, corsHeaders(origin));
     }
 
@@ -1082,6 +1085,56 @@ export default {
       }
     } catch {
       return json({ success: false, error: "Servis sesije je privremeno nedostupan." }, 503, corsHeaders(origin));
+    }
+
+    if (isAgentList) {
+      return json({
+        success: true,
+        execution_mode: "local-deterministic",
+        runtime_ai_calls: false,
+        external_actions: false,
+        workflows: listExecutableWorkflows(),
+      }, 200, { ...corsHeaders(origin), "Cache-Control": "no-store" });
+    }
+
+    if (isAgentRun) {
+      const contentLength = Number(request.headers.get("Content-Length") || "0");
+      if (contentLength > MAX_REQUEST_BYTES) {
+        return json({ success: false, error: "Zahtev je prevelik." }, 413, corsHeaders(origin));
+      }
+      let rawBody;
+      try {
+        rawBody = await readBodyLimited(request, MAX_REQUEST_BYTES);
+      } catch (error) {
+        if (error?.status === 413 || error?.message === "REQUEST_BODY_TOO_LARGE") {
+          return json({ success: false, error: "Zahtev je prevelik." }, 413, corsHeaders(origin));
+        }
+        return json({ success: false, error: "Telo zahteva nije moglo biti pročitano." }, 400, corsHeaders(origin));
+      }
+      let body;
+      try { body = JSON.parse(rawBody); } catch {
+        return json({ success: false, error: "Neispravan JSON zahtev." }, 400, corsHeaders(origin));
+      }
+      if (!body || typeof body !== "object" || Array.isArray(body) ||
+          typeof body.workflowId !== "string" ||
+          !body.input || typeof body.input !== "object" || Array.isArray(body.input)) {
+        return json({ success: false, error: "Očekuje se workflowId i input objekat." }, 400, corsHeaders(origin));
+      }
+      const ip = request.headers.get("CF-Connecting-IP");
+      if (!ip) return json({ success: false, error: "Nije moguće proveriti ograničenje zahteva." }, 503, corsHeaders(origin));
+      try {
+        const allowed = await enforceRateLimit(env, ip, Date.now());
+        if (!allowed) return json({ success: false, error: "Dostigli ste limit od 20 zahteva u minutu." }, 429, { ...corsHeaders(origin), "Retry-After": "60" });
+      } catch {
+        return json({ success: false, error: "Zaštita od preopterećenja je privremeno nedostupna." }, 503, corsHeaders(origin));
+      }
+      try {
+        const result = executeAgentWorkflow(body.workflowId, body.input);
+        return json({ success: true, execution_mode: "local-deterministic", runtime_ai_calls: false, external_actions: false, result }, 200, { ...corsHeaders(origin), "Cache-Control": "no-store" });
+      } catch (error) {
+        const status = error instanceof RangeError || error instanceof TypeError ? 400 : 500;
+        return json({ success: false, error: status === 400 ? "Workflow ili ulaz nisu validni." : "Workflow nije mogao da se izvrši." }, status, corsHeaders(origin));
+      }
     }
 
     const contentLength = Number(request.headers.get("Content-Length") || "0");
