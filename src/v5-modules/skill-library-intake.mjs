@@ -68,7 +68,8 @@ export function classifySkillCandidate(candidate = {}) {
     app,
     score: terms.reduce((sum, term) => sum + (text.includes(normalized(term)) ? 1 : 0), 0)
   })).filter(item => item.score > 0).sort((a, b) => b.score - a.score || a.app.localeCompare(b.app));
-  const applications = appScores.length ? appScores.map(item => item.app) : ["ceoai"];
+  const declaredApplications = uniqueStrings(candidate.applications).map(normalized).filter(app => Object.hasOwn(APP_GROUPS, app));
+  const applications = declaredApplications.length ? declaredApplications : appScores.length ? appScores.map(item => item.app) : ["ceoai"];
   const licenseStatus = normalized(candidate.license_status || "unknown");
   const securityStatus = normalized(candidate.security_status || "pending");
   const hasSource = Boolean(candidate.source?.repository && candidate.source?.path);
