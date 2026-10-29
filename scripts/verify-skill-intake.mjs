@@ -55,10 +55,18 @@ export async function verifyManifest(manifest, fetcher = async url => {
     throw new Error("Invalid manifest: pinned repository, 40-character commit and candidates are required");
   }
   if (new Set(candidates.map(item => item.id)).size !== candidates.length) throw new Error("Duplicate candidate IDs");
+  const seenPaths = new Set();
   const results = await mapLimit(candidates, FETCH_CONCURRENCY, async candidate => {
-    if (candidate.source?.repository !== source.repository || candidate.source?.ref !== source.commit || !candidate.source?.path) {
-      return { id: candidate.id, status: "invalid-source-reference", git_blob_match: false, manual_review_required: true };
+    const sourcePath = String(candidate.source?.path || "");
+    if (candidate.source?.repository !== source.repository || candidate.source?.ref !== source.commit ||
+        !/^skills\/[a-z0-9][a-z0-9._-]*\/SKILL\.md$/i.test(sourcePath) ||
+        !/^[a-f0-9]{40}$/i.test(candidate.git_blob_sha || "")) {
+      return { id: candidate.id, status: "invalid-source-reference-or-blob-pin", git_blob_match: false, manual_review_required: true };
     }
+    if (seenPaths.has(sourcePath)) {
+      return { id: candidate.id, status: "duplicate-source-path", git_blob_match: false, manual_review_required: true };
+    }
+    seenPaths.add(sourcePath);
     const url = `https://raw.githubusercontent.com/${source.repository}/${source.commit}/${candidate.source.path}`;
     try {
       const body = await fetcher(url);
