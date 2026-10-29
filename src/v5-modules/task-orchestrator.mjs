@@ -26,7 +26,8 @@ export function createTaskPlan(registry, request, options = {}) {
     throw new RangeError("maxSteps must be an integer between 1 and 6");
   }
   const type = inferTaskType(request);
-  const selectedAgents = selectTaskAgents(type, { maxAgents: options.maxAgents ?? 4 });
+  const maxAgents = options.maxAgents ?? 4;
+  const selectedAgents = selectTaskAgents(type, { maxAgents });
   const candidates = selectSkillCandidates(registry, request, { maxSkills: options.maxSkills ?? 4 });
   const eligible = candidates.filter(skill => skill.eligible_for_execution);
   const blocked = candidates.filter(skill => !skill.eligible_for_execution);
@@ -46,7 +47,7 @@ export function createTaskPlan(registry, request, options = {}) {
     selected_agents: selectedAgents,
     handoff_policy: {
       mode: "planned-only",
-      max_agents: options.maxAgents ?? 4,
+      max_agents: maxAgents,
       agent_execution_enabled: false,
       automatic_tool_execution_enabled: false,
       external_actions_allowed: false,
