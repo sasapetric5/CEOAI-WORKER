@@ -59,7 +59,16 @@ test("parallel reservations are denied if usage storage fails before reads compl
 test("zero daily cap is a hard stop", async () => {
   const kv = new MemoryKV();
   const result = await reserveProviderCall(kv, "openrouter-1", { CEOAI_FREE_DAILY_CALL_LIMIT: "0" }, NOW);
-  assert.deepEqual(result, { allowed: true, reason: "reserved", count: 1 });
+  assert.deepEqual(result, { allowed: false, reason: "daily_limit_not_configured_or_zero", count: 0 });
+  assert.equal(kv.data.size, 0);
+});
+
+test("missing daily cap fails closed rather than treating an unset limit as unlimited", async () => {
+  const kv = new MemoryKV();
+  const result = await reserveProviderCall(kv, "openrouter-1", {}, NOW);
+  assert.equal(result.allowed, false);
+  assert.equal(result.count, 0);
+  assert.equal(kv.data.size, 0);
 });
 
 test("invalid daily cap fails closed even when usage is empty", async () => {
