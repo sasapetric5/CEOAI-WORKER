@@ -1,6 +1,7 @@
 // CEOAI task orchestrator: turns a user request into a bounded, auditable plan.
 // This module does not execute arbitrary skill instructions or grant tool permissions.
 import { selectSkillCandidates } from "./skills-router.mjs";
+import { selectTaskAgents } from "./agent-registry.mjs";
 
 const MAX_TASK_CHARS = 2000;
 const MAX_STEPS = 6;
@@ -25,6 +26,7 @@ export function createTaskPlan(registry, request, options = {}) {
     throw new RangeError("maxSteps must be an integer between 1 and 6");
   }
   const type = inferTaskType(request);
+  const selectedAgents = selectTaskAgents(type, { maxAgents: options.maxAgents ?? 4 });
   const candidates = selectSkillCandidates(registry, request, { maxSkills: options.maxSkills ?? 4 });
   const eligible = candidates.filter(skill => skill.eligible_for_execution);
   const blocked = candidates.filter(skill => !skill.eligible_for_execution);
@@ -41,6 +43,15 @@ export function createTaskPlan(registry, request, options = {}) {
     mode: "plan-only",
     task_type: TASK_TYPES.has(type) ? type : "general",
     request_chars: request.length,
+    selected_agents: selectedAgents,
+    handoff_policy: {
+      mode: "planned-only",
+      max_agents: options.maxAgents ?? 4,
+      agent_execution_enabled: false,
+      automatic_tool_execution_enabled: false,
+      external_actions_allowed: false,
+      paid_services_allowed: false,
+    },
     steps,
     selected_skills: candidates.map(({ id, name, category, score, runtime_status }) =>
       ({ id, name, category, score, runtime_status })),
