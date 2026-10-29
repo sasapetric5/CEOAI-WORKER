@@ -16,6 +16,7 @@ class MemoryKV {
 test("failed provider attempts never append the user turn to persisted chat history", async () => {
   const kv = new MemoryKV();
   const env = {
+    CEOAI_FREE_DAILY_CALL_LIMIT: "100",
     KV_MEMORY: kv,
     RATE_LIMITER: { async limit() { return { success: true }; } },
     AI_ENABLED: "true",
