@@ -68,8 +68,6 @@ test("atomic reservation never makes a provider call itself", async () => {
 });
 test("atomic reservation treats an allowed count of zero as malformed", async () => {
   const coordinator = { async fetch() { return response(200, { allowed: true, count: 0 }); } };
-  // The adapter accepts a well-shaped response; coordinator semantics must enforce incrementing.
   const result = await reserveAtomicDailyQuota(coordinator, "gemini-1", 10);
-  assert.equal(result.allowed, true);
-  assert.equal(result.count, 0);
+  assert.deepEqual(result, { allowed: false, reason: "atomic_quota_backend_invalid_result", count: null });
 });
