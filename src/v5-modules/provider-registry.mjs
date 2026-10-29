@@ -14,6 +14,7 @@ const MODEL_RULES = Object.freeze({
   "xai": model => model === "grok-beta",
   "nvidia": model => model === "meta/llama-3.1-8b-instruct",
   "huggingface": model => model === "Qwen/Qwen2.5-7B-Instruct",
+  "dahl": model => model === "MiniMaxAI/MiniMax-M2.7",
 });
 const BUILT_INS = [
   { id:"workers-ai", adapter:"workers-ai", confirmationEnv:"WORKERS_AI_FREE_CONFIRMED", keyRequired:false, modelRule:"workers-ai", capabilities:["fast"], quotaMode:"local-counter" },
@@ -26,6 +27,7 @@ const BUILT_INS = [
   { id:"xai", adapter:"openai-compatible", confirmationEnv:"XAI_FREE_CONFIRMED", keyRequired:true, modelRule:"xai", capabilities:["reasoning","complex"], quotaMode:"local-counter" },
   { id:"nvidia", adapter:"openai-compatible", confirmationEnv:"NVIDIA_FREE_CONFIRMED", keyRequired:true, modelRule:"nvidia", capabilities:["coding","reasoning"], quotaMode:"local-counter" },
   { id:"huggingface", adapter:"openai-compatible", confirmationEnv:"HF_FREE_CONFIRMED", keyRequired:true, modelRule:"huggingface", capabilities:["fast","coding"], quotaMode:"local-counter" },
+  { id:"dahl", adapter:"openai-compatible", confirmationEnv:"DAHL_FREE_CONFIRMED", keyRequired:true, modelRule:"dahl", capabilities:["coding","reasoning","complex"], quotaMode:"provider-reported" },
 ];
 
 function normalizeDefinition(definition) {
