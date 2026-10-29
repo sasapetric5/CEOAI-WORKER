@@ -1,0 +1,8 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+const registry=JSON.parse(readFileSync(new URL("../skills/agents/registry.json",import.meta.url),"utf8"));
+test("agent pack has exactly 20 unique valid IDs",()=>{assert.equal(registry.agents.length,20);const ids=registry.agents.map(x=>x.id);assert.equal(new Set(ids).size,20);assert.ok(ids.every(x=>/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(x)));});
+test("all agents have scope, app mapping, and safety limits",()=>{for(const a of registry.agents){assert.ok(a.purpose.length>20,a.id);assert.ok(a.hard_limits.length>20,a.id);assert.ok(a.tags.length>0,a.id);assert.ok(a.apps.length>0,a.id);assert.equal(a.status,"catalogued");}});
+test("pack defaults remain free-only and disabled",()=>{assert.equal(registry.policy.free_only,true);assert.equal(registry.policy.paid_services_enabled,false);assert.equal(registry.policy.external_actions_enabled,false);assert.equal(registry.policy.runtime_enabled,false);assert.equal(registry.policy.production_enabled,false);for(const a of registry.agents){assert.equal(a.runtime_status,"not-enabled");assert.equal(a.external_actions,false);assert.equal(a.paid_services,false);}});
+test("default routing limits skill selection and reuses existing skills",()=>{assert.equal(registry.policy.max_skills_per_task_default,4);assert.ok(registry.agents.some(a=>a.skill_reuse==="skills/seo-audit/SKILL.md"));assert.ok(registry.agents.some(a=>a.skill_reuse==="skills/research-and-sources/customer-research/SKILL.md"));assert.ok(registry.agents.some(a=>a.skill_reuse==="skills/content-and-marketing/copywriting/SKILL.md"));});
