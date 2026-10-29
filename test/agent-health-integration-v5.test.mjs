@@ -15,6 +15,7 @@ class MemoryKV {
 
 function makeEnv(kv) {
   return {
+    CEOAI_FREE_DAILY_CALL_LIMIT: "100",
     KV_MEMORY: kv,
     RATE_LIMITER: { async limit() { return { success: true }; } },
     AI_ENABLED: "true",
