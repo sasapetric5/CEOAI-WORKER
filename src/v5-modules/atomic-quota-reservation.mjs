@@ -33,6 +33,9 @@ export async function reserveAtomicDailyQuota(coordinator, providerId, limit, no
         !Number.isSafeInteger(result.count) || result.count < 0) {
       return { allowed: false, reason: "atomic_quota_backend_invalid_result", count: null };
     }
+    if (result.allowed && result.count < 1) {
+      return { allowed: false, reason: "atomic_quota_backend_invalid_result", count: null };
+    }
     if (result.allowed && result.count > limit) {
       return { allowed: false, reason: "atomic_quota_backend_limit_violation", count: null };
     }
