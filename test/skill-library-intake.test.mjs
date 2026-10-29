@@ -68,6 +68,29 @@ test("relevance selector returns only approved, enabled, app-compatible skills",
   assert.ok(results[0].relevance_score > 0);
 });
 
+
+test("fails closed for pending license and pending security review", () => {
+  const pendingLicense = classifySkillCandidate({...approved, license_status:"pending-review"});
+  assert.equal(pendingLicense.status, "license-review");
+  assert.equal(pendingLicense.hard_gate_passed, false);
+  const pendingSecurity = classifySkillCandidate({...approved, security_status:"pending"});
+  assert.equal(pendingSecurity.status, "security-review");
+  assert.equal(pendingSecurity.hard_gate_passed, false);
+});
+
+test("runtime selection rejects unreviewed licenses, security, tests, contracts and implicit permissions", () => {
+  const unsafeCandidates = [
+    {...approved, id:"pending-license", license_status:"pending-review"},
+    {...approved, id:"pending-security", security_status:"pending"},
+    {...approved, id:"untested", test_status:"pending"},
+    {...approved, id:"no-contract", output_contract:null},
+    {...approved, id:"implicit-actions", external_actions:undefined},
+    {...approved, id:"unpinned", source:{...source, ref:"main"}}
+  ];
+  const results = selectRelevantSkills([approved, ...unsafeCandidates], {application:"ceoai", description:"security test review", intent:"review"});
+  assert.deepEqual(results.map(item => item.id), [approved.id]);
+});
+
 test("content hashes are deterministic SHA-256 hex strings", () => {
   const first = createSkillContentHash("hello skill");
   assert.equal(first, createSkillContentHash("hello skill"));
