@@ -4,9 +4,11 @@ import { PROVIDER_REGISTRY, createProviderRegistry, getProviderCapability, isReg
 
 test("built-in registry covers current AI providers and publishes capability metadata", () => {
   const providers = PROVIDER_REGISTRY.list();
-  assert.equal(providers.length, 10);
+  assert.equal(providers.length, 11);
   assert.ok(providers.every(p => p.id && p.adapter && p.confirmationEnv && p.quotaMode));
   assert.deepEqual(getProviderCapability("openrouter").capabilities, ["fast","coding","reasoning","complex"]);
+  assert.equal(getProviderCapability("dahl").confirmationEnv, "DAHL_FREE_CONFIRMED");
+  assert.equal(getProviderCapability("dahl").quotaMode, "provider-reported");
   assert.equal(getProviderCapability("missing-provider"), null);
 });
 
@@ -54,6 +56,8 @@ test("non-OpenRouter providers accept only reviewed model IDs, not arbitrary syn
     ["nvidia", "vendor/premium-model", false],
     ["huggingface", "Qwen/Qwen2.5-7B-Instruct", true],
     ["huggingface", "org/unknown-paid-model", false],
+    ["dahl", "MiniMaxAI/MiniMax-M2.7", true],
+    ["dahl", "unknown-model", false],
   ];
   for (const [provider, model, expected] of cases) {
     assert.equal(isRegisteredModelAllowed(provider, model), expected, provider + ":" + model);
