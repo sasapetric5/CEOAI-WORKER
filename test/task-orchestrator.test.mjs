@@ -9,6 +9,10 @@ test("orchestrator creates a bounded plan and never enables unreviewed skills", 
   assert.equal(plan.mode, "plan-only");
   assert.equal(plan.task_type, "seo");
   assert.equal(plan.execution_allowed, false);
+  assert.equal(plan.execution_block_reason, "plan-only-no-runtime-executor");
+  assert.equal(plan.execution_policy.container_executor_available, false);
+  assert.equal(plan.execution_policy.execution_started, false);
+  assert.ok(plan.steps.some(step => step.id === "execute" && step.status === "blocked-plan-only-no-runtime"));
   assert.ok(plan.blocked_skill_ids.includes("seo-audit"));
   assert.equal(plan.external_actions_allowed, false);
   assert.equal(plan.paid_services_allowed, false);
@@ -34,7 +38,12 @@ test("orchestrator permits execution only when the registry satisfies all gates"
       security_status: "verified", external_actions: false
     }]
   };
-  assert.equal(createTaskPlan(registry, "SEO audit sajta").execution_allowed, true);
+  const eligiblePlan = createTaskPlan(registry, "SEO audit sajta");
+  assert.equal(eligiblePlan.skill_execution_eligible, true);
+  assert.equal(eligiblePlan.execution_allowed, false);
+  assert.equal(eligiblePlan.execution_policy.execution_started, false);
   registry.skills[0].external_actions = true;
-  assert.equal(createTaskPlan(registry, "SEO audit sajta").execution_allowed, false);
+  const blockedPlan = createTaskPlan(registry, "SEO audit sajta");
+  assert.equal(blockedPlan.skill_execution_eligible, false);
+  assert.equal(blockedPlan.execution_allowed, false);
 });
