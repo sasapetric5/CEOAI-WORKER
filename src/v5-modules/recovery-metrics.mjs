@@ -48,7 +48,7 @@ export async function readRecoveryMetrics(kv) {
 
 export async function recordRecoveryMetric(kv, event, now = Date.now()) {
   if (!kv || typeof kv.get !== "function" || typeof kv.put !== "function" ||
-      !EVENTS.has(event) || !Number.isFinite(now) || now < 0) return false;
+      !EVENTS.has(event) || !Number.isSafeInteger(now) || now < 0 || now > Date.now() + 60_000) return false;
   try {
     const previous = await readRecoveryMetrics(kv);
     // A failed read is not the same as an empty store: do not overwrite counters.
