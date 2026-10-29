@@ -100,6 +100,43 @@ test("daily free-call cap blocks provider network access when quota is already r
   } finally { globalThis.fetch = originalFetch; }
 });
 
+test("parallel turns for the same session are rejected without a second provider call", async () => {
+  const kv = new MemoryKV();
+  const env = makeEnv(kv);
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  let releaseProvider;
+  let providerStarted;
+  const started = new Promise(resolve => { providerStarted = resolve; });
+  const blockedProvider = new Promise(resolve => { releaseProvider = resolve; });
+  globalThis.fetch = async url => {
+    assert.match(String(url), /openrouter.ai/);
+    providerCalls += 1;
+    providerStarted();
+    await blockedProvider;
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: "Prvi zahtev je završen" } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  try {
+    const cookie = await makeSession(env);
+    const firstTurn = chat(env, cookie);
+    await started;
+    const secondTurn = await chat(env, cookie);
+    assert.equal(secondTurn.status, 409);
+    assert.match((await secondTurn.json()).error, /Već obrađujemo poruku/);
+    assert.equal(providerCalls, 1, "second overlapping turn must not reach provider");
+    releaseProvider();
+    const firstResponse = await firstTurn;
+    assert.equal(firstResponse.status, 200);
+    assert.equal((await firstResponse.json()).reply, "Prvi zahtev je završen");
+    assert.equal(providerCalls, 1);
+  } finally {
+    releaseProvider?.();
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("provider outage updates health and normal failover error remains controlled", async () => {
   const kv = new MemoryKV();
   const env = makeEnv(kv);
