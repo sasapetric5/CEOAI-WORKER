@@ -13,6 +13,8 @@ use url::{Host, Url};
 
 const PROTOCOL: &str = "ceoai-spider/1";
 const MAX_URLS: usize = 10;
+const MAX_URL_LENGTH: usize = 4_096;
+const MAX_REQUEST_LINE_BYTES: usize = 64 * 1024;
 const MAX_TIMEOUT_MS: u64 = 15_000;
 const MAX_CONTENT_CHARS: usize = 50_000;
 const MAX_EVIDENCE_CHARS: usize = 2_000;
@@ -170,6 +172,40 @@ struct JobResponse {
     execution: Value,
 }
 
+fn read_bounded_line<R: BufRead>(reader: &mut R, max_bytes: usize) -> io::Result<Option<String>> {
+    let mut bytes = Vec::with_capacity(max_bytes.min(8 * 1024));
+    let mut oversized = false;
+    let mut saw_data = false;
+
+    loop {
+        let available = reader.fill_buf()?;
+        if available.is_empty() {
+            if !saw_data { return Ok(None); }
+            break;
+        }
+        saw_data = true;
+        let newline = available.iter().position(|byte| *byte == b'\\n');
+        let consumed = newline.map(|index| index + 1).unwrap_or(available.len());
+        let payload_len = newline.map(|index| index).unwrap_or(consumed);
+        if !oversized {
+            let remaining = max_bytes.saturating_sub(bytes.len());
+            let take = payload_len.min(remaining);
+            bytes.extend_from_slice(&available[..take]);
+            if payload_len > remaining { oversized = true; }
+        }
+        reader.consume(consumed);
+        if newline.is_some() { break; }
+    }
+
+    if oversized {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "request-line-too-large"));
+    }
+    if bytes.last() == Some(&b'\\r') { bytes.pop(); }
+    String::from_utf8(bytes)
+        .map(Some)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "request-line-not-utf8"))
+}
+
 fn approved_hosts_from_env() -> HashSet<String> {
     std::env::var("CEOAI_CRAWLER_APPROVED_HOSTS")
         .unwrap_or_default()
@@ -180,6 +216,9 @@ fn approved_hosts_from_env() -> HashSet<String> {
 }
 
 fn validate_target(raw: &str, approved_hosts: &HashSet<String>) -> Result<Url, String> {
+    if raw.len() > MAX_URL_LENGTH {
+        return Err("url-length-exceeded".into());
+    }
     let mut url = Url::parse(raw).map_err(|_| "invalid-url".to_string())?;
     if url.scheme() != "https" && url.scheme() != "http" {
         return Err("scheme-not-allowed".into());
@@ -455,10 +494,22 @@ async fn main() {
     let stdout = io::stdout();
     let mut output = stdout.lock();
 
-    for line in stdin.lock().lines() {
-        let line = match line {
-            Ok(line) if !line.trim().is_empty() => line,
-            Ok(_) => continue,
+    let mut input = stdin.lock();
+    loop {
+        let line = match read_bounded_line(&mut input, MAX_REQUEST_LINE_BYTES) {
+            Ok(Some(line)) if !line.trim().is_empty() => line,
+            Ok(Some(_)) => continue,
+            Ok(None) => break,
+            Err(error) if error.kind() == io::ErrorKind::InvalidData => {
+                let response = response_error("invalid-request", vec![error.to_string()]);
+                if serde_json::to_writer(&mut output, &response).is_err()
+                    || writeln!(output).is_err()
+                    || output.flush().is_err()
+                {
+                    break;
+                }
+                continue;
+            }
             Err(_) => break,
         };
         let response = handle_line(&line).await;
@@ -551,6 +602,29 @@ mod tests {
         assert_eq!(noisy["headings"][0], "Real heading");
         assert!(!noisy["text"].as_str().unwrap().contains("Nav text."));
         assert!(!noisy["text"].as_str().unwrap().contains("Footer text."));
+    }
+
+    #[test]
+    fn bounded_reader_rejects_oversized_line_and_recovers_at_next_line() {
+        let input = format!("{}\\nvalid\\n", "x".repeat(MAX_REQUEST_LINE_BYTES + 1));
+        let mut reader = io::Cursor::new(input.into_bytes());
+        let first = read_bounded_line(&mut reader, MAX_REQUEST_LINE_BYTES).unwrap_err();
+        assert_eq!(first.to_string(), "request-line-too-large");
+        assert_eq!(read_bounded_line(&mut reader, MAX_REQUEST_LINE_BYTES).unwrap().as_deref(), Some("valid"));
+        assert_eq!(read_bounded_line(&mut reader, MAX_REQUEST_LINE_BYTES).unwrap(), None);
+    }
+
+    #[test]
+    fn bounded_reader_accepts_exact_limit_and_strips_crlf() {
+        let input = format!("{}\\r\\n", "x".repeat(32));
+        let mut reader = io::Cursor::new(input.into_bytes());
+        assert_eq!(read_bounded_line(&mut reader, 32).unwrap().unwrap().len(), 32);
+    }
+
+    #[test]
+    fn rejects_overlong_urls_before_parsing() {
+        let raw = format!("https://example.org/{}", "a".repeat(MAX_URL_LENGTH));
+        assert_eq!(validate_target(&raw, &allowlist()).unwrap_err(), "url-length-exceeded");
     }
 
     #[test]
