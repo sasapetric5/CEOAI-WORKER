@@ -176,23 +176,46 @@ fn read_bounded_line<R: BufRead>(reader: &mut R, max_bytes: usize) -> io::Result
     let mut bytes = Vec::with_capacity(max_bytes.min(8 * 1024));
     let mut oversized = false;
     let mut saw_data = false;
+    let mut pending_cr = false;
 
     loop {
         let available = reader.fill_buf()?;
         if available.is_empty() {
             if !saw_data { return Ok(None); }
+            if pending_cr && !oversized {
+                if bytes.len() == max_bytes { oversized = true; }
+                else { bytes.push(b'\r'); }
+            }
             break;
         }
+
         saw_data = true;
         let newline = available.iter().position(|byte| *byte == b'\n');
-        let consumed = newline.map(|index| index + 1).unwrap_or(available.len());
-        let payload_len = newline.map(|index| index).unwrap_or(consumed);
+        let segment_len = newline.unwrap_or(available.len());
+        let ends_crlf = newline.is_some()
+            && segment_len > 0
+            && available[segment_len - 1] == b'\r';
+        let content_len = if ends_crlf { segment_len - 1 } else { segment_len };
+
         if !oversized {
-            let remaining = max_bytes.saturating_sub(bytes.len());
-            let take = payload_len.min(remaining);
-            bytes.extend_from_slice(&available[..take]);
-            if payload_len > remaining { oversized = true; }
+            if pending_cr && !(newline.is_some() && content_len == 0) {
+                if bytes.len() == max_bytes { oversized = true; }
+                else { bytes.push(b'\r'); }
+            }
+            if !oversized {
+                let remaining = max_bytes.saturating_sub(bytes.len());
+                let take = content_len.min(remaining);
+                bytes.extend_from_slice(&available[..take]);
+                if content_len > remaining { oversized = true; }
+            }
         }
+
+        pending_cr = newline.is_none() && available.last() == Some(&b'\r');
+        if pending_cr && !oversized && bytes.last() == Some(&b'\r') {
+            bytes.pop();
+        }
+
+        let consumed = newline.map(|index| index + 1).unwrap_or(available.len());
         reader.consume(consumed);
         if newline.is_some() { break; }
     }
@@ -200,7 +223,6 @@ fn read_bounded_line<R: BufRead>(reader: &mut R, max_bytes: usize) -> io::Result
     if oversized {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "request-line-too-large"));
     }
-    if bytes.last() == Some(&b'\r') { bytes.pop(); }
     String::from_utf8(bytes)
         .map(Some)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "request-line-not-utf8"))
