@@ -35,7 +35,7 @@ test("imported candidates cannot enter runtime selection before review and tests
     assert.ok(skill);
     assert.equal(skill.runtime_status, "not-enabled");
     assert.equal(skill.review_status, "candidate");
-    assert.equal(skill.external_actions, null);
-    assert.equal(skill.paid_services, null);
+    assert.equal(skill.external_actions, false);
+    assert.equal(skill.paid_services, false);
   }
 });
