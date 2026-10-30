@@ -10,6 +10,10 @@ keep_vars = true
 [vars]
 ALLOWED_ORIGINS = "https://ceoai.dev"
 DEBUG_PROVIDER_ERRORS = "false"
+# Spider Cloudflare bridge is opt-in; no crawl is accepted until explicitly enabled.
+SPIDER_CLOUDFLARE_ENABLED = "false"
+SPIDER_RENDER_JS_ENABLED = "false"
+SPIDER_APPROVED_HOSTS = ""
 # Free-only gates (default off). Set to "true" only after confirming no billing risk.
 # XAI_FREE_CONFIRMED = "false"
 # NVIDIA_FREE_CONFIRMED = "false"
@@ -27,3 +31,16 @@ namespace_id = "2026102401"
 [ratelimits.simple]
 limit = 20
 period = 60
+
+
+# Spider async jobs. Create this Queue in Cloudflare before deploying a version
+# that enables the bridge. Free Queue allowance: 10,000 operations/day.
+[[queues.producers]]
+binding = "SPIDER_QUEUE"
+queue = "ceoai-spider-jobs"
+
+[[queues.consumers]]
+queue = "ceoai-spider-jobs"
+max_batch_size = 1
+max_batch_timeout = 5
+max_retries = 2
