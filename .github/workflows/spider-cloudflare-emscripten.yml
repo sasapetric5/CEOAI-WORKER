@@ -74,7 +74,10 @@ jobs:
 
       - name: Build patched worker-build tool
         run: |
-          git clone --depth 1 --branch v0.8.7 https://github.com/cloudflare/workers-rs.git /tmp/workers-rs
+          git init /tmp/workers-rs
+          git -C /tmp/workers-rs remote add origin https://github.com/cloudflare/workers-rs.git
+          git -C /tmp/workers-rs fetch --depth 1 origin ed043e60b421229bfe69b4fcc5b84005854f6961
+          git -C /tmp/workers-rs checkout FETCH_HEAD
           python3 sidecar/spider-cloudflare-worker/scripts/patch-worker-build-snippets.py /tmp/workers-rs/worker-build/src/build/mod.rs
           cargo install --path /tmp/workers-rs/worker-build --locked --force
 
