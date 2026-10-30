@@ -1,7 +1,7 @@
 use chrono::{SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use scraper::{Html, Selector};
+use scraper::{ElementRef, Html, Selector};
 use sha2::{Digest, Sha256};
 use spider::{configuration::RedirectPolicy, website::Website};
 use std::collections::HashSet;
@@ -27,6 +27,18 @@ fn selected_text(document: &Html, selector: &str) -> Option<String> {
     if value.is_empty() { None } else { Some(value.chars().take(2_000).collect()) }
 }
 
+fn is_in_excluded_region(mut node: ElementRef<'_>, excluded: &Selector) -> bool {
+    loop {
+        if excluded.matches(&node) {
+            return true;
+        }
+        match node.parent().and_then(ElementRef::wrap) {
+            Some(parent) => node = parent,
+            None => return false,
+        }
+    }
+}
+
 fn extract_page_fields(html: &str, page_url: &str) -> Value {
     let document = Html::parse_document(html);
     let title = selected_text(&document, "title");
@@ -35,24 +47,33 @@ fn extract_page_fields(html: &str, page_url: &str) -> Value {
         .and_then(|node| node.value().attr("content"))
         .map(|value| value.split_whitespace().collect::<Vec<_>>().join(" "))
         .filter(|value| !value.is_empty());
-    let canonical = Selector::parse(r#"link[rel="canonical"]"#).ok()
+    let base_url = Url::parse(page_url).ok();
+    let canonical_url = Selector::parse(r#"link[rel="canonical"]"#).ok()
         .and_then(|selector| document.select(&selector).next())
         .and_then(|node| node.value().attr("href"))
-        .and_then(|href| Url::parse(page_url).ok()?.join(href).ok())
-        .filter(|url| url.scheme() == "https" || url.scheme() == "http")
-        .map(|url| url.to_string());
+        .and_then(|href| base_url.as_ref()?.join(href).ok())
+        .filter(|url| url.scheme() == "https" || url.scheme() == "http");
+    let canonical_is_same_host = canonical_url.as_ref().zip(base_url.as_ref())
+        .map(|(canonical, base)| canonical.host_str() == base.host_str())
+        .unwrap_or(false);
+    let canonical = canonical_url.as_ref().map(|url| url.to_string());
 
     // Prefer semantic content containers; fall back to body only when absent.
     let content_root = Selector::parse("main, article, [role=main]").ok()
         .and_then(|selector| document.select(&selector).next())
         .or_else(|| Selector::parse("body").ok().and_then(|selector| document.select(&selector).next()));
+    let excluded = Selector::parse(
+        "script, style, noscript, template, nav, footer, aside, [hidden], [aria-hidden=true], [style*='display:none'], [style*='visibility:hidden']"
+    ).ok();
 
     let mut text_parts = Vec::new();
-    if let (Some(root), Ok(selector)) = (
+    if let (Some(root), Ok(selector), Some(excluded)) = (
         content_root,
         Selector::parse("p, h1, h2, h3, h4, li, th, td, blockquote, pre"),
+        excluded.as_ref(),
     ) {
         for node in root.select(&selector) {
+            if is_in_excluded_region(node, excluded) { continue; }
             let value = node.text().collect::<Vec<_>>().join(" ")
                 .split_whitespace().collect::<Vec<_>>().join(" ");
             if !value.is_empty() && text_parts.last() != Some(&value) {
@@ -60,20 +81,20 @@ fn extract_page_fields(html: &str, page_url: &str) -> Value {
             }
         }
     }
-    let mut text = if text_parts.is_empty() {
-        content_root.map(|root| root.text().collect::<Vec<_>>().join(" "))
-            .unwrap_or_default()
-            .split_whitespace().collect::<Vec<_>>().join(" ")
-    } else {
-        text_parts.join("\n")
-    };
+    // No unfiltered body.text() fallback: it can accidentally ingest scripts,
+    // navigation, hidden content and boilerplate when no semantic blocks exist.
+    let mut text = text_parts.join("\n");
     if text.chars().count() > MAX_EXTRACTED_TEXT_CHARS {
         text = text.chars().take(MAX_EXTRACTED_TEXT_CHARS).collect();
     }
 
     let mut headings = Vec::new();
-    if let (Some(root), Ok(selector)) = (content_root, Selector::parse("h1, h2, h3")) {
-        for node in root.select(&selector).take(20) {
+    if let (Some(root), Ok(selector), Some(excluded)) =
+        (content_root, Selector::parse("h1, h2, h3"), excluded.as_ref())
+    {
+        for node in root.select(&selector) {
+            if headings.len() >= 20 { break; }
+            if is_in_excluded_region(node, excluded) { continue; }
             let value = node.text().collect::<Vec<_>>().join(" ")
                 .split_whitespace().collect::<Vec<_>>().join(" ");
             if !value.is_empty() { headings.push(value.chars().take(300).collect::<String>()); }
@@ -102,6 +123,8 @@ fn extract_page_fields(html: &str, page_url: &str) -> Value {
         "title": title,
         "description": description,
         "canonical_url": canonical,
+        "canonical_same_host": canonical_is_same_host,
+        "canonical_external": canonical_url.is_some() && !canonical_is_same_host,
         "text": text,
         "headings": headings,
         "links": links,
@@ -317,7 +340,9 @@ async fn crawl_one(url: &Url, timeout_ms: u64) -> Result<Vec<Value>, String> {
             "source_url": final_url,
             "collected_at": Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
             "http_status": status,
-            "robots_allowed": true,
+            "robots_allowed": null,
+            "robots_enforcement": "spider-respect-robots-txt-enabled; per-URL decision not exposed by adapter",
+            "retry_after_respected": false,
             "extractor": "spider-rs/2.53.9",
             "content_hash": content_hash,
             "evidence": [evidence],
@@ -374,6 +399,8 @@ async fn handle_line(line: &str) -> JobResponse {
             "browser_mode":false,
             "follow_links":false,
             "robots_txt":true,
+            "robots_decision_visibility":"not-exposed-by-spider-adapter",
+            "retry_after":"not-implemented",
             "paid_services":false
         }),
     }
@@ -415,6 +442,7 @@ mod tests {
         let extracted = extract_page_fields(html, "https://example.org/");
         assert_eq!(extracted["title"], "Official Page");
         assert_eq!(extracted["description"], "Verified public data");
+        assert_eq!(extracted["canonical_external"], false);
         assert_eq!(extracted["extraction_method"], "scraper-html-selectors");
         assert_eq!(extracted["extraction_version"], "1");
         assert!(extracted["text"].as_str().unwrap().contains("Source content for testing."));
@@ -423,6 +451,34 @@ mod tests {
         assert_eq!(extracted["headings"][0], "Public records");
         assert_eq!(extracted["links"].as_array().unwrap().len(), 1);
         assert_eq!(extracted["links"][0]["url"], "https://example.org/records");
+    }
+
+    #[test]
+    fn excludes_hidden_script_style_and_embedded_navigation_content() {
+        let html = r#"<html><body><main>
+            <p>Visible public record <span>with details</span>.</p>
+            <p hidden>Hidden text.</p>
+            <p aria-hidden="true">ARIA hidden text.</p>
+            <nav><p>Navigation text.</p></nav>
+            <footer><p>Footer text.</p></footer>
+            <script>secret_script_value()</script><style>.hidden{display:none}</style>
+            <noscript>Fallback script text.</noscript>
+        </main></body></html>"#;
+        let extracted = extract_page_fields(html, "https://example.org/");
+        let text = extracted["text"].as_str().unwrap();
+        assert!(text.contains("Visible public record"));
+        for forbidden in ["Hidden text.", "ARIA hidden text.", "Navigation text.",
+            "Footer text.", "secret_script_value", "Fallback script text."] {
+            assert!(!text.contains(forbidden), "must exclude {forbidden}");
+        }
+    }
+
+    #[test]
+    fn flags_external_canonical_as_untrusted_provenance() {
+        let html = r#"<html><head><link rel="canonical" href="https://other.example/page"></head><body><main><p>Content</p></main></body></html>"#;
+        let extracted = extract_page_fields(html, "https://example.org/");
+        assert_eq!(extracted["canonical_external"], true);
+        assert_eq!(extracted["canonical_same_host"], false);
     }
 
     #[test]
