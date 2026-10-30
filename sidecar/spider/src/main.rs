@@ -41,7 +41,21 @@ fn extract_page_fields(html: &str, page_url: &str) -> Value {
         .filter(|url| url.scheme() == "https" || url.scheme() == "http")
         .map(|url| url.to_string());
 
-    let mut text = selected_text(&document, "body").unwrap_or_default();
+    let mut text_parts = Vec::new();
+    if let Ok(selector) = Selector::parse("p, h1, h2, h3, h4, li, td, blockquote, pre") {
+        for node in document.select(&selector) {
+            let value = node.text().collect::<Vec<_>>().join(" ")
+                .split_whitespace().collect::<Vec<_>>().join(" ");
+            if !value.is_empty() && text_parts.last() != Some(&value) {
+                text_parts.push(value);
+            }
+        }
+    }
+    let mut text = if text_parts.is_empty() {
+        selected_text(&document, "body").unwrap_or_default()
+    } else {
+        text_parts.join("\\n")
+    };
     if text.chars().count() > MAX_EXTRACTED_TEXT_CHARS {
         text = text.chars().take(MAX_EXTRACTED_TEXT_CHARS).collect();
     }
