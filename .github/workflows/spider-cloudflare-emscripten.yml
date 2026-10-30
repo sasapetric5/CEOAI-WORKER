@@ -25,6 +25,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  guarded-transport-tests:
+    name: Guarded transport and crawler security tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sidecar/spider
+
+      - name: Run Spider transport and policy tests
+        run: cargo test --manifest-path sidecar/spider/Cargo.toml
+
   emscripten-build:
     name: Compile Spider dependencies for Cloudflare Emscripten
     runs-on: ubuntu-latest
