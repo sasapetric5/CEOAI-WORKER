@@ -57,8 +57,10 @@ fn validate_url(url: &Url, hosts: &HashSet<String>) -> Result<(), String> {
     if url.port().is_some_and(|p| p != 80 && p != 443) {
         return Err("transport-port-forbidden".into());
     }
-    let host = url.host_str().ok_or("transport-host-required")?
-        .trim_end_matches('.').to_ascii_lowercase();
+    let host = match url.host() {
+        Some(Host::Domain(host)) => host.trim_end_matches('.').to_ascii_lowercase(),
+        _ => return Err("transport-hostname-only".into()),
+    };
     if !hosts.contains(&host) {
         return Err("transport-host-not-approved".into());
     }
@@ -144,7 +146,7 @@ async fn fetch_guarded_inner(
             .send().await
             .map_err(|_| "transport-request-failed")?;
         let peer = response.remote_addr();
-        if !peer.is_some_and(|p| addresses.iter().any(|a| a.ip() == p.ip())) {
+        if !peer.is_some_and(|p| addresses.iter().any(|a| *a == p)) {
             return Err("transport-peer-not-pinned-address".into());
         }
 
@@ -175,7 +177,8 @@ async fn fetch_guarded_inner(
         }
 
         let status = response.status();
-        let headers = response.headers().clone();\n        let declared_content_length = headers.get(reqwest::header::CONTENT_LENGTH)\n            .and_then(|v| v.to_str().ok())\n            .and_then(|v| v.parse::<u64>().ok());
+        let headers = response.headers().clone();
+        let declared_content_length = headers.get(reqwest::header::CONTENT_LENGTH)\n            .and_then(|v| v.to_str().ok())\n            .and_then(|v| v.parse::<u64>().ok());
         if respect_retry_after
             && (status == StatusCode::TOO_MANY_REQUESTS || status == StatusCode::SERVICE_UNAVAILABLE)
             && retry_index < MAX_RETRIES
