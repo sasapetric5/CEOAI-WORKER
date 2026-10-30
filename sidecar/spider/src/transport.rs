@@ -8,6 +8,8 @@ use url::Url;
 
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 const MAX_REDIRECTS: usize = 3;
+const MAX_RETRY_AFTER: Duration = Duration::from_secs(30);
+const MAX_RETRIES: usize = 2;
 
 fn approved_hosts() -> HashSet<String> {
     std::env::var("CEOAI_CRAWLER_APPROVED_HOSTS")
@@ -78,6 +80,16 @@ async fn resolve_public(url: &Url) -> Result<Vec<SocketAddr>, String> {
     Ok(addresses)
 }
 
+fn retry_after_delay(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
+    let raw = headers.get(reqwest::header::RETRY_AFTER)?.to_str().ok()?.trim();
+    if let Ok(seconds) = raw.parse::<u64>() {
+        return Some(Duration::from_secs(seconds));
+    }
+    let when = chrono::DateTime::parse_from_rfc2822(raw).ok()?;
+    let delta = when.with_timezone(&chrono::Utc).signed_duration_since(chrono::Utc::now());
+    Some(delta.to_std().unwrap_or(Duration::ZERO))
+}
+
 #[derive(Debug)]
 pub(crate) struct GuardedResponse {
     pub status: StatusCode,
@@ -91,9 +103,12 @@ pub(crate) async fn fetch_guarded(
     initial_url: &Url,
     timeout_ms: u64,
     body_limit: usize,
+    respect_retry_after: bool,
 ) -> Result<GuardedResponse, String> {
     let hosts = approved_hosts();
     let mut current = initial_url.clone();
+    let body_limit = body_limit.min(MAX_RESPONSE_BYTES);
+    let mut retry_index = 0usize;
 
     for redirect_index in 0..=MAX_REDIRECTS {
         validate_url(&current, &hosts)?;
@@ -108,7 +123,9 @@ pub(crate) async fn fetch_guarded(
             .build()
             .map_err(|_| "transport-client-build-failed")?;
 
-        let mut response = client.get(current.clone()).send().await
+        let mut response = client.get(current.clone())
+            .header(reqwest::header::ACCEPT_ENCODING, "identity")
+            .send().await
             .map_err(|_| "transport-request-failed")?;
         let peer = response.remote_addr();
         if !peer.is_some_and(|p| addresses.iter().any(|a| a.ip() == p.ip())) {
@@ -131,6 +148,18 @@ pub(crate) async fn fetch_guarded(
 
         let status = response.status();
         let headers = response.headers().clone();
+        if respect_retry_after
+            && (status == StatusCode::TOO_MANY_REQUESTS || status == StatusCode::SERVICE_UNAVAILABLE)
+            && retry_index < MAX_RETRIES
+        {
+            if let Some(wait) = retry_after_delay(&headers) {
+                if wait <= MAX_RETRY_AFTER {
+                    retry_index += 1;
+                    tokio::time::sleep(wait).await;
+                    continue;
+                }
+            }
+        }
         if headers.get(reqwest::header::CONTENT_LENGTH)
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.parse::<u64>().ok())
@@ -160,11 +189,12 @@ pub(crate) async fn fetch_guarded(
 
 pub(crate) struct GuardedHttpEngine {
     timeout_ms: u64,
+    respect_retry_after: bool,
 }
 
 impl GuardedHttpEngine {
-    pub(crate) fn new(timeout_ms: u64) -> Self {
-        Self { timeout_ms }
+    pub(crate) fn new(timeout_ms: u64, respect_retry_after: bool) -> Self {
+        Self { timeout_ms, respect_retry_after }
     }
 }
 
@@ -175,7 +205,7 @@ impl HttpFetchEngine for GuardedHttpEngine {
             return Err(EngineError::Request);
         }
         let url = Url::parse(request.url).map_err(|_| EngineError::Request)?;
-        let response = fetch_guarded(&url, self.timeout_ms, MAX_RESPONSE_BYTES)
+        let response = fetch_guarded(&url, self.timeout_ms, MAX_RESPONSE_BYTES, self.respect_retry_after)
             .await.map_err(|e| EngineError::Other(e))?;
         let status_code = spider::client::StatusCode::from_u16(response.status.as_u16())
             .map_err(|_| EngineError::Request)?;
@@ -213,6 +243,15 @@ mod tests {
             assert!(validate_url(&url, &hosts).is_err(), "must reject {raw}");
         }
         assert!(validate_url(&Url::parse("https://example.org/next").unwrap(), &hosts).is_ok());
+    }
+
+    #[test]
+    fn retry_after_accepts_seconds_and_rejects_invalid_values() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(reqwest::header::RETRY_AFTER, "7".parse().unwrap());
+        assert_eq!(retry_after_delay(&headers), Some(Duration::from_secs(7)));
+        headers.insert(reqwest::header::RETRY_AFTER, "nonsense".parse().unwrap());
+        assert_eq!(retry_after_delay(&headers), None);
     }
 
     #[test]
