@@ -32,3 +32,14 @@ jobs:
           node-version: 22
       - name: Verify source syntax and tests
         run: npm run verify
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sidecar/spider
+
+      - name: Verify Spider sidecar
+        run: cargo test --manifest-path sidecar/spider/Cargo.toml --locked
