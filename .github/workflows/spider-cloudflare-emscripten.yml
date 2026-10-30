@@ -7,6 +7,10 @@ on:
     paths:
       - "sidecar/spider/**"
       - "sidecar/spider-cloudflare-worker/**"
+      - "src/v5-modules/spider-cloudflare-queue.mjs"
+      - "test/spider-cloudflare-queue-v5.test.mjs"
+      - "ceoai-index-v5.0.mjs"
+      - "wrangler.toml"
       - ".github/workflows/spider-cloudflare-emscripten.yml"
   pull_request:
     branches:
@@ -25,6 +29,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  cloudflare-managed-bridge-tests:
+    name: Cloudflare Queue and Browser Run adapter tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run Cloudflare Spider bridge tests
+        run: node --test test/spider-cloudflare-queue-v5.test.mjs
+
   guarded-transport-tests:
     name: Guarded transport and crawler security tests
     runs-on: ubuntu-latest
