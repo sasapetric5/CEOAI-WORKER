@@ -1005,7 +1005,7 @@ export default {
     const requestAllowedOrigins = allowedOrigins(env);
     const originAllowed = isAllowedOrigin(origin, requestAllowedOrigins);
     const isSpiderCreate = url.pathname === "/api/crawl";
-    const spiderPollMatch = url.pathname.match(/^\\/api\\/crawl\\/([a-zA-Z0-9_-]{8,100})$/);
+    const spiderPollMatch = url.pathname.match(/^\/api\/crawl\/([a-zA-Z0-9_-]{8,100})$/);
     const isSpiderRoute = isSpiderCreate || Boolean(spiderPollMatch);
     const isApi = ["/api/chat", "/api/agents", "/api/agents/run", "/api/agents/run-ai"].includes(url.pathname) || isSpiderRoute;
 
