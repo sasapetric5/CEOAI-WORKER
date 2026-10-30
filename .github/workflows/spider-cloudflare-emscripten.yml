@@ -47,7 +47,8 @@ jobs:
         working-directory: sidecar/spider-cloudflare-worker
         run: |
           cargo tree --target wasm32-unknown-emscripten -e features -i tokio
-          cargo tree --target wasm32-unknown-emscripten -e features -i reqwest
+          cargo tree --target wasm32-unknown-emscripten -e features -i reqwest@0.13.5
+          cargo tree --target wasm32-unknown-emscripten -e features -i reqwest@0.12.28
 
       - name: Build experimental Cloudflare Worker
         working-directory: sidecar/spider-cloudflare-worker
