@@ -307,6 +307,11 @@ fn is_public_routable_ip(ip: IpAddr) -> bool {
     }
 }
 
+fn resolved_addresses_are_public(addresses: &[std::net::SocketAddr]) -> bool {
+    !addresses.is_empty()
+        && addresses.iter().all(|address| is_public_routable_ip(address.ip()))
+}
+
 async fn validate_dns_target(url: &Url) -> Result<(), String> {
     let host = url.host_str().ok_or_else(|| "hostname-required".to_string())?;
     let port = url.port_or_known_default().ok_or_else(|| "port-required".to_string())?;
@@ -315,7 +320,7 @@ async fn validate_dns_target(url: &Url) -> Result<(), String> {
         .map_err(|_| "dns-resolution-failed".to_string())?
         .collect::<Vec<_>>();
     if resolved.is_empty() { return Err("dns-no-addresses".into()); }
-    if resolved.iter().any(|address| !is_public_routable_ip(address.ip())) {
+    if !resolved_addresses_are_public(&resolved) {
         return Err("dns-resolved-to-non-public-ip".into());
     }
     Ok(())
@@ -673,6 +678,28 @@ mod tests {
         for raw in ["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111"] {
             let ip: IpAddr = raw.parse().unwrap();
             assert!(is_public_routable_ip(ip), "must allow public {raw}");
+        }
+    }
+
+    #[test]
+    fn dns_resolution_rejects_mixed_public_and_private_answers() {
+        use std::net::SocketAddr;
+        let public = SocketAddr::from(([1, 1, 1, 1], 443));
+        let private = SocketAddr::from(([10, 0, 0, 7], 443));
+        let loopback = SocketAddr::from(([127, 0, 0, 1], 443));
+        assert!(resolved_addresses_are_public(&[public]));
+        assert!(!resolved_addresses_are_public(&[public, private]));
+        assert!(!resolved_addresses_are_public(&[public, loopback]));
+        assert!(!resolved_addresses_are_public(&[]));
+    }
+
+    #[test]
+    fn dns_resolution_rejects_ipv6_private_and_link_local_answers() {
+        use std::net::SocketAddr;
+        for raw in ["::1", "fc00::1", "fe80::1", "2001:db8::1"] {
+            let ip: IpAddr = raw.parse().unwrap();
+            let address = SocketAddr::new(ip, 443);
+            assert!(!resolved_addresses_are_public(&[address]), "must reject {raw}");
         }
     }
 
