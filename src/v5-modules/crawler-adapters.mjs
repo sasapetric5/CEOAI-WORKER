@@ -84,7 +84,10 @@ export function planCrawlerTask(task = {}, options = {}) {
     adapter: selected.id,
     runtime: selected.runtime,
     required_capabilities: [...required],
-    execution_enabled: true,
+    // Selection is planning only; no sidecar/runtime is invoked by this module.
+    execution_enabled: false,
+    execution_status: "planned-only",
+    requires_runtime_binding: true,
     external_actions: false,
     paid_services: false,
   };
