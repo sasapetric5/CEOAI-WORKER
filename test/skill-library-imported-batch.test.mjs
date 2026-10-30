@@ -8,7 +8,7 @@ const registry = JSON.parse(await readFile(new URL("../skills/registry.json", im
 
 function gitBlobSha(content) {
   const bytes = Buffer.from(content, "utf8");
-  return createHash("sha1").update(`blob ${bytes.length}\\0`).update(bytes).digest("hex");
+  return createHash("sha1").update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
 }
 
 test("all 50 pinned upstream skills are imported with exact source blob integrity", async () => {
