@@ -82,6 +82,25 @@ async fn resolve_public(url: &Url) -> Result<Vec<SocketAddr>, String> {
     Ok(addresses)
 }
 
+fn content_length_exceeds(headers: &reqwest::header::HeaderMap, limit: usize) -> bool {
+    headers.get(reqwest::header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u64>().ok())
+        .is_some_and(|n| n > limit as u64)
+}
+
+fn append_bounded(body: &mut Vec<u8>, chunk: &[u8], limit: usize) -> Result<(), String> {
+    if body.len().saturating_add(chunk.len()) > limit {
+        return Err("transport-stream-body-limit".into());
+    }
+    body.extend_from_slice(chunk);
+    Ok(())
+}
+
+fn same_host_redirect(current: &Url, next: &Url) -> bool {
+    current.host_str() == next.host_str()
+}
+
 fn retry_after_delay(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
     let raw = headers.get(reqwest::header::RETRY_AFTER)?.to_str().ok()?.trim();
     if let Ok(seconds) = raw.parse::<u64>() {
@@ -169,7 +188,7 @@ async fn fetch_guarded_inner(
             let next = current.join(location)
                 .map_err(|_| "transport-invalid-redirect")?;
             validate_url(&next, &hosts)?;
-            if next.host_str() != current.host_str() {
+            if !same_host_redirect(&current, &next) {
                 return Err("transport-cross-host-redirect-forbidden".into());
             }
             current = next;
@@ -193,21 +212,14 @@ async fn fetch_guarded_inner(
                 }
             }
         }
-        if headers.get(reqwest::header::CONTENT_LENGTH)
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.parse::<u64>().ok())
-            .is_some_and(|n| n > body_limit as u64)
-        {
+        if content_length_exceeds(&headers, body_limit) {
             return Err("transport-content-length-limit".into());
         }
 
         let mut body = Vec::with_capacity(body_limit.min(16 * 1024));
         while let Some(chunk) = response.chunk().await
             .map_err(|_| "transport-body-read-failed")? {
-            if body.len().saturating_add(chunk.len()) > body_limit {
-                return Err("transport-stream-body-limit".into());
-            }
-            body.extend_from_slice(&chunk);
+            append_bounded(&mut body, &chunk, body_limit)?;
         }
         return Ok(GuardedResponse {
             status,
@@ -259,6 +271,40 @@ impl HttpFetchEngine for GuardedHttpEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rejects_content_length_and_chunked_bodies_over_limit() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(reqwest::header::CONTENT_LENGTH, "1025".parse().unwrap());
+        assert!(content_length_exceeds(&headers, 1024));
+        headers.insert(reqwest::header::CONTENT_LENGTH, "1024".parse().unwrap());
+        assert!(!content_length_exceeds(&headers, 1024));
+
+        let mut body = Vec::new();
+        append_bounded(&mut body, &[0u8; 512], 1024).unwrap();
+        append_bounded(&mut body, &[1u8; 512], 1024).unwrap();
+        assert_eq!(body.len(), 1024);
+        assert_eq!(append_bounded(&mut body, &[2u8], 1024).unwrap_err(), "transport-stream-body-limit");
+    }
+
+    #[test]
+    fn redirects_must_remain_on_the_same_approved_hostname() {
+        let current = Url::parse("https://example.org/start").unwrap();
+        let same = Url::parse("https://example.org/next").unwrap();
+        let other = Url::parse("https://other.example.org/next").unwrap();
+        assert!(same_host_redirect(&current, &same));
+        assert!(!same_host_redirect(&current, &other));
+    }
+
+    #[test]
+    fn transport_rejects_private_and_special_ip_addresses() {
+        for raw in ["0.0.0.0", "10.1.2.3", "127.0.0.1", "169.254.1.1", "192.168.1.1", "224.0.0.1", "::1", "fc00::1", "fe80::1", "2001:db8::1"] {
+            assert!(!public_ip(raw.parse().unwrap()), "must reject {raw}");
+        }
+        for raw in ["1.1.1.1", "8.8.8.8", "2606:4700:4700::1111"] {
+            assert!(public_ip(raw.parse().unwrap()), "must allow {raw}");
+        }
+    }
 
     #[test]
     fn redirect_validation_rejects_private_destinations_and_unapproved_hosts() {
