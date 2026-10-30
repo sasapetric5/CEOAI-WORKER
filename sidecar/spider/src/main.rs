@@ -2,7 +2,7 @@ use chrono::{SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use spider::website::Website;
+use spider::{configuration::RedirectPolicy, website::Website};
 use std::collections::HashSet;
 use std::io::{self, BufRead, Write};
 use std::time::Duration;
@@ -141,6 +141,7 @@ async fn crawl_one(url: &Url, timeout_ms: u64) -> Result<Vec<Value>, String> {
         .with_limit(1)
         .with_depth(1)
         .with_respect_robots_txt(true)
+        .with_redirect_policy(RedirectPolicy::None)
         .with_request_timeout(Some(Duration::from_millis(timeout_ms)))
         .with_crawl_timeout(Some(Duration::from_millis(timeout_ms)));
 
