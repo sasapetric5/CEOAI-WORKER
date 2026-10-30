@@ -346,10 +346,10 @@ test("end-to-end: HTTP enqueue -> Queue consumer -> Browser Run -> KV result", a
   const originalDateNow = Date.now;
   globalThis.fetch = async (url, options = {}) => {
     if (options.method === "POST") {
-      assert.match(String(url), /browser-run\\/crawl$/);
+      assert.match(String(url), /browser-run\/crawl$/);
       return Response.json({ success: true, result: "cf-e2e-job-123" });
     }
-    assert.match(String(url), /browser-run\\/crawl\\/cf-e2e-job-123\\?limit=10$/);
+    assert.match(String(url), /browser-run\/crawl\/cf-e2e-job-123\?limit=10$/);
     return Response.json({ success: true, result: {
       status: "completed", total: 1, finished: 1, browserSecondsUsed: 0,
       records: [{ url: "https://example.org/guide", status: "completed",
