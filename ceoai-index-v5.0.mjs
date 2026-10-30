@@ -35,6 +35,7 @@ import { selectSkillCandidates, loadSkillRegistry } from "./src/v5-modules/skill
 import { createTaskPlan } from "./src/v5-modules/task-orchestrator.mjs";
 import { executeAgentWorkflow, listExecutableWorkflows, listAgentApplicationGroups } from "./src/v5-modules/agent-workflows.mjs";
 import { executeAiAssistedWorkflow, agentAiRuntimeReadiness } from "./src/v5-modules/agent-ai-runtime.mjs";
+import { handleCloudflareSpiderRequest, processCloudflareSpiderQueue } from "./src/v5-modules/spider-cloudflare-queue.mjs";
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
 // Quota cooldowns differ by provider signal: monthly exhaustion must not be retried every few hours.
@@ -1003,7 +1004,10 @@ export default {
     // Parse the allowlist once per request; do not cache mutable environment config globally.
     const requestAllowedOrigins = allowedOrigins(env);
     const originAllowed = isAllowedOrigin(origin, requestAllowedOrigins);
-    const isApi = ["/api/chat", "/api/agents", "/api/agents/run", "/api/agents/run-ai"].includes(url.pathname);
+    const isSpiderCreate = url.pathname === "/api/crawl";
+    const spiderPollMatch = url.pathname.match(/^\\/api\\/crawl\\/([a-zA-Z0-9_-]{8,100})$/);
+    const isSpiderRoute = isSpiderCreate || Boolean(spiderPollMatch);
+    const isApi = ["/api/chat", "/api/agents", "/api/agents/run", "/api/agents/run-ai"].includes(url.pathname) || isSpiderRoute;
 
     // Safe diagnostics: never log prompts, cookies, IP addresses, origins, or secret values.
     if (isApi) {
@@ -1064,16 +1068,16 @@ export default {
     const isAgentList = url.pathname === "/api/agents";
     const isAgentAiRun = url.pathname === "/api/agents/run-ai";
     const isAgentRun = url.pathname === "/api/agents/run" || isAgentAiRun;
-    if (url.pathname !== "/api/chat" && !isAgentList && !isAgentRun) {
+    if (url.pathname !== "/api/chat" && !isAgentList && !isAgentRun && !isSpiderRoute) {
       return new Response("Not Found", { status: 404, headers: { "Cache-Control": "no-store" } });
     }
-    if ((isAgentList && request.method !== "GET") || (isAgentRun && request.method !== "POST") || (url.pathname === "/api/chat" && request.method !== "POST")) {
+    if ((isAgentList && request.method !== "GET") || (isAgentRun && request.method !== "POST") || (url.pathname === "/api/chat" && request.method !== "POST") || (isSpiderRoute && !((isSpiderCreate && request.method === "POST") || (spiderPollMatch && request.method === "GET")))) {
       return json({ success: false, error: "Metod nije podržan." }, 405, originAllowed ? corsHeaders(origin) : {});
     }
     if (!originAllowed) {
       return json({ success: false, error: "Zabranjen zahtev." }, 403);
     }
-    if ((isAgentRun || url.pathname === "/api/chat") && request.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
+    if ((isAgentRun || url.pathname === "/api/chat" || isSpiderCreate) && request.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
       return json({ success: false, error: "Očekuje se JSON zahtev." }, 415, corsHeaders(origin));
     }
 
@@ -1087,6 +1091,23 @@ export default {
       }
     } catch {
       return json({ success: false, error: "Servis sesije je privremeno nedostupan." }, 503, corsHeaders(origin));
+    }
+
+    if (isSpiderRoute) {
+      const ip = request.headers.get("CF-Connecting-IP");
+      if (!ip) return json({ success: false, error: "Nije moguće proveriti ograničenje zahteva." }, 503, corsHeaders(origin));
+      try {
+        const allowed = await enforceRateLimit(env, ip, Date.now());
+        if (!allowed) return json({ success: false, error: "Dostigli ste limit od 20 zahteva u minutu." }, 429, { ...corsHeaders(origin), "Retry-After": "60" });
+      } catch {
+        return json({ success: false, error: "Zaštita od preopterećenja je privremeno nedostupna." }, 503, corsHeaders(origin));
+      }
+      const spiderResponse = await handleCloudflareSpiderRequest(request, env, sessionId);
+      if (!spiderResponse) return json({ success: false, error: "Nepodržan Spider zahtev." }, 405, corsHeaders(origin));
+      const headers = new Headers(spiderResponse.headers);
+      for (const [key, value] of Object.entries(corsHeaders(origin))) headers.set(key, value);
+      headers.set("Cache-Control", "no-store");
+      return new Response(spiderResponse.body, { status: spiderResponse.status, headers });
     }
 
     if (isAgentList) {
@@ -1620,5 +1641,8 @@ export default {
       // Always release the guard on success, provider failure, or KV errors.
       inFlightSessions.delete(sessionId);
     }
+  },
+  async queue(batch, env) {
+    await processCloudflareSpiderQueue(batch, env);
   },
 };
