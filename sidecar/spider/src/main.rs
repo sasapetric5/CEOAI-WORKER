@@ -1,6 +1,7 @@
 use chrono::{SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use scraper::{Html, Selector};
 use sha2::{Digest, Sha256};
 use spider::{configuration::RedirectPolicy, website::Website};
 use std::collections::HashSet;
@@ -14,6 +15,73 @@ const MAX_URLS: usize = 10;
 const MAX_TIMEOUT_MS: u64 = 15_000;
 const MAX_CONTENT_CHARS: usize = 50_000;
 const MAX_EVIDENCE_CHARS: usize = 2_000;
+const MAX_EXTRACTED_TEXT_CHARS: usize = 20_000;
+const MAX_LINKS: usize = 30;
+
+fn selected_text(document: &Html, selector: &str) -> Option<String> {
+    let selector = Selector::parse(selector).ok()?;
+    let value = document.select(&selector).next()?
+        .text().collect::<Vec<_>>().join(" ")
+        .split_whitespace().collect::<Vec<_>>().join(" ");
+    if value.is_empty() { None } else { Some(value.chars().take(2_000).collect()) }
+}
+
+fn extract_page_fields(html: &str, page_url: &str) -> Value {
+    let document = Html::parse_document(html);
+    let title = selected_text(&document, "title");
+    let description = Selector::parse(r#"meta[name="description"]"#).ok()
+        .and_then(|selector| document.select(&selector).next())
+        .and_then(|node| node.value().attr("content"))
+        .map(|value| value.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|value| !value.is_empty());
+    let canonical = Selector::parse(r#"link[rel="canonical"]"#).ok()
+        .and_then(|selector| document.select(&selector).next())
+        .and_then(|node| node.value().attr("href"))
+        .and_then(|href| Url::parse(page_url).ok()?.join(href).ok())
+        .filter(|url| url.scheme() == "https" || url.scheme() == "http")
+        .map(|url| url.to_string());
+
+    let mut text = selected_text(&document, "body").unwrap_or_default();
+    if text.chars().count() > MAX_EXTRACTED_TEXT_CHARS {
+        text = text.chars().take(MAX_EXTRACTED_TEXT_CHARS).collect();
+    }
+
+    let mut headings = Vec::new();
+    if let Ok(selector) = Selector::parse("h1, h2, h3") {
+        for node in document.select(&selector).take(20) {
+            let value = node.text().collect::<Vec<_>>().join(" ")
+                .split_whitespace().collect::<Vec<_>>().join(" ");
+            if !value.is_empty() { headings.push(value.chars().take(300).collect::<String>()); }
+        }
+    }
+
+    let mut links = Vec::new();
+    if let (Ok(selector), Ok(base)) = (Selector::parse("a[href]"), Url::parse(page_url)) {
+        for node in document.select(&selector) {
+            if links.len() >= MAX_LINKS { break; }
+            let Some(href) = node.value().attr("href") else { continue };
+            let Ok(url) = base.join(href) else { continue };
+            if (url.scheme() == "http" || url.scheme() == "https")
+                && url.host_str() == base.host_str()
+            {
+                let label = node.text().collect::<Vec<_>>().join(" ")
+                    .split_whitespace().collect::<Vec<_>>().join(" ");
+                links.push(json!({"url":url.to_string(),"text":label.chars().take(200).collect::<String>()}));
+            }
+        }
+    }
+
+    json!({
+        "title": title,
+        "description": description,
+        "canonical_url": canonical,
+        "text": text,
+        "headings": headings,
+        "links": links,
+        "extraction_method": "scraper-html-selectors",
+        "extraction_version": "1"
+    })
+}
 
 #[derive(Debug, Deserialize)]
 struct JobRequest {
@@ -168,6 +236,7 @@ async fn crawl_one(url: &Url, timeout_ms: u64) -> Result<Vec<Value>, String> {
         let evidence: String = html.chars().take(MAX_EVIDENCE_CHARS).collect();
         let final_url = page.get_url().to_string();
         let status = page.status_code.as_u16();
+        let extracted = extract_page_fields(&bounded_html, &final_url);
 
         records.push(json!({
             "source_url": final_url,
@@ -179,7 +248,8 @@ async fn crawl_one(url: &Url, timeout_ms: u64) -> Result<Vec<Value>, String> {
             "evidence": [evidence],
             "data": {
                 "html": bounded_html,
-                "content_truncated": html.chars().count() > MAX_CONTENT_CHARS
+                "content_truncated": html.chars().count() > MAX_CONTENT_CHARS,
+                "extracted": extracted
             }
         }));
     }
@@ -262,6 +332,18 @@ mod tests {
 
     fn allowlist() -> HashSet<String> {
         ["example.org".to_string(), "data.gov.rs".to_string()].into_iter().collect()
+    }
+
+    #[test]
+    fn extracts_title_description_text_headings_and_same_host_links() {
+        let html = r#"<html><head><title>Official Page</title><meta name="description" content="Verified public data"></head><body><h1>Public records</h1><p>Source content for testing.</p><a href="/records">Records</a><a href="https://other.example/">External</a><a href="javascript:alert(1)">Unsafe</a></body></html>"#;
+        let extracted = extract_page_fields(html, "https://example.org/");
+        assert_eq!(extracted["title"], "Official Page");
+        assert_eq!(extracted["description"], "Verified public data");
+        assert!(extracted["text"].as_str().unwrap().contains("Source content for testing."));
+        assert_eq!(extracted["headings"][0], "Public records");
+        assert_eq!(extracted["links"].as_array().unwrap().len(), 1);
+        assert_eq!(extracted["links"][0]["url"], "https://example.org/records");
     }
 
     #[test]
