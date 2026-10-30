@@ -58,6 +58,12 @@ assert.equal(page.robots_allowed, true);
 assert.match(page.content_hash, /^[a-f0-9]{64}$/);
 assert.equal(page.extractor, "spider-rs/2.53.9");
 assert.ok(typeof page.data?.html === "string" && page.data.html.length > 0);
+assert.ok(typeof page.data?.extracted?.title === "string" && page.data.extracted.title.length > 0);
+assert.ok(typeof page.data?.extracted?.text === "string" && page.data.extracted.text.length > 0);
+assert.equal(page.data.extracted.extraction_method, "scraper-html-selectors");
+assert.equal(page.data.extracted.extraction_version, "1");
+assert.ok(Array.isArray(page.data.extracted.headings));
+assert.ok(Array.isArray(page.data.extracted.links));
 
 console.log(JSON.stringify({
   status: "PASS",
