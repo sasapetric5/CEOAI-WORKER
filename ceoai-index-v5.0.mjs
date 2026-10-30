@@ -1003,7 +1003,7 @@ export default {
     const origin = request.headers.get("Origin") || "";
     // Parse the allowlist once per request; do not cache mutable environment config globally.
     const requestAllowedOrigins = allowedOrigins(env);
-    const originAllowed = isAllowedOrigin(origin, requestAllowedOrigins);
+    const originAllowed = isAllowedOrigin(origin || (isSpiderRoute ? url.origin : ""), requestAllowedOrigins);
     const isSpiderCreate = url.pathname === "/api/crawl";
     const spiderPollMatch = url.pathname.match(/^\/api\/crawl\/([a-zA-Z0-9_-]{8,100})$/);
     const isSpiderRoute = isSpiderCreate || Boolean(spiderPollMatch);
@@ -1105,7 +1105,7 @@ export default {
       const spiderResponse = await handleCloudflareSpiderRequest(request, env, sessionId);
       if (!spiderResponse) return json({ success: false, error: "Nepodržan Spider zahtev." }, 405, corsHeaders(origin));
       const headers = new Headers(spiderResponse.headers);
-      for (const [key, value] of Object.entries(corsHeaders(origin))) headers.set(key, value);
+      for (const [key, value] of Object.entries(corsHeaders(origin || url.origin))) headers.set(key, value);
       headers.set("Cache-Control", "no-store");
       return new Response(spiderResponse.body, { status: spiderResponse.status, headers });
     }
