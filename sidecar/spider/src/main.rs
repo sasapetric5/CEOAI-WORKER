@@ -354,6 +354,8 @@ mod tests {
         let extracted = extract_page_fields(html, "https://example.org/");
         assert_eq!(extracted["title"], "Official Page");
         assert_eq!(extracted["description"], "Verified public data");
+        assert_eq!(extracted["extraction_method"], "scraper-html-selectors");
+        assert_eq!(extracted["extraction_version"], "1");
         assert!(extracted["text"].as_str().unwrap().contains("Source content for testing."));
         assert_eq!(extracted["headings"][0], "Public records");
         assert_eq!(extracted["links"].as_array().unwrap().len(), 1);
