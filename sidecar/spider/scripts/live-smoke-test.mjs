@@ -62,6 +62,11 @@ assert.equal(page.retry_after_respected, false, "Retry-After is not implemented 
 assert.match(page.content_hash, /^[a-f0-9]{64}$/);
 assert.equal(page.extractor, "spider-rs/2.53.9");
 assert.ok(typeof page.data?.html === "string" && page.data.html.length > 0);
+assert.equal(typeof page.data?.truncation?.spider_transport_content_truncated, "boolean");
+assert.equal(typeof page.data?.truncation?.output_html_truncated, "boolean");
+assert.equal(typeof page.data?.truncation?.content_truncated, "boolean");
+assert.equal(page.data?.truncation?.content_limit_scope, "output-serialization-only; not a transport byte cap");
+assert.ok(page.data?.truncation?.spider_bytes_transferred === null || typeof page.data?.truncation?.spider_bytes_transferred === "number");
 assert.ok(typeof page.data?.extracted?.title === "string" && page.data.extracted.title.length > 0);
 assert.ok(typeof page.data?.extracted?.text === "string" && page.data.extracted.text.length > 0);
 assert.equal(page.data.extracted.extraction_method, "scraper-html-selectors");
