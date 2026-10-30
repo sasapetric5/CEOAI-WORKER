@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0.0",
   "library_id": "ceoai-shared-skills",
-  "status": "catalog-design",
+  "status": "candidate-library-imported-review-pending",
   "routing_policy": {
     "load_all_skills": false,
     "default_max_skills_per_task": 4,
@@ -122,6 +122,13 @@
         "contentcraft",
         "aiforce"
       ]
+    },
+    {
+      "id": "design-and-accessibility",
+      "label": "Design And Accessibility",
+      "tags": [
+        "design-and-accessibility"
+      ]
     }
   ],
   "skills": [
@@ -205,6 +212,1557 @@
       "runtime_status": "not-enabled",
       "risk": "low",
       "external_actions": false
+    },
+    {
+      "id": "a11y-audit",
+      "name": "A11y Audit",
+      "description": "Web accessibility audit against WCAG 2.1 AA standards",
+      "path": "skill-library/imported/a11y-audit/SKILL.md",
+      "category": "design-and-accessibility",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "design-and-accessibility",
+        "a11y-audit",
+        "app:contentcraft",
+        "app:aiforce"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/a11y-audit/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "a11y-fix",
+      "name": "A11y Fix",
+      "description": "Generate specific fixes for accessibility audit findings with code patches",
+      "path": "skill-library/imported/a11y-fix/SKILL.md",
+      "category": "design-and-accessibility",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "design-and-accessibility",
+        "a11y-fix",
+        "app:contentcraft",
+        "app:aiforce"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/a11y-fix/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "absence-audit",
+      "name": "Absence Audit",
+      "description": "Find what's MISSING from a system -- unhandled cases, missing tests, absent monitoring, sile",
+      "path": "skill-library/imported/absence-audit/SKILL.md",
+      "category": "software-engineering-and-testing",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "software-engineering-and-testing",
+        "absence-audit",
+        "app:ceoai",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/absence-audit/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "adr-review",
+      "name": "Adr Review",
+      "description": "Review Architecture Decision Records for staleness, superseded decisions, missing outcomes, ",
+      "path": "skill-library/imported/adr-review/SKILL.md",
+      "category": "software-engineering-and-testing",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "software-engineering-and-testing",
+        "adr-review",
+        "app:ceoai",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/adr-review/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "agent-audit",
+      "name": "Agent Audit",
+      "description": "Audit a specific agent's bus activity, commit history, trust score, and guardrail compliance.",
+      "path": "skill-library/imported/agent-audit/SKILL.md",
+      "category": "agent-orchestration-and-quality",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "agent-orchestration-and-quality",
+        "agent-audit",
+        "app:ceoai"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/agent-audit/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "agent-compare",
+      "name": "Agent Compare",
+      "description": "Side-by-side comparison of agent outputs on identical tasks — quality, speed, cost, accuracy",
+      "path": "skill-library/imported/agent-compare/SKILL.md",
+      "category": "agent-orchestration-and-quality",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "agent-orchestration-and-quality",
+        "agent-compare",
+        "app:ceoai"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/agent-compare/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "agent-design",
+      "name": "Agent Design",
+      "description": "Design agentic workflows -- tool selection, loop structure, guardrails, memory, termination ",
+      "path": "skill-library/imported/agent-design/SKILL.md",
+      "category": "agent-orchestration-and-quality",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "agent-orchestration-and-quality",
+        "agent-design",
+        "app:ceoai"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/agent-design/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "agent-grade",
+      "name": "Agent Grade",
+      "description": "Grade an agent's work on a 100-point rubric that scores verified, authorized state change — ",
+      "path": "skill-library/imported/agent-grade/SKILL.md",
+      "category": "agent-orchestration-and-quality",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "agent-orchestration-and-quality",
+        "agent-grade",
+        "app:ceoai"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/agent-grade/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "agent-guardrail",
+      "name": "Agent Guardrail",
+      "description": "Configure and test agent guardrails for input/output validation, tool-use constraints, and s",
+      "path": "skill-library/imported/agent-guardrail/SKILL.md",
+      "category": "security-and-privacy",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "security-and-privacy",
+        "agent-guardrail",
+        "app:ceoai",
+        "app:aiforce",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/agent-guardrail/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "agent-metrics",
+      "name": "Agent Metrics",
+      "description": "Aggregate agent performance metrics from bus, git, and CI history",
+      "path": "skill-library/imported/agent-metrics/SKILL.md",
+      "category": "agent-orchestration-and-quality",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "agent-orchestration-and-quality",
+        "agent-metrics",
+        "app:ceoai"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/agent-metrics/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "agent-trace",
+      "name": "Agent Trace",
+      "description": "Trace and debug agentic workflows by logging tool calls, decision points, and state transitions",
+      "path": "skill-library/imported/agent-trace/SKILL.md",
+      "category": "agent-orchestration-and-quality",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "agent-orchestration-and-quality",
+        "agent-trace",
+        "app:ceoai"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/agent-trace/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "ai-cost-optimize",
+      "name": "Ai Cost Optimize",
+      "description": "Reduce AI API costs through caching, batching, model downsizing, prompt compression, and res",
+      "path": "skill-library/imported/ai-cost-optimize/SKILL.md",
+      "category": "agent-orchestration-and-quality",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "agent-orchestration-and-quality",
+        "ai-cost-optimize",
+        "app:ceoai"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/ai-cost-optimize/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "ai-policy-review",
+      "name": "Ai Policy Review",
+      "description": "Review and grade an existing internal AI use policy against NIST AI RMF, ISO 42001, and EU A",
+      "path": "skill-library/imported/ai-policy-review/SKILL.md",
+      "category": "security-and-privacy",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "security-and-privacy",
+        "ai-policy-review",
+        "app:ceoai",
+        "app:aiforce",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/ai-policy-review/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "ai-safety-check",
+      "name": "Ai Safety Check",
+      "description": "Validate AI outputs for safety, bias, and robustness with comprehensive testing. [Maps to P9.]",
+      "path": "skill-library/imported/ai-safety-check/SKILL.md",
+      "category": "security-and-privacy",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "security-and-privacy",
+        "ai-safety-check",
+        "app:ceoai",
+        "app:aiforce",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/ai-safety-check/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "alignment-check",
+      "name": "Alignment Check",
+      "description": "Verify agent outputs align with stated goals — detect goal drift, reward hacking, specificat",
+      "path": "skill-library/imported/alignment-check/SKILL.md",
+      "category": "agent-orchestration-and-quality",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "agent-orchestration-and-quality",
+        "alignment-check",
+        "app:ceoai"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/alignment-check/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "api-design",
+      "name": "Api Design",
+      "description": "Design REST/HTTP APIs with consistent patterns -- endpoints, errors, pagination, auth.",
+      "path": "skill-library/imported/api-design/SKILL.md",
+      "category": "software-engineering-and-testing",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "software-engineering-and-testing",
+        "api-design",
+        "app:ceoai",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/api-design/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "api-docs",
+      "name": "Api Docs",
+      "description": "Generate API documentation from FastAPI/Flask endpoints or Python function signatures",
+      "path": "skill-library/imported/api-docs/SKILL.md",
+      "category": "software-engineering-and-testing",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "software-engineering-and-testing",
+        "api-docs",
+        "app:ceoai",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/api-docs/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "aria-label-audit",
+      "name": "Aria Label Audit",
+      "description": "Audit ARIA labels and accessibility attributes for correctness and completeness. [Maps to P9.]",
+      "path": "skill-library/imported/aria-label-audit/SKILL.md",
+      "category": "design-and-accessibility",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "design-and-accessibility",
+        "aria-label-audit",
+        "app:contentcraft",
+        "app:aiforce"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/aria-label-audit/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "assumption-audit",
+      "name": "Assumption Audit",
+      "description": "Surface hidden assumptions in code, architecture, or decisions — list what must be true for ",
+      "path": "skill-library/imported/assumption-audit/SKILL.md",
+      "category": "research-and-sources",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "research-and-sources",
+        "assumption-audit",
+        "app:ceoai",
+        "app:aiforce",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/assumption-audit/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "auth-audit",
+      "name": "Auth Audit",
+      "description": "Audit authentication and authorization patterns including token handling, session management",
+      "path": "skill-library/imported/auth-audit/SKILL.md",
+      "category": "security-and-privacy",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "security-and-privacy",
+        "auth-audit",
+        "app:ceoai",
+        "app:aiforce",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/auth-audit/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "aws-observability",
+      "name": "Aws Observability",
+      "description": "Builds, configures, debugs, and optimizes AWS observability with CloudWatch (Log Insights, M",
+      "path": "skill-library/imported/aws-observability/SKILL.md",
+      "category": "agent-orchestration-and-quality",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "agent-orchestration-and-quality",
+        "aws-observability",
+        "app:ceoai"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/aws-observability/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "aws-security",
+      "name": "Aws Security",
+      "description": "Covers AWS security services and workflows — Security Hub V2 (OCSF) findings, connectors, ag",
+      "path": "skill-library/imported/aws-security/SKILL.md",
+      "category": "security-and-privacy",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "security-and-privacy",
+        "aws-security",
+        "app:ceoai",
+        "app:aiforce",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/aws-security/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "bki-cite-audit",
+      "name": "Bki Cite Audit",
+      "description": "Audit the BKI corpus bibliography — verify each citation exists, check claim-source match, f",
+      "path": "skill-library/imported/bki-cite-audit/SKILL.md",
+      "category": "research-and-sources",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "research-and-sources",
+        "bki-cite-audit",
+        "app:ceoai",
+        "app:aiforce",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/bki-cite-audit/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "blog-draft",
+      "name": "Blog Draft",
+      "description": "Draft technical blog post with outline, code samples, SEO metadata, and CTA",
+      "path": "skill-library/imported/blog-draft/SKILL.md",
+      "category": "content-and-marketing",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "content-and-marketing",
+        "blog-draft",
+        "app:contentcraft"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/blog-draft/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "bus-analytics",
+      "name": "Bus Analytics",
+      "description": "Analyze coordination bus message patterns, frequency, and agent activity.",
+      "path": "skill-library/imported/bus-analytics/SKILL.md",
+      "category": "agent-orchestration-and-quality",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "agent-orchestration-and-quality",
+        "bus-analytics",
+        "app:ceoai"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/bus-analytics/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "business-review",
+      "name": "Business Review",
+      "description": "Review an external business using source-traceable evidence, explicit uncertainty, commercia",
+      "path": "skill-library/imported/business-review/SKILL.md",
+      "category": "product-and-business-analysis",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "product-and-business-analysis",
+        "business-review",
+        "app:ceoai",
+        "app:contentcraft"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/business-review/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "changelog-subscribe",
+      "name": "Changelog Subscribe",
+      "description": "Watch upstream dependencies for breaking changes and security advisories",
+      "path": "skill-library/imported/changelog-subscribe/SKILL.md",
+      "category": "research-and-sources",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "research-and-sources",
+        "changelog-subscribe",
+        "app:ceoai",
+        "app:aiforce",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/changelog-subscribe/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "claim-verify",
+      "name": "Claim Verify",
+      "description": "Extract all factual claims from text, verify against web sources, produce verdict table with",
+      "path": "skill-library/imported/claim-verify/SKILL.md",
+      "category": "research-and-sources",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "research-and-sources",
+        "claim-verify",
+        "app:ceoai",
+        "app:aiforce",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/claim-verify/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "code-review",
+      "name": "Code Review",
+      "description": "AI-powered code review using CodeRabbit. Default code-review skill. Trigger for any explicit",
+      "path": "skill-library/imported/code-review/SKILL.md",
+      "category": "software-engineering-and-testing",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "software-engineering-and-testing",
+        "code-review",
+        "app:ceoai",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/code-review/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "codegen-eval",
+      "name": "Codegen Eval",
+      "description": "Evaluate AI-generated code for correctness, style, security, and maintainability. Run static",
+      "path": "skill-library/imported/codegen-eval/SKILL.md",
+      "category": "software-engineering-and-testing",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "software-engineering-and-testing",
+        "codegen-eval",
+        "app:ceoai",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/codegen-eval/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "competitive-intel",
+      "name": "Competitive Intel",
+      "description": "Research and compare competitors, alternatives, and market positioning.",
+      "path": "skill-library/imported/competitive-intel/SKILL.md",
+      "category": "research-and-sources",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "research-and-sources",
+        "competitive-intel",
+        "app:ceoai",
+        "app:aiforce",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/competitive-intel/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "content-calendar",
+      "name": "Content Calendar",
+      "description": "Plan and track content across channels (blog, social, newsletter) with publish dates",
+      "path": "skill-library/imported/content-calendar/SKILL.md",
+      "category": "content-and-marketing",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "content-and-marketing",
+        "content-calendar",
+        "app:contentcraft"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/content-calendar/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "content-design",
+      "name": "Content Design",
+      "description": "Design product microcopy, labels, onboarding text, empty states, error messages, help text, ",
+      "path": "skill-library/imported/content-design/SKILL.md",
+      "category": "content-and-marketing",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "content-and-marketing",
+        "content-design",
+        "app:contentcraft"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/content-design/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "content-review",
+      "name": "Content Review",
+      "description": "Review outbound content (blog posts, one-pagers, social, docs) for accuracy, tone, brand, an",
+      "path": "skill-library/imported/content-review/SKILL.md",
+      "category": "content-and-marketing",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "content-and-marketing",
+        "content-review",
+        "app:contentcraft"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/content-review/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "coverage",
+      "name": "Coverage",
+      "description": "Run pytest with coverage and report uncovered modules.",
+      "path": "skill-library/imported/coverage/SKILL.md",
+      "category": "software-engineering-and-testing",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "software-engineering-and-testing",
+        "coverage",
+        "app:ceoai",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/coverage/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "coverage-gate",
+      "name": "Coverage Gate",
+      "description": "Enforce per-PR coverage deltas and fail builds on coverage regression. CI-integrable coverag",
+      "path": "skill-library/imported/coverage-gate/SKILL.md",
+      "category": "software-engineering-and-testing",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "software-engineering-and-testing",
+        "coverage-gate",
+        "app:ceoai",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/coverage-gate/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "crucible-telemetry",
+      "name": "Crucible Telemetry",
+      "description": "Agent lifecycle metrics, guardrail violations, and fleet health.",
+      "path": "skill-library/imported/crucible-telemetry/SKILL.md",
+      "category": "agent-orchestration-and-quality",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "agent-orchestration-and-quality",
+        "crucible-telemetry",
+        "app:ceoai"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/crucible-telemetry/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "daily-research",
+      "name": "Daily Research",
+      "description": "Daily evidence collection — find, evaluate, and ingest the best research into the knowledge ",
+      "path": "skill-library/imported/daily-research/SKILL.md",
+      "category": "research-and-sources",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "research-and-sources",
+        "daily-research",
+        "app:ceoai",
+        "app:aiforce",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/daily-research/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "data-lineage",
+      "name": "Data Lineage",
+      "description": "Trace data lineage from source through transforms to sink for impact analysis and compliance",
+      "path": "skill-library/imported/data-lineage/SKILL.md",
+      "category": "security-and-privacy",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "security-and-privacy",
+        "data-lineage",
+        "app:ceoai",
+        "app:aiforce",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/data-lineage/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "data-masking",
+      "name": "Data Masking",
+      "description": "Apply data masking (tokenization, generalization, suppression, differential privacy) for saf",
+      "path": "skill-library/imported/data-masking/SKILL.md",
+      "category": "security-and-privacy",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "security-and-privacy",
+        "data-masking",
+        "app:ceoai",
+        "app:aiforce",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/data-masking/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "data-quality",
+      "name": "Data Quality",
+      "description": "Validate data completeness, consistency, freshness, and schema conformance",
+      "path": "skill-library/imported/data-quality/SKILL.md",
+      "category": "research-and-sources",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "research-and-sources",
+        "data-quality",
+        "app:ceoai",
+        "app:aiforce",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/data-quality/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "debug-test",
+      "name": "Debug Test",
+      "description": "Isolate and fix a failing test -- reproduce, diagnose root cause, patch, verify.",
+      "path": "skill-library/imported/debug-test/SKILL.md",
+      "category": "software-engineering-and-testing",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "software-engineering-and-testing",
+        "debug-test",
+        "app:ceoai",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/debug-test/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "deep-research-mode",
+      "name": "Deep Research Mode",
+      "description": "Wide-aperture research with evidence quality enforcement — source tiering, claim honesty, un",
+      "path": "skill-library/imported/deep-research-mode/SKILL.md",
+      "category": "research-and-sources",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "research-and-sources",
+        "deep-research-mode",
+        "app:ceoai",
+        "app:aiforce",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/deep-research-mode/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "diff-explain",
+      "name": "Diff Explain",
+      "description": "Explain any git diff in plain English for non-technical stakeholders, PR reviewers, or onboa",
+      "path": "skill-library/imported/diff-explain/SKILL.md",
+      "category": "software-engineering-and-testing",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "software-engineering-and-testing",
+        "diff-explain",
+        "app:ceoai",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/diff-explain/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "doc-coauthoring",
+      "name": "Doc Coauthoring",
+      "description": "\"Guide collaborative writing of docs, proposals, specs, RFCs, or decision docs through conte",
+      "path": "skill-library/imported/doc-coauthoring/SKILL.md",
+      "category": "content-and-marketing",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "content-and-marketing",
+        "doc-coauthoring",
+        "app:contentcraft"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/doc-coauthoring/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "doc-drift",
+      "name": "Doc Drift",
+      "description": "Detect documentation drift — cross-reference canonical docs (AGENTS.md, rules-index.md, DOTF",
+      "path": "skill-library/imported/doc-drift/SKILL.md",
+      "category": "software-engineering-and-testing",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "software-engineering-and-testing",
+        "doc-drift",
+        "app:ceoai",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/doc-drift/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "doc-harden",
+      "name": "Doc Harden",
+      "description": "Harden research markdown by extracting claims, suggesting evidence grades, and generating ve",
+      "path": "skill-library/imported/doc-harden/SKILL.md",
+      "category": "research-and-sources",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "research-and-sources",
+        "doc-harden",
+        "app:ceoai",
+        "app:aiforce",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/doc-harden/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "doc-self-check",
+      "name": "Doc Self Check",
+      "description": "Pre-publish self-check for research docs — contradiction scan, pip-show verification, ledger",
+      "path": "skill-library/imported/doc-self-check/SKILL.md",
+      "category": "research-and-sources",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "research-and-sources",
+        "doc-self-check",
+        "app:ceoai",
+        "app:aiforce",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/doc-self-check/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "etl-design",
+      "name": "Etl Design",
+      "description": "Design data pipelines with extraction, validation, transformation, loading, error handling, ",
+      "path": "skill-library/imported/etl-design/SKILL.md",
+      "category": "software-engineering-and-testing",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "software-engineering-and-testing",
+        "etl-design",
+        "app:ceoai",
+        "app:rankgeo-safe-automaton"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/etl-design/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
+    },
+    {
+      "id": "frontend-design",
+      "name": "Frontend Design",
+      "description": "\"Create distinctive, production-grade web UI: components, pages, dashboards, landing pages, ",
+      "path": "skill-library/imported/frontend-design/SKILL.md",
+      "category": "design-and-accessibility",
+      "intents": [
+        "review",
+        "analysis"
+      ],
+      "tags": [
+        "design-and-accessibility",
+        "frontend-design",
+        "app:contentcraft",
+        "app:aiforce"
+      ],
+      "source": {
+        "repository": "hummbl-io/agent-skills",
+        "ref": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
+        "path": "skills/frontend-design/SKILL.md"
+      },
+      "upstream_license": "Apache-2.0",
+      "license_status": "pending-review",
+      "security_status": "pending",
+      "test_status": "pending",
+      "content_hash": null,
+      "runtime_status": "not-enabled",
+      "review_status": "candidate",
+      "external_actions": null,
+      "paid_services": null
     }
   ]
 }
