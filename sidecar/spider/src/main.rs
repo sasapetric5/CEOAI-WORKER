@@ -49,7 +49,7 @@ fn extract_page_fields(html: &str, page_url: &str) -> Value {
     let mut text_parts = Vec::new();
     if let (Some(root), Ok(selector)) = (
         content_root,
-        Selector::parse("p, h1, h2, h3, h4, li, td, blockquote, pre"),
+        Selector::parse("p, h1, h2, h3, h4, li, th, td, blockquote, pre"),
     ) {
         for node in root.select(&selector) {
             let value = node.text().collect::<Vec<_>>().join(" ")
