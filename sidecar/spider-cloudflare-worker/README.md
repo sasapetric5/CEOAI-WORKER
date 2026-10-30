@@ -26,11 +26,16 @@ every transport capability is available. Native security-gate tests cover DNS
 answer validation (including mixed public/private answers), private IPv4/IPv6
 ranges, exact peer-IP pinning, redirect policy, and fail-closed behavior.
 
-**Important runtime limitation:** the current Workers Fetch API surface used here
-does not expose the resolved DNS answer set or the connected peer IP to this Rust
-handler. Therefore this adapter cannot honestly implement DNS pinning or peer-IP
-verification. The crawl endpoint is intentionally disabled; do not enable it by
-loosening the gate or treating a generic fetch() success as proof of safe egress.
+**Important runtime limitation:** the Workers Fetch API surface used by this Rust
+handler does not expose the resolved DNS answer set or connected peer IP. Cloudflare
+also documents an outbound TCP Sockets API whose `socket.opened` result can expose
+`remoteAddress`; however, this Rust/Emscripten adapter does not currently consume
+that JavaScript API, and `remoteAddress` alone is not yet a complete tested HTTP
+transport. A future adapter can use that socket API to verify the actual peer before
+writing an HTTP request, then enforce TLS/SNI, redirects, timeouts and body limits.
+Until that implementation is integrated and tested in the real Workers runtime,
+DNS pinning and peer-IP verification remain unavailable here and `/crawl` stays
+disabled. Do not weaken the gate or treat generic `fetch()` success as safe egress.
 
 ## Build
 
