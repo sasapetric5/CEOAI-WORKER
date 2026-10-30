@@ -174,7 +174,7 @@ async fn crawl_one(url: &Url, timeout_ms: u64) -> Result<Vec<Value>, String> {
             "collected_at": Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
             "http_status": status,
             "robots_allowed": true,
-            "extractor": "spider-rs/2.54.0",
+            "extractor": "spider-rs/2.53.9",
             "content_hash": content_hash,
             "evidence": [evidence],
             "data": {
@@ -290,5 +290,49 @@ mod tests {
         ] {
             assert!(validate_target(raw, &hosts).is_err(), "{raw}");
         }
+    }
+
+    #[tokio::test]
+    async fn malformed_json_is_rejected_without_network_access() {
+        let response = handle_line("{not-json").await;
+        assert_eq!(response.errors, vec!["invalid-json-request"]);
+        assert!(response.records.is_empty());
+        assert_eq!(response.execution["status"], "rejected");
+        assert_eq!(response.execution["network_requests"], 0);
+    }
+
+    #[tokio::test]
+    async fn request_for_unapproved_host_is_rejected_before_crawl() {
+        let request = json!({
+            "protocol": PROTOCOL,
+            "job_id": "offline_test",
+            "adapter_id": "spider",
+            "urls": ["https://unapproved.example/data"],
+            "concurrency": 1,
+            "timeout_ms": 5000,
+            "browser_mode": false,
+            "follow_links": false,
+            "obey_robots_txt": true,
+            "respect_retry_after": true,
+            "max_records": 10,
+            "external_actions": false,
+            "paid_services": false
+        });
+        let response = handle_line(&request.to_string()).await;
+        assert!(response.errors.iter().any(|error| error == "source-host-not-approved"));
+        assert!(response.records.is_empty());
+        assert_eq!(response.execution["network_requests"], 0);
+    }
+
+    #[test]
+    fn error_response_never_echoes_untrusted_payload() {
+        let response = response_error(
+            "job_1",
+            vec!["source-host-not-approved".to_string()],
+        );
+        let serialized = serde_json::to_string(&response).unwrap();
+        assert!(!serialized.contains("secret-token"));
+        assert_eq!(response.external_actions, false);
+        assert_eq!(response.paid_services, false);
     }
 }
