@@ -317,3 +317,12 @@ test("HTTP adapter enforces streaming request cap without Content-Length", async
   const data = await response.json();
   assert.equal(data.error, "request-too-large");
 });
+
+
+test("fails closed when robots metadata is missing", async () => {
+  const result = await normalizeBrowserRunRecords({
+    records: [{ url: "https://example.org/a", status: "completed", outcome: "success", markdown: "# A", metadata: { status: 200 } }],
+  }, { hostname: "example.org", job_id: "spider_job_010", page_limit: 1 });
+  assert.equal(result.records.length, 0);
+  assert.deepEqual(result.rejected, [{ reason: "robots-rules-unavailable" }]);
+});
