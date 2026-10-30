@@ -132,6 +132,9 @@ test("queue consumer starts only allowlisted jobs and stores Browser Run job id"
     const body = JSON.parse(options.body);
     assert.equal(body.render, false);
     assert.equal(body.limit, 5);
+    assert.deepEqual(body.crawlPurposes, ["search", "ai-input"]);
+    assert.equal(body.contentUse, "reference");
+    assert.equal(body.crawlPurposes.includes("ai-train"), false);
     return Response.json({ success: true, result: "cf-job-123" });
   };
   const message = {
@@ -205,15 +208,16 @@ test("queue consumer enforces five crawl jobs per UTC day", async () => {
 
 test("normalizes only completed same-host pages into Spider protocol records", async () => {
   const result = await normalizeBrowserRunRecords({
+    robots: [{ origin: "https://example.org", state: "available", status: 200 }],
     records: [
-      { url: "https://example.org/a", status: "completed", markdown: "# Page A",
+      { url: "https://example.org/a", status: "completed", outcome: "success", markdown: "# Page A",
         metadata: { status: 200, title: "Page A" } },
-      { url: "https://example.org/private", status: "disallowed", markdown: "blocked",
+      { url: "https://example.org/private", status: "disallowed", outcome: "robots_disallowed", markdown: "blocked",
         metadata: { status: 0 } },
-      { url: "https://outside.example/a", status: "completed", markdown: "external",
+      { url: "https://outside.example/a", status: "completed", outcome: "success", markdown: "external",
         metadata: { status: 200 } },
     ],
-  }, { hostname: "example.org", page_limit: 10 });
+  }, { hostname: "example.org", job_id: "spider_job_007", page_limit: 10 });
   assert.equal(result.records.length, 1);
   assert.equal(result.rejected.length, 2);
   assert.equal(result.records[0].robots_allowed, true);
@@ -252,10 +256,11 @@ test("completed Browser Run results become owner-scoped ceoai-spider/1 records",
       success: true,
       result: {
         status: "completed", total: 2, finished: 2, browserSecondsUsed: 3,
+        robots: [{ origin: "https://example.org", state: "available", status: 200 }],
         records: [
-          { url: "https://example.org/a", status: "completed", markdown: "# A",
+          { url: "https://example.org/a", status: "completed", outcome: "success", markdown: "# A",
             metadata: { status: 200, title: "A" } },
-          { url: "https://example.org/blocked", status: "disallowed", markdown: "",
+          { url: "https://example.org/blocked", status: "disallowed", outcome: "robots_disallowed", markdown: "",
             metadata: { status: 0 } },
         ],
       },
@@ -271,6 +276,10 @@ test("completed Browser Run results become owner-scoped ceoai-spider/1 records",
     assert.equal(result.body.job.result.execution.engine, "cloudflare-browser-run");
     assert.equal(result.body.job.result.records.length, 1);
     assert.equal(result.body.job.result.records[0].robots_allowed, true);
+    assert.equal(result.body.job.result.records[0].source_url, "https://example.org/a");
+    assert.equal(result.body.job.result.records[0].http_status, 200);
+    assert.ok(Array.isArray(result.body.job.result.records[0].evidence));
+    assert.equal(result.body.job.result.job_id, "spider_job_006");
   } finally {
     globalThis.fetch = originalFetch;
   }
