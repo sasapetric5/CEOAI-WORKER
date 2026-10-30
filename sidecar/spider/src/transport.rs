@@ -178,7 +178,9 @@ async fn fetch_guarded_inner(
 
         let status = response.status();
         let headers = response.headers().clone();
-        let declared_content_length = headers.get(reqwest::header::CONTENT_LENGTH)\n            .and_then(|v| v.to_str().ok())\n            .and_then(|v| v.parse::<u64>().ok());
+        let declared_content_length = headers.get(reqwest::header::CONTENT_LENGTH)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse::<u64>().ok());
         if respect_retry_after
             && (status == StatusCode::TOO_MANY_REQUESTS || status == StatusCode::SERVICE_UNAVAILABLE)
             && retry_index < MAX_RETRIES
@@ -268,7 +270,8 @@ mod tests {
             "https://evil.example/",
             "file:///etc/passwd",
             "https://user:pass@example.org/",
-            "https://example.org:8443/",\n            "https://8.8.8.8/",
+            "https://example.org:8443/",
+            "https://8.8.8.8/",
         ] {
             let url = Url::parse(raw).unwrap();
             assert!(validate_url(&url, &hosts).is_err(), "must reject {raw}");
