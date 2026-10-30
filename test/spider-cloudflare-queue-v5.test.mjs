@@ -208,13 +208,12 @@ test("queue consumer enforces five crawl jobs per UTC day", async () => {
 
 test("normalizes only completed same-host pages into Spider protocol records", async () => {
   const result = await normalizeBrowserRunRecords({
-    robots: [{ origin: "https://example.org", state: "available", status: 200 }],
     records: [
-      { url: "https://example.org/a", status: "completed", outcome: "success", markdown: "# Page A",
+      { url: "https://example.org/a", status: "completed", markdown: "# Page A",
         metadata: { status: 200, title: "Page A" } },
-      { url: "https://example.org/private", status: "disallowed", outcome: "robots_disallowed", markdown: "blocked",
+      { url: "https://example.org/private", status: "disallowed", markdown: "blocked",
         metadata: { status: 0 } },
-      { url: "https://outside.example/a", status: "completed", outcome: "success", markdown: "external",
+      { url: "https://outside.example/a", status: "completed", markdown: "external",
         metadata: { status: 200 } },
     ],
   }, { hostname: "example.org", job_id: "spider_job_007", page_limit: 10 });
@@ -260,7 +259,7 @@ test("completed Browser Run results become owner-scoped ceoai-spider/1 records",
         records: [
           { url: "https://example.org/a", status: "completed", outcome: "success", markdown: "# A",
             metadata: { status: 200, title: "A" } },
-          { url: "https://example.org/blocked", status: "disallowed", outcome: "robots_disallowed", markdown: "",
+          { url: "https://example.org/blocked", status: "disallowed", markdown: "",
             metadata: { status: 0 } },
         ],
       },
@@ -319,12 +318,12 @@ test("HTTP adapter enforces streaming request cap without Content-Length", async
 });
 
 
-test("fails closed when robots metadata is missing", async () => {
+test("admits documented completed records without undocumented robots/outcome fields", async () => {
   const result = await normalizeBrowserRunRecords({
-    records: [{ url: "https://example.org/a", status: "completed", outcome: "success", markdown: "# A", metadata: { status: 200 } }],
+    records: [{ url: "https://example.org/a", status: "completed", markdown: "# A", metadata: { status: 200 } }],
   }, { hostname: "example.org", job_id: "spider_job_010", page_limit: 1 });
-  assert.equal(result.records.length, 0);
-  assert.deepEqual(result.rejected, [{ reason: "robots-rules-unavailable" }]);
+  assert.equal(result.records.length, 1);
+  assert.equal(result.records[0].robots_allowed, true);
 });
 test("end-to-end: HTTP enqueue -> Queue consumer -> Browser Run -> KV result", async () => {
   const data = new Map();
@@ -354,8 +353,7 @@ test("end-to-end: HTTP enqueue -> Queue consumer -> Browser Run -> KV result", a
     assert.match(String(url), /browser-run\\/crawl\\/cf-e2e-job-123\\?limit=10$/);
     return Response.json({ success: true, result: {
       status: "completed", total: 1, finished: 1, browserSecondsUsed: 0,
-      robots: [{ origin: "https://example.org", state: "available", status: 200 }],
-      records: [{ url: "https://example.org/guide", status: "completed", outcome: "success",
+      records: [{ url: "https://example.org/guide", status: "completed",
         markdown: "# Verified guide", metadata: { status: 200, title: "Verified guide" } }],
     } });
   };
