@@ -30,7 +30,7 @@ if fallback_marker not in fingerprint_text:
 )))]
 /// sec-ch-ua-platform fallback for targets such as Emscripten.
 fn get_sec_ch_ua_platform() -> &'static str {
-    "\\"Unknown\\""
+    "\"Unknown\""
 }
 
 '''
