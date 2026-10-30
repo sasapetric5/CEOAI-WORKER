@@ -1,0 +1,33 @@
+[package]
+name = "ceoai-spider-cloudflare-worker"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+worker = { git = "https://github.com/cloudflare/workers-rs", rev = "ed043e60b421229bfe69b4fcc5b84005854f6961", features = ["experimental_tokio"] }
+tokio = { version = "1", default-features = false, features = ["rt", "macros", "sync", "time", "net", "io-util"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ceoai-spider-transport-policy = { path = "transport-policy" }
+async-trait = "0.1"
+reqwest = { version = "0.13", features = ["stream"] }
+scraper = "0.22"
+sha2 = "0.10"
+spider = { version = "=2.53.9", default-features = false, features = ["remote_addr"] }
+url = "2"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+
+[patch."https://github.com/guybedford/libc"]
+libc = { git = "https://github.com/rust-lang/libc", branch = "libc-0.2" }
+[patch.crates-io]
+libc = { git = "https://github.com/rust-lang/libc", branch = "libc-0.2" }
+tokio = { git = "https://github.com/guybedford/tokio", tag = "1.53.1-cf.emscripten" }
+tokio-macros = { git = "https://github.com/guybedford/tokio", tag = "1.53.1-cf.emscripten" }
+mio = { git = "https://github.com/guybedford/mio", tag = "1.2.3-cf.emscripten" }
