@@ -41,9 +41,17 @@ fn extract_page_fields(html: &str, page_url: &str) -> Value {
         .filter(|url| url.scheme() == "https" || url.scheme() == "http")
         .map(|url| url.to_string());
 
+    // Prefer semantic content containers; fall back to body only when absent.
+    let content_root = Selector::parse("main, article, [role=main]").ok()
+        .and_then(|selector| document.select(&selector).next())
+        .or_else(|| Selector::parse("body").ok().and_then(|selector| document.select(&selector).next()));
+
     let mut text_parts = Vec::new();
-    if let Ok(selector) = Selector::parse("p, h1, h2, h3, h4, li, td, blockquote, pre") {
-        for node in document.select(&selector) {
+    if let (Some(root), Ok(selector)) = (
+        content_root,
+        Selector::parse("p, h1, h2, h3, h4, li, td, blockquote, pre"),
+    ) {
+        for node in root.select(&selector) {
             let value = node.text().collect::<Vec<_>>().join(" ")
                 .split_whitespace().collect::<Vec<_>>().join(" ");
             if !value.is_empty() && text_parts.last() != Some(&value) {
@@ -52,7 +60,9 @@ fn extract_page_fields(html: &str, page_url: &str) -> Value {
         }
     }
     let mut text = if text_parts.is_empty() {
-        selected_text(&document, "body").unwrap_or_default()
+        content_root.map(|root| root.text().collect::<Vec<_>>().join(" "))
+            .unwrap_or_default()
+            .split_whitespace().collect::<Vec<_>>().join(" ")
     } else {
         text_parts.join("\n")
     };
@@ -70,8 +80,10 @@ fn extract_page_fields(html: &str, page_url: &str) -> Value {
     }
 
     let mut links = Vec::new();
-    if let (Ok(selector), Ok(base)) = (Selector::parse("a[href]"), Url::parse(page_url)) {
-        for node in document.select(&selector) {
+    if let (Some(root), Ok(selector), Ok(base)) =
+        (content_root, Selector::parse("a[href]"), Url::parse(page_url))
+    {
+        for node in root.select(&selector) {
             if links.len() >= MAX_LINKS { break; }
             let Some(href) = node.value().attr("href") else { continue };
             let Ok(url) = base.join(href) else { continue };
@@ -350,13 +362,15 @@ mod tests {
 
     #[test]
     fn extracts_title_description_text_headings_and_same_host_links() {
-        let html = r#"<html><head><title>Official Page</title><meta name="description" content="Verified public data"></head><body><h1>Public records</h1><p>Source content for testing.</p><a href="/records">Records</a><a href="https://other.example/">External</a><a href="javascript:alert(1)">Unsafe</a></body></html>"#;
+        let html = r#"<html><head><title>Official Page</title><meta name="description" content="Verified public data"></head><body><nav><a href="/menu">Navigation only</a></nav><main><h1>Public records</h1><p>Source content for testing.</p><a href="/records">Records</a><a href="https://other.example/">External</a><a href="javascript:alert(1)">Unsafe</a></main><footer>Footer boilerplate</footer></body></html>"#;
         let extracted = extract_page_fields(html, "https://example.org/");
         assert_eq!(extracted["title"], "Official Page");
         assert_eq!(extracted["description"], "Verified public data");
         assert_eq!(extracted["extraction_method"], "scraper-html-selectors");
         assert_eq!(extracted["extraction_version"], "1");
         assert!(extracted["text"].as_str().unwrap().contains("Source content for testing."));
+        assert!(!extracted["text"].as_str().unwrap().contains("Navigation only"));
+        assert!(!extracted["text"].as_str().unwrap().contains("Footer boilerplate"));
         assert_eq!(extracted["headings"][0], "Public records");
         assert_eq!(extracted["links"].as_array().unwrap().len(), 1);
         assert_eq!(extracted["links"][0]["url"], "https://example.org/records");
