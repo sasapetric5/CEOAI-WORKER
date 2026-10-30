@@ -255,9 +255,8 @@ test("completed Browser Run results become owner-scoped ceoai-spider/1 records",
       success: true,
       result: {
         status: "completed", total: 2, finished: 2, browserSecondsUsed: 3,
-        robots: [{ origin: "https://example.org", state: "available", status: 200 }],
         records: [
-          { url: "https://example.org/a", status: "completed", outcome: "success", markdown: "# A",
+          { url: "https://example.org/a", status: "completed", markdown: "# A",
             metadata: { status: 200, title: "A" } },
           { url: "https://example.org/blocked", status: "disallowed", markdown: "",
             metadata: { status: 0 } },
