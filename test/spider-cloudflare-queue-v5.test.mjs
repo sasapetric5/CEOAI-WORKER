@@ -62,8 +62,8 @@ test("rejects unapproved hosts, private targets, credentials, and nonstandard po
 });
 
 test("enforces page and depth ceilings and blocks JS rendering unless explicitly enabled", () => {
-  assert.equal(validateCloudflareSpiderInput({ url: "https://example.org", page_limit: 11 }, baseEnv).request.page_limit, 5);
-  assert.equal(validateCloudflareSpiderInput({ url: "https://example.org", depth: 9 }, baseEnv).request.depth, 1);
+  assert.deepEqual(validateCloudflareSpiderInput({ url: "https://example.org", page_limit: 11 }, baseEnv).errors, ["page-limit-out-of-range"]);
+  assert.deepEqual(validateCloudflareSpiderInput({ url: "https://example.org", depth: 9 }, baseEnv).errors, ["depth-out-of-range"]);
   assert.deepEqual(
     validateCloudflareSpiderInput({ url: "https://example.org", render: true }, baseEnv).errors,
     ["javascript-rendering-not-enabled"]
