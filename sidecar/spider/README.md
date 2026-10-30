@@ -5,7 +5,7 @@ does not open a listening socket, and does not use Spider Cloud or an API key.
 
 ## Free local engine
 
-- Rust crate: `spider = 2.54.0`
+- Rust crate: `spider = 2.53.9`
 - License: MIT (upstream Spider crate)
 - No API key, proxy subscription, paid browser service, or cloud endpoint.
 - Browser rendering, link-following, and HTTP redirects are disabled in this initial pilot.
