@@ -1,8 +1,8 @@
 {
   "schema_version": "1.0.0",
   "batch_id": "ceoai-skill-intake-001",
-  "status": "source-paths-verified-license-security-review-pending",
-  "policy": "metadata-only; no third-party skill bodies copied; no execution or runtime enablement",
+  "status": "imported-as-inactive-candidates-review-pending",
+  "policy": "50 original SKILL.md files imported at pinned commit as inactive candidates; no execution or runtime enablement; per-skill license, security, contract, and test reviews remain mandatory.",
   "source_snapshot": {
     "repository": "hummbl-io/agent-skills",
     "commit": "baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149",
@@ -27,7 +27,8 @@
     "source_files_missing": 0,
     "git_blob_pins_verified": 50,
     "repository_license_files_verified": 1,
-    "individual_license_reviews_complete": 0
+    "individual_license_reviews_complete": 0,
+    "imported_skill_files": 50
   },
   "candidates": [
     {
@@ -66,7 +67,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 2446
+      "source_bytes": 2446,
+      "import_path": "skill-library/imported/a11y-audit/SKILL.md"
     },
     {
       "id": "hummbl-a11y-fix",
@@ -104,7 +106,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 2120
+      "source_bytes": 2120,
+      "import_path": "skill-library/imported/a11y-fix/SKILL.md"
     },
     {
       "id": "hummbl-absence-audit",
@@ -142,7 +145,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 3573
+      "source_bytes": 3573,
+      "import_path": "skill-library/imported/absence-audit/SKILL.md"
     },
     {
       "id": "hummbl-adr-review",
@@ -180,7 +184,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 3222
+      "source_bytes": 3222,
+      "import_path": "skill-library/imported/adr-review/SKILL.md"
     },
     {
       "id": "hummbl-agent-audit",
@@ -217,7 +222,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 2762
+      "source_bytes": 2762,
+      "import_path": "skill-library/imported/agent-audit/SKILL.md"
     },
     {
       "id": "hummbl-agent-compare",
@@ -254,7 +260,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 6918
+      "source_bytes": 6918,
+      "import_path": "skill-library/imported/agent-compare/SKILL.md"
     },
     {
       "id": "hummbl-agent-design",
@@ -291,7 +298,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 2984
+      "source_bytes": 2984,
+      "import_path": "skill-library/imported/agent-design/SKILL.md"
     },
     {
       "id": "hummbl-agent-grade",
@@ -328,7 +336,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 13911
+      "source_bytes": 13911,
+      "import_path": "skill-library/imported/agent-grade/SKILL.md"
     },
     {
       "id": "hummbl-agent-guardrail",
@@ -367,7 +376,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 3281
+      "source_bytes": 3281,
+      "import_path": "skill-library/imported/agent-guardrail/SKILL.md"
     },
     {
       "id": "hummbl-agent-metrics",
@@ -404,7 +414,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 3744
+      "source_bytes": 3744,
+      "import_path": "skill-library/imported/agent-metrics/SKILL.md"
     },
     {
       "id": "hummbl-agent-trace",
@@ -441,7 +452,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 3110
+      "source_bytes": 3110,
+      "import_path": "skill-library/imported/agent-trace/SKILL.md"
     },
     {
       "id": "hummbl-ai-cost-optimize",
@@ -478,7 +490,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 2998
+      "source_bytes": 2998,
+      "import_path": "skill-library/imported/ai-cost-optimize/SKILL.md"
     },
     {
       "id": "hummbl-ai-policy-review",
@@ -517,7 +530,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 6749
+      "source_bytes": 6749,
+      "import_path": "skill-library/imported/ai-policy-review/SKILL.md"
     },
     {
       "id": "hummbl-ai-safety-check",
@@ -556,7 +570,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 5549
+      "source_bytes": 5549,
+      "import_path": "skill-library/imported/ai-safety-check/SKILL.md"
     },
     {
       "id": "hummbl-alignment-check",
@@ -593,7 +608,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 9108
+      "source_bytes": 9108,
+      "import_path": "skill-library/imported/alignment-check/SKILL.md"
     },
     {
       "id": "hummbl-api-design",
@@ -631,7 +647,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 2782
+      "source_bytes": 2782,
+      "import_path": "skill-library/imported/api-design/SKILL.md"
     },
     {
       "id": "hummbl-api-docs",
@@ -669,7 +686,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 3072
+      "source_bytes": 3072,
+      "import_path": "skill-library/imported/api-docs/SKILL.md"
     },
     {
       "id": "hummbl-aria-label-audit",
@@ -707,7 +725,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 4840
+      "source_bytes": 4840,
+      "import_path": "skill-library/imported/aria-label-audit/SKILL.md"
     },
     {
       "id": "hummbl-assumption-audit",
@@ -746,7 +765,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 3377
+      "source_bytes": 3377,
+      "import_path": "skill-library/imported/assumption-audit/SKILL.md"
     },
     {
       "id": "hummbl-auth-audit",
@@ -785,7 +805,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 3347
+      "source_bytes": 3347,
+      "import_path": "skill-library/imported/auth-audit/SKILL.md"
     },
     {
       "id": "hummbl-aws-observability",
@@ -822,7 +843,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 6618
+      "source_bytes": 6618,
+      "import_path": "skill-library/imported/aws-observability/SKILL.md"
     },
     {
       "id": "hummbl-aws-security",
@@ -861,7 +883,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 13839
+      "source_bytes": 13839,
+      "import_path": "skill-library/imported/aws-security/SKILL.md"
     },
     {
       "id": "hummbl-bki-cite-audit",
@@ -900,7 +923,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 14317
+      "source_bytes": 14317,
+      "import_path": "skill-library/imported/bki-cite-audit/SKILL.md"
     },
     {
       "id": "hummbl-blog-draft",
@@ -937,7 +961,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 3311
+      "source_bytes": 3311,
+      "import_path": "skill-library/imported/blog-draft/SKILL.md"
     },
     {
       "id": "hummbl-bus-analytics",
@@ -974,7 +999,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 3113
+      "source_bytes": 3113,
+      "import_path": "skill-library/imported/bus-analytics/SKILL.md"
     },
     {
       "id": "hummbl-business-review",
@@ -1012,7 +1038,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 6518
+      "source_bytes": 6518,
+      "import_path": "skill-library/imported/business-review/SKILL.md"
     },
     {
       "id": "hummbl-changelog-subscribe",
@@ -1051,7 +1078,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 2652
+      "source_bytes": 2652,
+      "import_path": "skill-library/imported/changelog-subscribe/SKILL.md"
     },
     {
       "id": "hummbl-claim-verify",
@@ -1090,7 +1118,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 16590
+      "source_bytes": 16590,
+      "import_path": "skill-library/imported/claim-verify/SKILL.md"
     },
     {
       "id": "hummbl-code-review",
@@ -1128,7 +1157,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 5568
+      "source_bytes": 5568,
+      "import_path": "skill-library/imported/code-review/SKILL.md"
     },
     {
       "id": "hummbl-codegen-eval",
@@ -1166,7 +1196,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 6200
+      "source_bytes": 6200,
+      "import_path": "skill-library/imported/codegen-eval/SKILL.md"
     },
     {
       "id": "hummbl-competitive-intel",
@@ -1205,7 +1236,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 4183
+      "source_bytes": 4183,
+      "import_path": "skill-library/imported/competitive-intel/SKILL.md"
     },
     {
       "id": "hummbl-content-calendar",
@@ -1242,7 +1274,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 2825
+      "source_bytes": 2825,
+      "import_path": "skill-library/imported/content-calendar/SKILL.md"
     },
     {
       "id": "hummbl-content-design",
@@ -1279,7 +1312,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 1293
+      "source_bytes": 1293,
+      "import_path": "skill-library/imported/content-design/SKILL.md"
     },
     {
       "id": "hummbl-content-review",
@@ -1316,7 +1350,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 5094
+      "source_bytes": 5094,
+      "import_path": "skill-library/imported/content-review/SKILL.md"
     },
     {
       "id": "hummbl-coverage",
@@ -1354,7 +1389,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 2620
+      "source_bytes": 2620,
+      "import_path": "skill-library/imported/coverage/SKILL.md"
     },
     {
       "id": "hummbl-coverage-gate",
@@ -1392,7 +1428,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 6895
+      "source_bytes": 6895,
+      "import_path": "skill-library/imported/coverage-gate/SKILL.md"
     },
     {
       "id": "hummbl-crucible-telemetry",
@@ -1429,7 +1466,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 5376
+      "source_bytes": 5376,
+      "import_path": "skill-library/imported/crucible-telemetry/SKILL.md"
     },
     {
       "id": "hummbl-daily-research",
@@ -1468,7 +1506,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 10262
+      "source_bytes": 10262,
+      "import_path": "skill-library/imported/daily-research/SKILL.md"
     },
     {
       "id": "hummbl-data-lineage",
@@ -1507,7 +1546,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 2763
+      "source_bytes": 2763,
+      "import_path": "skill-library/imported/data-lineage/SKILL.md"
     },
     {
       "id": "hummbl-data-masking",
@@ -1546,7 +1586,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 2962
+      "source_bytes": 2962,
+      "import_path": "skill-library/imported/data-masking/SKILL.md"
     },
     {
       "id": "hummbl-data-quality",
@@ -1585,7 +1626,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 2353
+      "source_bytes": 2353,
+      "import_path": "skill-library/imported/data-quality/SKILL.md"
     },
     {
       "id": "hummbl-debug-test",
@@ -1623,7 +1665,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 2265
+      "source_bytes": 2265,
+      "import_path": "skill-library/imported/debug-test/SKILL.md"
     },
     {
       "id": "hummbl-deep-research-mode",
@@ -1662,7 +1705,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 2542
+      "source_bytes": 2542,
+      "import_path": "skill-library/imported/deep-research-mode/SKILL.md"
     },
     {
       "id": "hummbl-diff-explain",
@@ -1700,7 +1744,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 2548
+      "source_bytes": 2548,
+      "import_path": "skill-library/imported/diff-explain/SKILL.md"
     },
     {
       "id": "hummbl-doc-coauthoring",
@@ -1737,7 +1782,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 16119
+      "source_bytes": 16119,
+      "import_path": "skill-library/imported/doc-coauthoring/SKILL.md"
     },
     {
       "id": "hummbl-doc-drift",
@@ -1775,7 +1821,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 4648
+      "source_bytes": 4648,
+      "import_path": "skill-library/imported/doc-drift/SKILL.md"
     },
     {
       "id": "hummbl-doc-harden",
@@ -1814,7 +1861,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 5289
+      "source_bytes": 5289,
+      "import_path": "skill-library/imported/doc-harden/SKILL.md"
     },
     {
       "id": "hummbl-doc-self-check",
@@ -1853,7 +1901,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 5976
+      "source_bytes": 5976,
+      "import_path": "skill-library/imported/doc-self-check/SKILL.md"
     },
     {
       "id": "hummbl-etl-design",
@@ -1891,7 +1940,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 3211
+      "source_bytes": 3211,
+      "import_path": "skill-library/imported/etl-design/SKILL.md"
     },
     {
       "id": "hummbl-frontend-design",
@@ -1929,7 +1979,8 @@
       "runtime_status": "not-enabled",
       "review_status": "candidate",
       "source_file_verified": true,
-      "source_bytes": 4628
+      "source_bytes": 4628,
+      "import_path": "skill-library/imported/frontend-design/SKILL.md"
     }
   ],
   "notes": [
