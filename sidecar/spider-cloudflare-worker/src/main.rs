@@ -1,6 +1,6 @@
 //! Experimental Cloudflare Worker compatibility probe for the Spider stack.
 
-mod guarded_transport;
+use ceoai_spider_transport_policy as guarded_transport;
 
 use serde::Serialize;
 use std::time::Duration;
