@@ -43,3 +43,6 @@ jobs:
 
       - name: Verify Spider sidecar
         run: cargo test --manifest-path sidecar/spider/Cargo.toml
+
+      - name: Live smoke test against approved public fixture
+        run: node sidecar/spider/scripts/live-smoke-test.mjs
