@@ -39,7 +39,7 @@ CEOAI is the central registry and policy layer for reusable skills used by CEOAI
 
 ## Migration status
 
-This file defines the central library contract. The initial source inventory includes Safe Automaton's existing `seo-audit`, `customer-research`, and `copywriting` skills. They must be migrated and tested in CEOAI before being described as runtime-enabled. Other repository and third-party skill packs remain pending inventory, license/dependency/security review, and deduplication.
+This file defines the central library contract. The registry currently contains the three initial first-party candidates plus 50 imported upstream candidates from `hummbl-io/agent-skills` at pinned commit `baa22dbf68a3ea1e5526d2ff45ee2dc141e1c149`. All 50 upstream `SKILL.md` files are stored under `skill-library/imported/` and registered as inactive candidates. Their source integrity is pinned; individual license, security, dependency, input/output contract, and behavioral tests remain pending. No imported candidate is runtime-enabled.
 
 ## Safety boundaries
 
