@@ -504,6 +504,7 @@ async fn handle_line(line: &str) -> JobResponse {
             "follow_links":false,
             "robots_txt":true,
             "robots_decision_visibility":"not-exposed-by-spider-adapter",
+            "retry_after_requested":request.respect_retry_after,
             "retry_after":"not-implemented",
             "paid_services":false
         }),
