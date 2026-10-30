@@ -105,6 +105,20 @@ pub(crate) async fn fetch_guarded(
     body_limit: usize,
     respect_retry_after: bool,
 ) -> Result<GuardedResponse, String> {
+    tokio::time::timeout(
+        Duration::from_millis(timeout_ms),
+        fetch_guarded_inner(initial_url, timeout_ms, body_limit, respect_retry_after),
+    )
+    .await
+    .map_err(|_| "transport-total-timeout".to_string())?
+}
+
+async fn fetch_guarded_inner(
+    initial_url: &Url,
+    timeout_ms: u64,
+    body_limit: usize,
+    respect_retry_after: bool,
+) -> Result<GuardedResponse, String> {
     let hosts = approved_hosts();
     let mut current = initial_url.clone();
     let body_limit = body_limit.min(MAX_RESPONSE_BYTES);
