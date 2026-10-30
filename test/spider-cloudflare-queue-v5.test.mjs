@@ -172,7 +172,7 @@ test("queue consumer enforces five crawl jobs per UTC day", async () => {
   const data = new Map([
     [`spider:job:spider_job_005`, JSON.stringify({
       job_id: "spider_job_005", owner_session: "owner", status: "queued",
-      hostname: "example.org", page_limit: 5, depth: 1, render: false,
+      hostname: "example.org", source_url: "https://example.org/", page_limit: 5, depth: 1, render: false,
     })],
     [`spider:daily:${day}`, "5"],
   ]);
