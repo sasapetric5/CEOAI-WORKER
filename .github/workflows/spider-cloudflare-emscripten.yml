@@ -43,6 +43,12 @@ jobs:
         with:
           workspaces: sidecar/spider-cloudflare-worker
 
+      - name: Diagnose Tokio feature unification
+        working-directory: sidecar/spider-cloudflare-worker
+        run: |
+          cargo tree --target wasm32-unknown-emscripten -e features -i tokio
+          cargo tree --target wasm32-unknown-emscripten -e features -i reqwest
+
       - name: Build experimental Cloudflare Worker
         working-directory: sidecar/spider-cloudflare-worker
         run: |
