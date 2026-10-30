@@ -48,13 +48,17 @@ assert.equal(response.external_actions, false);
 assert.equal(response.paid_services, false);
 assert.equal(response.execution?.mode, "local-http-only-serial-pilot");
 assert.equal(response.execution?.robots_txt, true);
+assert.equal(response.execution?.robots_decision_visibility, "not-exposed-by-spider-adapter");
+assert.equal(response.execution?.retry_after, "not-implemented");
 assert.ok(Array.isArray(response.records));
 assert.ok(response.records.length > 0, `no page records returned: ${JSON.stringify(response.errors)}`);
 
 const page = response.records[0];
 assert.equal(new URL(page.source_url).hostname, "example.org");
 assert.equal(page.http_status, 200);
-assert.equal(page.robots_allowed, true);
+assert.equal(page.robots_allowed, null, "adapter must not claim a per-page robots decision it cannot expose");
+assert.match(page.robots_enforcement, /respect-robots-txt-enabled/);
+assert.equal(page.retry_after_respected, false, "Retry-After is not implemented yet");
 assert.match(page.content_hash, /^[a-f0-9]{64}$/);
 assert.equal(page.extractor, "spider-rs/2.53.9");
 assert.ok(typeof page.data?.html === "string" && page.data.html.length > 0);
