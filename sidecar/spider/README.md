@@ -8,7 +8,7 @@ does not open a listening socket, and does not use Spider Cloud or an API key.
 - Rust crate: `spider = 2.54.0`
 - License: MIT (upstream Spider crate)
 - No API key, proxy subscription, paid browser service, or cloud endpoint.
-- Browser rendering and link-following are disabled in this initial pilot.
+- Browser rendering, link-following, and HTTP redirects are disabled in this initial pilot.
 - Every target must match an exact hostname in `CEOAI_CRAWLER_APPROVED_HOSTS`.
 - Spider is configured to respect robots.txt.
 - One URL is fetched at a time. Requested concurrency is recorded but effective
