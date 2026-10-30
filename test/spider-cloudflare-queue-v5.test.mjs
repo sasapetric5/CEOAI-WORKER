@@ -247,7 +247,7 @@ test("completed Browser Run results become owner-scoped ceoai-spider/1 records",
   };
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (url) => {
-    assert.match(String(url), /cloudflare-id-1\?limit=10$/);
+    assert.match(String(url), /\/browser-run\/crawl\/cloudflare-id-1\?limit=10$/);
     return Response.json({
       success: true,
       result: {
