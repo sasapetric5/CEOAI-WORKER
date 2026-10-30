@@ -281,6 +281,21 @@ export async function processCloudflareSpiderQueue(batch, env) {
         message.ack();
         continue;
       }
+      if (env.SPIDER_CLOUDFLARE_ENABLED !== "true") {
+        await storeJob(env, body.job_id, { ...existing, status: "disabled", error: "spider-cloudflare-disabled" });
+        message.ack();
+        continue;
+      }
+      if (body.render === true && env.SPIDER_RENDER_JS_ENABLED !== "true") {
+        await storeJob(env, body.job_id, { ...existing, status: "rejected", error: "javascript-rendering-not-enabled" });
+        message.ack();
+        continue;
+      }
+      if (body.url !== existing.source_url || body.hostname !== existing.hostname) {
+        await storeJob(env, body.job_id, { ...existing, status: "rejected", error: "queue-payload-mismatch" });
+        message.ack();
+        continue;
+      }
       const approved = validateCrawlTarget(body.url, env.SPIDER_APPROVED_HOSTS || "");
       if (!approved.allowed || approved.hostname !== body.hostname) {
         await storeJob(env, body.job_id, { ...existing, status: "rejected", error: "source-host-not-approved" });
