@@ -6,6 +6,7 @@ use sha2::{Digest, Sha256};
 use spider::{configuration::RedirectPolicy, website::Website};
 use std::collections::HashSet;
 use std::io::{self, BufRead, Write};
+use std::net::IpAddr;
 use std::time::Duration;
 use tokio::time::timeout;
 use url::{Host, Url};
@@ -192,6 +193,46 @@ fn validate_target(raw: &str, approved_hosts: &HashSet<String>) -> Result<Url, S
     Ok(url)
 }
 
+fn is_public_routable_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ip) => {
+            let [a, b, c, d] = ip.octets();
+            !(a == 0 || a == 10 || a == 127 || a >= 224
+                || (a == 100 && (64..=127).contains(&b))
+                || (a == 169 && b == 254)
+                || (a == 172 && (16..=31).contains(&b))
+                || (a == 192 && b == 168)
+                || (a == 192 && b == 0 && (c == 0 || c == 2))
+                || (a == 198 && (b == 18 || b == 19))
+                || (a == 198 && b == 51 && c == 100)
+                || (a == 203 && b == 0 && c == 113)
+                || (a == 255 && b == 255 && c == 255 && d == 255))
+        }
+        IpAddr::V6(ip) => {
+            let segments = ip.segments();
+            (segments[0] & 0xe000) == 0x2000
+                && !(segments[0] == 0x2001 && segments[1] == 0x0db8)
+                && !(segments[0] == 0x2001 && segments[1] == 0x0002)
+                && !(segments[0] == 0x2002)
+                && ip.to_ipv4_mapped().is_none()
+        }
+    }
+}
+
+async fn validate_dns_target(url: &Url) -> Result<(), String> {
+    let host = url.host_str().ok_or_else(|| "hostname-required".to_string())?;
+    let port = url.port_or_known_default().ok_or_else(|| "port-required".to_string())?;
+    let resolved = timeout(Duration::from_secs(3), tokio::net::lookup_host((host, port)))
+        .await.map_err(|_| "dns-resolution-timeout".to_string())?
+        .map_err(|_| "dns-resolution-failed".to_string())?
+        .collect::<Vec<_>>();
+    if resolved.is_empty() { return Err("dns-no-addresses".into()); }
+    if resolved.iter().any(|address| !is_public_routable_ip(address.ip())) {
+        return Err("dns-resolved-to-non-public-ip".into());
+    }
+    Ok(())
+}
+
 fn validate_job(request: &JobRequest, approved_hosts: &HashSet<String>) -> Result<Vec<Url>, Vec<String>> {
     let mut errors = Vec::new();
     if request.protocol != PROTOCOL { errors.push("protocol-mismatch".into()); }
@@ -237,6 +278,7 @@ fn response_error(job_id: &str, errors: Vec<String>) -> JobResponse {
 }
 
 async fn crawl_one(url: &Url, timeout_ms: u64) -> Result<Vec<Value>, String> {
+    validate_dns_target(url).await?;
     let mut website = Website::new(url.as_str());
     website
         .with_limit(1)
@@ -416,6 +458,25 @@ mod tests {
     fn allows_exact_approved_public_host() {
         let parsed = validate_target("https://example.org/data#section", &allowlist()).unwrap();
         assert_eq!(parsed.as_str(), "https://example.org/data");
+    }
+
+    #[test]
+    fn rejects_non_public_ip_ranges() {
+        for raw in [
+            "0.0.0.0", "10.0.0.1", "100.64.0.1", "127.0.0.1",
+            "169.254.1.1", "172.16.0.1", "192.168.1.1",
+            "192.0.2.1", "198.18.0.1", "198.51.100.1",
+            "203.0.113.1", "224.0.0.1", "255.255.255.255",
+            "::", "::1", "fe80::1", "fc00::1", "2001:db8::1",
+            "2002::1", "::ffff:127.0.0.1",
+        ] {
+            let ip: IpAddr = raw.parse().unwrap();
+            assert!(!is_public_routable_ip(ip), "must reject {raw}");
+        }
+        for raw in ["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111"] {
+            let ip: IpAddr = raw.parse().unwrap();
+            assert!(is_public_routable_ip(ip), "must allow public {raw}");
+        }
     }
 
     #[test]
