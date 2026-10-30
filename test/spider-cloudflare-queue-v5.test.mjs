@@ -6,6 +6,7 @@ import {
   processCloudflareSpiderQueue,
   getCloudflareSpiderJob,
   normalizeBrowserRunRecords,
+  handleCloudflareSpiderRequest,
   CLOUDFLARE_SPIDER_LIMITS,
 } from "../src/v5-modules/spider-cloudflare-queue.mjs";
 
@@ -272,4 +273,16 @@ test("completed Browser Run results become owner-scoped ceoai-spider/1 records",
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("HTTP adapter enforces streaming request cap without Content-Length", async () => {
+  const oversized = new Request("https://ceoai.dev/api/crawl", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url: "https://example.org/", filler: "x".repeat(9_000) }),
+  });
+  const response = await handleCloudflareSpiderRequest(oversized, baseEnv, "session");
+  assert.equal(response.status, 413);
+  const data = await response.json();
+  assert.equal(data.error, "request-too-large");
 });
