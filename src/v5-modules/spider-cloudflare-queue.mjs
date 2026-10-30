@@ -137,7 +137,12 @@ async function readJsonBounded(response, maxBytes = 64 * 1024) {
 
 function cloudflareApiConfig(env) {
   const accountId = typeof env.CLOUDFLARE_ACCOUNT_ID === "string" ? env.CLOUDFLARE_ACCOUNT_ID.trim() : "";
-  const token = typeof env.BROWSER_RUN_API_TOKEN === "string" ? env.BROWSER_RUN_API_TOKEN.trim() : "";
+  // Accept the existing Dashboard secret name while retaining the original
+  // internal name for backwards compatibility with existing test/dev setups.
+  const configuredToken = typeof env.SPIDER_BROWSER_RUN_TOKEN === "string"
+    ? env.SPIDER_BROWSER_RUN_TOKEN
+    : env.BROWSER_RUN_API_TOKEN;
+  const token = typeof configuredToken === "string" ? configuredToken.trim() : "";
   if (!/^[a-f0-9]{32}$/i.test(accountId) || token.length < 20) {
     throw new Error("browser-run-not-configured");
   }
@@ -340,137 +345,95 @@ export async function normalizeBrowserRunRecords(result, job) {
   const approvedHosts = [job.hostname];
   const records = [];
   const rejected = [];
-  for (const item of Array.isArray(result.records) ? result.records.slice(0, job.page_limit) : []) {
-    const target = validateCrawlTarget(item?.url, approvedHosts);
-    if (!target.allowed || item?.status !== "completed") {
-      rejected.push({ url: String(item?.url || "").slice(0, 2048), status: item?.status || "unknown" });
+  for (const item of Array.isArray(result.records) ? result.records : []) {
+    if (!item || typeof item !== "object") continue;
+    let url;
+    try { url = new URL(item.url); } catch { rejected.push({ reason: "invalid-url" }); continue; }
+    if (url.hostname !== job.hostname || !["http:", "https:"].includes(url.protocol)) {
+      rejected.push({ reason: "off-host-or-invalid-url" });
       continue;
     }
-    const httpStatus = Number(item?.metadata?.status);
-    if (!Number.isInteger(httpStatus) || httpStatus < 200 || httpStatus >= 300) {
-      rejected.push({ url: target.canonical_url, status: "http-error" });
+    if (item.status !== "completed") {
+      rejected.push({ reason: "record-not-completed" });
       continue;
     }
     const markdown = typeof item.markdown === "string" ? item.markdown.slice(0, MAX_MARKDOWN_CHARS) : "";
-    if (!markdown.trim()) {
-      rejected.push({ url: target.canonical_url, status: "empty-content" });
-      continue;
-    }
-    const title = typeof item.metadata?.title === "string" ? item.metadata.title.slice(0, 500) : "";
+    if (!markdown) { rejected.push({ reason: "empty-markdown" }); continue; }
     records.push({
-      source_url: target.canonical_url,
-      collected_at: new Date().toISOString(),
-      http_status: httpStatus,
-      robots_allowed: true,
-      extractor: "cloudflare-browser-run/markdown",
+      url: url.href,
+      title: typeof item.metadata?.title === "string" ? item.metadata.title.slice(0, 300) : "",
+      status_code: Number.isInteger(item.metadata?.status) ? item.metadata.status : 0,
+      content_type: "text/markdown",
+      content: markdown,
       content_hash: await sha256Hex(markdown),
-      evidence: [markdown.slice(0, 2000)],
-      data: { title, markdown },
+      extractor: "cloudflare-browser-run/markdown",
+      robots_allowed: true,
     });
+    if (records.length >= Math.min(job.page_limit || MAX_PAGES, MAX_PAGES)) break;
   }
-  return { records, rejected };
-}
-
-async function fetchBrowserRunResult(env, browserRunJobId) {
-  const { base, token } = cloudflareApiConfig(env);
-  const response = await fetch(`${base}/${encodeURIComponent(browserRunJobId)}?limit=${MAX_PAGES}`, {
-    headers: apiHeaders(token),
-    signal: AbortSignal.timeout(15_000),
-  });
-  const data = await readJsonBounded(response, MAX_RESULT_BYTES);
-  if (!response.ok || data?.success !== true || !data.result) {
-    throw new Error("browser-run-result-failed");
-  }
-  return data.result;
+  const resultEnvelope = {
+    protocol: PROTOCOL,
+    adapter_id: "spider",
+    execution: { engine: "cloudflare-browser-run", paid_services: false, external_actions: false },
+    records,
+    rejected,
+  };
+  const validated = validateSpiderJobResult(resultEnvelope);
+  if (!validated.valid) throw new Error("spider-result-contract-invalid");
+  return resultEnvelope;
 }
 
 export async function getCloudflareSpiderJob(env, jobId, sessionId) {
   if (!validJobId(jobId)) return { status: 400, body: { success: false, error: "invalid-job-id" } };
-  let job;
-  try { job = await env.KV_MEMORY.get(`spider:job:${jobId}`, "json"); } catch {
-    return { status: 503, body: { success: false, error: "spider-storage-unavailable" } };
-  }
-  if (!job || job.owner_session !== sessionId) {
-    return { status: 404, body: { success: false, error: "spider-job-not-found" } };
-  }
+  const job = await env.KV_MEMORY.get(`spider:job:${jobId}`, "json");
+  if (!job || job.owner_session !== sessionId) return { status: 404, body: { success: false, error: "job-not-found" } };
   if (job.status !== "running" || !job.cloudflare_job_id) {
     return { status: job.status === "queued" ? 202 : 200, body: { success: true, job: publicJob(job) } };
   }
 
-  try {
-    const result = await fetchBrowserRunResult(env, job.cloudflare_job_id);
-    if (result.status === "running") {
-      return { status: 202, body: { success: true, job: publicJob({ ...job, status: "running", progress: { total: result.total || 0, finished: result.finished || 0 } }) } };
-    }
-    if (result.status !== "completed") {
-      const failed = { ...job, status: "failed", error: String(result.status || "browser-run-failed") };
-      await storeJob(env, jobId, failed);
-      return { status: 200, body: { success: true, job: publicJob(failed) } };
-    }
-
-    const normalized = await normalizeBrowserRunRecords(result, job);
-    const protocolResult = {
-      protocol: PROTOCOL,
-      job_id: jobId,
-      adapter_id: "spider",
-      records: normalized.records,
-      errors: normalized.rejected.map(item => `${item.status}:${item.url}`),
-      external_actions: false,
-      paid_services: false,
-      execution: {
-        mode: "cloudflare-managed-async-crawl",
-        engine: "cloudflare-browser-run",
-        runtime: "cloudflare-workers-queue",
-        robots_enforcement: "cloudflare-browser-run",
-        browser_rendering: job.render,
-        total_pages: result.total || 0,
-        finished_pages: result.finished || 0,
-        browser_seconds_used: Number(result.browserSecondsUsed || 0),
-      },
-    };
-    const validated = validateSpiderJobResult(protocolResult, { approvedHosts: [job.hostname], now: Date.now() });
-    protocolResult.records = validated.records;
-    protocolResult.errors = [...protocolResult.errors, ...validated.errors];
-    protocolResult.validation_status = validated.execution_status;
-    const completed = { ...job, status: "completed", completed_at: new Date().toISOString(), result: protocolResult };
-    await storeJob(env, jobId, completed);
-    return { status: 200, body: { success: true, job: publicJob(completed) } };
-  } catch {
-    return { status: 503, body: { success: false, error: "browser-run-result-unavailable" } };
+  const { base, token } = cloudflareApiConfig(env);
+  const url = `${base.replace(/\\/crawl$/, "")}/${encodeURIComponent(job.cloudflare_job_id)}?limit=${MAX_PAGES}`;
+  const response = await fetch(url, {
+    headers: apiHeaders(token),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const data = await readJsonBounded(response, MAX_RESULT_BYTES);
+  if (!response.ok || data?.success !== true || !data.result || typeof data.result !== "object") {
+    return { status: 502, body: { success: false, error: "browser-run-result-unavailable" } };
   }
+  if (data.result.status !== "completed") {
+    const updated = { ...job, status: data.result.status === "failed" ? "failed" : "running" };
+    await storeJob(env, jobId, updated);
+    return { status: 202, body: { success: true, job: publicJob(updated) } };
+  }
+  const normalized = await normalizeBrowserRunRecords(data.result, job);
+  const completed = {
+    ...job,
+    status: "completed",
+    completed_at: new Date().toISOString(),
+    result: normalized,
+  };
+  await storeJob(env, jobId, completed);
+  return { status: 200, body: { success: true, job: publicJob(completed) } };
 }
 
 export async function handleCloudflareSpiderRequest(request, env, sessionId) {
-  const url = new URL(request.url);
-  if (url.pathname === "/api/crawl" && request.method === "POST") {
-    if (request.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
-      return Response.json({ success: false, error: "expected-json" }, { status: 415, headers: { "Cache-Control": "no-store" } });
+  if (request.method === "POST" && new URL(request.url).pathname === "/api/crawl") {
+    let raw;
+    try { raw = await readRequestTextBounded(request, 8 * 1024); } catch (error) {
+      return Response.json({ success: false, error: error.message }, { status: error.status || 400 });
     }
-    const declared = Number(request.headers.get("Content-Length") || "0");
-    if (declared > 8_192) return Response.json({ success: false, error: "request-too-large" }, { status: 413 });
-    let input;
-    let rawBody;
-    try {
-      rawBody = await readRequestTextBounded(request, 8_192);
-    } catch (error) {
-      return Response.json(
-        { success: false, error: error?.status === 413 ? "request-too-large" : "invalid-request-body" },
-        { status: error?.status === 413 ? 413 : 400 }
-      );
-    }
-    try {
-      input = JSON.parse(rawBody);
-    } catch {
+    let body;
+    try { body = JSON.parse(raw); } catch {
       return Response.json({ success: false, error: "invalid-json" }, { status: 400 });
     }
-    const result = await enqueueCloudflareSpiderJob(env, input, sessionId);
-    return Response.json(result, { status: result.status || (result.accepted ? 202 : 400), headers: { "Cache-Control": "no-store" } });
+    const result = await enqueueCloudflareSpiderJob(env, body, sessionId);
+    return Response.json(result, { status: result.status || 200 });
   }
-
-  const match = url.pathname.match(/^\/api\/crawl\/([a-zA-Z0-9_-]{8,100})$/);
-  if (match && request.method === "GET") {
+  const match = new URL(request.url).pathname.match(/^\/api\/crawl\/([a-zA-Z0-9_-]{8,100})$/);
+  if (request.method === "GET" && match) {
     const result = await getCloudflareSpiderJob(env, match[1], sessionId);
-    return Response.json(result.body, { status: result.status, headers: { "Cache-Control": "no-store" } });
+    return Response.json(result.body, { status: result.status });
   }
   return null;
 }
@@ -479,10 +442,7 @@ export const CLOUDFLARE_SPIDER_LIMITS = Object.freeze({
   maxPages: MAX_PAGES,
   maxDailyJobs: MAX_DAILY_JOBS,
   maxDepth: MAX_DEPTH,
-  maxResultBytes: MAX_RESULT_BYTES,
-  maxMarkdownChars: MAX_MARKDOWN_CHARS,
-  jobTtlSeconds: JOB_TTL_SECONDS,
   defaultRender: false,
-  externalActions: false,
   paidServices: false,
+  externalActions: false,
 });
