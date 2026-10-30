@@ -1590,7 +1590,7 @@ async fn check_robots(url: &Url, timeout_ms: u64, respect_retry_after: bool) -> 
     robots_url.set_path("/robots.txt");
     robots_url.set_query(None);
     robots_url.set_fragment(None);
-    let response = fetch_guarded(&robots_url, timeout_ms, MAX_PAGE_BYTES, respect_retry_after).await?;
+    let response = fetch_guarded(&robots_url, timeout_ms, MAX_PAGE_BYTES, respect_retry_after, true).await?;
     let status = response.status.as_u16();
     if (200..300).contains(&status) {
         let text = String::from_utf8_lossy(&response.body);
