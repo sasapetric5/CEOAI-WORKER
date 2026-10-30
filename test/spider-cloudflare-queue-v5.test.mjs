@@ -5,6 +5,7 @@ import {
   enqueueCloudflareSpiderJob,
   processCloudflareSpiderQueue,
   getCloudflareSpiderJob,
+  normalizeBrowserRunRecords,
   CLOUDFLARE_SPIDER_LIMITS,
 } from "../src/v5-modules/spider-cloudflare-queue.mjs";
 
@@ -98,7 +99,9 @@ test("queues a bounded job and persists owner-scoped pending state", async () =>
   assert.equal(result.status, 202);
   assert.equal(env.SPIDER_QUEUE.sent.length, 1);
   assert.equal(env.SPIDER_QUEUE.sent[0].protocol, "ceoai-spider/1");
-  assert.equal((await env.KV_MEMORY.get("spider:job:spider_job_001", "json")).owner_session, "session-owner-1");
+  assert.match(result.job.job_id, /^spider_[a-f0-9-]{36}$/i);
+  assert.equal(env.SPIDER_QUEUE.sent[0].job_id, result.job.job_id);
+  assert.equal((await env.KV_MEMORY.get(`spider:job:${result.job.job_id}`, "json")).owner_session, "session-owner-1");
 });
 
 test("fails closed when queue, account token, or explicit enable gate is missing", async () => {
@@ -161,4 +164,57 @@ test("polling is owner-scoped and returns queued state without leaking other ses
   const owned = await getCloudflareSpiderJob(env, "spider_job_003", "owner-a");
   assert.equal(owned.status, 202);
   assert.equal(owned.body.job.status, "queued");
+});
+
+test("queue consumer enforces five crawl jobs per UTC day", async () => {
+  const day = new Date().toISOString().slice(0, 10);
+  const data = new Map([
+    [`spider:job:spider_job_005`, JSON.stringify({
+      job_id: "spider_job_005", owner_session: "owner", status: "queued",
+      hostname: "example.org", page_limit: 5, depth: 1, render: false,
+    })],
+    [`spider:daily:${day}`, "5"],
+  ]);
+  const env = {
+    ...baseEnv,
+    KV_MEMORY: {
+      data,
+      async put(k, v) { this.data.set(k, v); },
+      async get(k, type) {
+        const v = this.data.get(k);
+        if (v == null) return null;
+        return type === "json" ? JSON.parse(v) : v;
+      },
+    },
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error("must-not-call-browser-run"); };
+  const message = {
+    body: { protocol: "ceoai-spider/1", job_id: "spider_job_005", owner_session: "owner",
+      url: "https://example.org/", hostname: "example.org", page_limit: 5, depth: 1, render: false },
+    acked: false, ack() { this.acked = true; }, retry() {},
+  };
+  try { await processCloudflareSpiderQueue({ messages: [message] }, env); }
+  finally { globalThis.fetch = originalFetch; }
+  assert.equal(message.acked, true);
+  const stored = await env.KV_MEMORY.get("spider:job:spider_job_005", "json");
+  assert.equal(stored.status, "daily_free_limit_reached");
+});
+
+test("normalizes only completed same-host pages into Spider protocol records", async () => {
+  const result = await normalizeBrowserRunRecords({
+    records: [
+      { url: "https://example.org/a", status: "completed", markdown: "# Page A",
+        metadata: { status: 200, title: "Page A" } },
+      { url: "https://example.org/private", status: "disallowed", markdown: "blocked",
+        metadata: { status: 0 } },
+      { url: "https://outside.example/a", status: "completed", markdown: "external",
+        metadata: { status: 200 } },
+    ],
+  }, { hostname: "example.org", page_limit: 10 });
+  assert.equal(result.records.length, 1);
+  assert.equal(result.rejected.length, 2);
+  assert.equal(result.records[0].robots_allowed, true);
+  assert.equal(result.records[0].extractor, "cloudflare-browser-run/markdown");
+  assert.match(result.records[0].content_hash, /^[a-f0-9]{64}$/);
 });
