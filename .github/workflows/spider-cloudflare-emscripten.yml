@@ -1,0 +1,55 @@
+name: Spider Cloudflare Emscripten preview
+
+on:
+  push:
+    branches:
+      - v5.0
+    paths:
+      - "sidecar/spider/**"
+      - "sidecar/spider-cloudflare-worker/**"
+      - ".github/workflows/spider-cloudflare-emscripten.yml"
+  pull_request:
+    branches:
+      - v5.0
+    paths:
+      - "sidecar/spider/**"
+      - "sidecar/spider-cloudflare-worker/**"
+      - ".github/workflows/spider-cloudflare-emscripten.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spider-cloudflare-emscripten-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  emscripten-build:
+    name: Compile Spider dependencies for Cloudflare Emscripten
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install beta Rust and Emscripten target
+        uses: dtolnay/rust-toolchain@beta
+        with:
+          targets: wasm32-unknown-emscripten
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sidecar/spider-cloudflare-worker
+
+      - name: Build experimental Cloudflare Worker
+        working-directory: sidecar/spider-cloudflare-worker
+        run: |
+          cargo install worker-build
+          worker-build --emscripten --release
+
+      - name: Verify generated Worker entrypoint
+        run: |
+          test -s sidecar/spider-cloudflare-worker/build/index.js
+          test -s sidecar/spider-cloudflare-worker/build/index_bg.wasm
