@@ -479,7 +479,7 @@ fn robots_allowed_for(content: &str, user_agent: &str, url: &Url) -> (bool, u64)
     for group in &groups {
         let score = group.agents.iter().filter_map(|candidate| {
             if candidate == "*" { Some(0) }
-            else if !candidate.is_empty() && agent.contains(candidate) { Some(candidate.len()) }
+            else if !candidate.is_empty() && agent.starts_with(candidate) { Some(candidate.len()) }
             else { None }
         }).max();
         if let Some(score) = score {
@@ -691,6 +691,13 @@ mod tests {
 
     fn allowlist() -> HashSet<String> {
         ["example.org".to_string(), "data.gov.rs".to_string()].into_iter().collect()
+    }
+
+    #[test]
+    fn robots_user_agent_matching_uses_product_token_prefix() {
+        let url = Url::parse("https://example.org/private").unwrap();
+        let rules = "User-agent: notCEOAI-Crawler\nDisallow: /\n\nUser-agent: *\nAllow: /\n";
+        assert!(robots_allowed_for(rules, "CEOAI-Crawler/1.0", &url).0);
     }
 
     #[test]
