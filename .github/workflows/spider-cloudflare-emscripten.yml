@@ -72,11 +72,15 @@ jobs:
       - name: Apply narrow Emscripten compatibility patch
         run: python3 sidecar/spider-cloudflare-worker/scripts/patch-spider-fingerprint-emscripten.py
 
+      - name: Build patched worker-build tool
+        run: |
+          git clone --depth 1 --branch v0.8.7 https://github.com/cloudflare/workers-rs.git /tmp/workers-rs
+          python3 sidecar/spider-cloudflare-worker/scripts/patch-worker-build-snippets.py /tmp/workers-rs/worker-build/src/build/mod.rs
+          cargo install --path /tmp/workers-rs/worker-build --locked --force
+
       - name: Build experimental Cloudflare Worker
         working-directory: sidecar/spider-cloudflare-worker
-        run: |
-          cargo install worker-build
-          worker-build --emscripten --release
+        run: worker-build --emscripten --release
 
       - name: Verify generated Worker entrypoint
         run: |
