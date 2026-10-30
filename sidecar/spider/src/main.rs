@@ -6,6 +6,7 @@ use serde_json::{json, Value};
 use scraper::{ElementRef, Html, Selector};
 use sha2::{Digest, Sha256};
 use spider::{configuration::RedirectPolicy, website::Website};
+use crate::transport::{fetch_guarded, GuardedHttpEngine};
 use std::collections::HashSet;
 use std::io::{self, BufRead, Write};
 use std::net::IpAddr;
@@ -22,6 +23,8 @@ const MAX_CONTENT_CHARS: usize = 50_000;
 const MAX_EVIDENCE_CHARS: usize = 2_000;
 const MAX_EXTRACTED_TEXT_CHARS: usize = 20_000;
 const MAX_LINKS: usize = 30;
+const MAX_PAGE_BYTES: usize = 2 * 1024 * 1024;
+const MIN_DOMAIN_DELAY_MS: u64 = 1_000;
 
 fn selected_text(document: &Html, selector: &str) -> Option<String> {
     let selector = Selector::parse(selector).ok()?;
@@ -379,7 +382,7 @@ fn truncation_metadata(transport_truncated: bool, source_chars: usize, bytes_tra
         "spider_bytes_transferred": bytes_transferred,
         "output_html_truncated": output_truncated,
         "content_truncated": transport_truncated || output_truncated,
-        "content_limit_scope": "output-serialization-only; not a transport byte cap"
+        "content_limit_scope": "2MiB-guarded-transport-and-output-serialization"
     })
 }
 
@@ -405,13 +408,1214 @@ mod truncation_metadata_tests {
     }
 }
 
-async fn crawl_one(url: &Url, timeout_ms: u64) -> Result<Vec<Value>, String> {
+#[derive(Debug, Clone)]
+struct RobotsRule { allow: bool, pattern: String }
+
+#[derive(Debug, Clone, Default)]
+struct RobotsGroup {
+    agents: Vec<String>,
+    rules: Vec<RobotsRule>,
+    crawl_delay_ms: Option<u64>,
+}
+
+fn robots_pattern_matches(pattern: &str, target: &str) -> bool {
+    let anchored = pattern.ends_with('
+
+    let mut receiver = website.subscribe(16);
+    let crawl_result = timeout(
+        Duration::from_millis(timeout_ms.saturating_add(1_000)),
+        website.crawl(),
+    ).await;
+    website.unsubscribe();
+
+    if crawl_result.is_err() {
+        return Err("crawl-timeout".into());
+    }
+
+    let mut records = Vec::new();
+    while let Ok(page) = receiver.try_recv() {
+        let html = page.get_content();
+        if html.is_empty() {
+            continue;
+        }
+        let digest = Sha256::digest(html.as_bytes());
+        let content_hash = format!("{:x}", digest);
+        let bounded_html: String = html.chars().take(MAX_CONTENT_CHARS).collect();
+        let evidence: String = html.chars().take(MAX_EVIDENCE_CHARS).collect();
+        let final_url = page.get_url().to_string();
+        let status = page.status_code.as_u16();
+        let extracted = extract_page_fields(&bounded_html, &final_url);
+
+        let truncation = truncation_metadata(
+            page.content_truncated,
+            html.chars().count(),
+            page.bytes_transferred,
+        );
+
+        records.push(json!({
+            "source_url": final_url,
+            "collected_at": Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
+            "http_status": status,
+            "robots_allowed": null,
+            "robots_enforcement": "spider-respect-robots-txt-enabled; per-URL decision not exposed by adapter",
+            "retry_after_respected": false,
+            "extractor": "spider-rs/2.53.9",
+            "content_hash": content_hash,
+            "evidence": [evidence],
+            "data": {
+                "html": bounded_html,
+                "truncation": truncation,
+                "extracted": extracted
+            }
+        }));
+    }
+    Ok(records)
+}
+
+async fn handle_line(line: &str) -> JobResponse {
+    let request: JobRequest = match serde_json::from_str(line) {
+        Ok(request) => request,
+        Err(_) => return response_error("invalid-request", vec!["invalid-json-request".into()]),
+    };
+    let job_id = request.job_id.clone();
+    let approved_hosts = approved_hosts_from_env();
+    let urls = match validate_job(&request, &approved_hosts) {
+        Ok(urls) => urls,
+        Err(errors) => return response_error(&job_id, errors),
+    };
+
+    // Initial pilot is deliberately serial even when the request allows two workers.
+    // We will raise effective concurrency only after live-source load tests.
+    let mut records = Vec::new();
+    let mut errors = Vec::new();
+    for url in &urls {
+        match crawl_one(url, request.timeout_ms, request.respect_retry_after).await {
+            Ok(mut page_records) => records.append(&mut page_records),
+            Err(error) => errors.push(format!("{}:{}", url.host_str().unwrap_or("unknown"), error)),
+        }
+        if records.len() >= request.max_records {
+            records.truncate(request.max_records);
+            break;
+        }
+    }
+
+    JobResponse {
+        protocol: PROTOCOL.into(),
+        job_id,
+        adapter_id: "spider".into(),
+        records,
+        errors,
+        external_actions: false,
+        paid_services: false,
+        execution: json!({
+            "status":"completed",
+            "mode":"local-http-only-serial-pilot",
+            "requested_concurrency":request.concurrency,
+            "effective_concurrency":1,
+            "browser_mode":false,
+            "follow_links":false,
+            "robots_txt":true,
+            "robots_decision_visibility":"not-exposed-by-spider-adapter",
+            "retry_after_requested":request.respect_retry_after,
+            "retry_after":"not-implemented",
+            "paid_services":false
+        }),
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    let stdin = io::stdin();
+    let stdout = io::stdout();
+    let mut output = stdout.lock();
+
+    let mut input = stdin.lock();
+    loop {
+        let line = match read_bounded_line(&mut input, MAX_REQUEST_LINE_BYTES) {
+            Ok(Some(line)) if !line.trim().is_empty() => line,
+            Ok(Some(_)) => continue,
+            Ok(None) => break,
+            Err(error) if error.kind() == io::ErrorKind::InvalidData => {
+                let response = response_error("invalid-request", vec![error.to_string()]);
+                if serde_json::to_writer(&mut output, &response).is_err()
+                    || writeln!(output).is_err()
+                    || output.flush().is_err()
+                {
+                    break;
+                }
+                continue;
+            }
+            Err(_) => break,
+        };
+        let response = handle_line(&line).await;
+        if serde_json::to_writer(&mut output, &response).is_err() {
+            break;
+        }
+        if writeln!(output).is_err() || output.flush().is_err() {
+            break;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn allowlist() -> HashSet<String> {
+        ["example.org".to_string(), "data.gov.rs".to_string()].into_iter().collect()
+    }
+
+    #[test]
+    fn extracts_title_description_text_headings_and_same_host_links() {
+        let html = r#"<html><head><title>Official Page</title><meta name="description" content="Verified public data"></head><body><nav><a href="/menu">Navigation only</a></nav><main><h1>Public records</h1><p>Source content for testing.</p><a href="/records">Records</a><a href="https://other.example/">External</a><a href="javascript:alert(1)">Unsafe</a></main><footer>Footer boilerplate</footer></body></html>"#;
+        let extracted = extract_page_fields(html, "https://example.org/");
+        assert_eq!(extracted["title"], "Official Page");
+        assert_eq!(extracted["description"], "Verified public data");
+        assert_eq!(extracted["canonical_external"], false);
+        assert_eq!(extracted["extraction_method"], "scraper-html-selectors");
+        assert_eq!(extracted["extraction_version"], "1");
+        assert!(extracted["text"].as_str().unwrap().contains("Source content for testing."));
+        assert!(!extracted["text"].as_str().unwrap().contains("Navigation only"));
+        assert!(!extracted["text"].as_str().unwrap().contains("Footer boilerplate"));
+        assert_eq!(extracted["headings"][0], "Public records");
+        assert_eq!(extracted["links"].as_array().unwrap().len(), 1);
+        assert_eq!(extracted["links"][0]["url"], "https://example.org/records");
+    }
+
+    #[test]
+    fn excludes_hidden_script_style_and_embedded_navigation_content() {
+        let html = r#"<html><body><main>
+            <p>Visible public record <span>with details</span>.</p>
+            <p hidden>Hidden text.</p>
+            <p aria-hidden="true">ARIA hidden text.</p>
+            <nav><p>Navigation text.</p></nav>
+            <footer><p>Footer text.</p></footer>
+            <script>secret_script_value()</script><style>.hidden{display:none}</style>
+            <noscript>Fallback script text.</noscript>
+        </main></body></html>"#;
+        let extracted = extract_page_fields(html, "https://example.org/");
+        let text = extracted["text"].as_str().unwrap();
+        assert!(text.contains("Visible public record"));
+        for forbidden in ["Hidden text.", "ARIA hidden text.", "Navigation text.",
+            "Footer text.", "secret_script_value", "Fallback script text."] {
+            assert!(!text.contains(forbidden), "must exclude {forbidden}");
+        }
+    }
+
+    #[test]
+    fn flags_external_canonical_as_untrusted_provenance() {
+        let html = r#"<html><head><link rel="canonical" href="https://other.example/page"></head><body><main><p>Content</p></main></body></html>"#;
+        let extracted = extract_page_fields(html, "https://example.org/");
+        assert_eq!(extracted["canonical_external"], true);
+        assert_eq!(extracted["canonical_same_host"], false);
+    }
+
+    #[test]
+    fn extraction_fixture_matrix_covers_ten_page_shapes() {
+        let fixtures = [
+            ("article", r#"<html><head><title>Article</title></head><body><article><h1>Article heading</h1><p>Article body.</p></article></body></html>"#, "Article body.", "semantic-container"),
+            ("main", r#"<html><head><title>Main</title></head><body><main><h1>Main heading</h1><p>Main body.</p></main></body></html>"#, "Main body.", "semantic-container"),
+            ("role-main", r#"<html><head><title>Role</title></head><body><div role="main"><h1>Role heading</h1><p>Role body.</p></div></body></html>"#, "Role body.", "semantic-container"),
+            ("body-fallback", r#"<html><head><title>Fallback</title></head><body><p>Fallback body.</p></body></html>"#, "Fallback body.", "body-fallback"),
+            ("table", r#"<html><head><title>Table</title></head><body><main><table><tr><th>Year</th><td>2026</td></tr></table></main></body></html>"#, "Year", "semantic-container"),
+            ("list", r#"<html><head><title>List</title></head><body><main><ul><li>First record</li><li>Second record</li></ul></main></body></html>"#, "Second record", "semantic-container"),
+            ("preformatted", r#"<html><head><title>Code</title></head><body><main><pre>alpha beta</pre></main></body></html>"#, "alpha beta", "semantic-container"),
+            ("nav-footer-noise", r#"<html><head><title>Noise</title></head><body><nav><h1>Nav heading</h1><p>Nav text.</p></nav><main><h1>Real heading</h1><p>Real content.</p></main><footer><p>Footer text.</p></footer></body></html>"#, "Real content.", "semantic-container"),
+            ("missing-title", r#"<html><body><main><p>Content without title.</p></main></body></html>"#, "Content without title.", "semantic-container"),
+            ("empty-body", r#"<html><head><title>Empty</title></head><body></body></html>"#, "", "body-fallback"),
+        ];
+        assert_eq!(fixtures.len(), 10);
+        for (name, html, expected_text, expected_root) in fixtures {
+            let extracted = extract_page_fields(html, "https://example.org/test");
+            assert_eq!(extracted["content_root"], expected_root, "fixture {name}");
+            assert!(extracted["text"].as_str().unwrap().contains(expected_text), "fixture {name}");
+            assert_eq!(extracted["text_char_count"].as_u64().unwrap() as usize,
+                extracted["text"].as_str().unwrap().chars().count(), "fixture {name}");
+        }
+        let noisy = extract_page_fields(fixtures[7].1, "https://example.org/test");
+        assert_eq!(noisy["headings"].as_array().unwrap().len(), 1);
+        assert_eq!(noisy["headings"][0], "Real heading");
+        assert!(!noisy["text"].as_str().unwrap().contains("Nav text."));
+        assert!(!noisy["text"].as_str().unwrap().contains("Footer text."));
+    }
+
+    #[test]
+    fn bounded_reader_rejects_oversized_line_and_recovers_at_next_line() {
+        let input = format!("{}\nvalid\n", "x".repeat(MAX_REQUEST_LINE_BYTES + 1));
+        let mut reader = io::Cursor::new(input.into_bytes());
+        let first = read_bounded_line(&mut reader, MAX_REQUEST_LINE_BYTES).unwrap_err();
+        assert_eq!(first.to_string(), "request-line-too-large");
+        assert_eq!(read_bounded_line(&mut reader, MAX_REQUEST_LINE_BYTES).unwrap().as_deref(), Some("valid"));
+        assert_eq!(read_bounded_line(&mut reader, MAX_REQUEST_LINE_BYTES).unwrap(), None);
+    }
+
+    #[test]
+    fn bounded_reader_accepts_exact_limit_and_strips_crlf() {
+        let input = format!("{}\r\n", "x".repeat(32));
+        let mut reader = io::Cursor::new(input.into_bytes());
+        assert_eq!(read_bounded_line(&mut reader, 32).unwrap().unwrap().len(), 32);
+    }
+
+    #[test]
+    fn rejects_overlong_urls_before_parsing() {
+        let raw = format!("https://example.org/{}", "a".repeat(MAX_URL_LENGTH));
+        assert_eq!(validate_target(&raw, &allowlist()).unwrap_err(), "url-length-exceeded");
+    }
+
+    #[test]
+    fn allows_exact_approved_public_host() {
+        let parsed = validate_target("https://example.org/data#section", &allowlist()).unwrap();
+        assert_eq!(parsed.as_str(), "https://example.org/data");
+    }
+
+    #[test]
+    fn rejects_non_public_ip_ranges() {
+        for raw in [
+            "0.0.0.0", "10.0.0.1", "100.64.0.1", "127.0.0.1",
+            "169.254.1.1", "172.16.0.1", "192.168.1.1",
+            "192.0.2.1", "192.88.99.1", "198.18.0.1", "198.51.100.1",
+            "203.0.113.1", "224.0.0.1", "255.255.255.255",
+            "::", "::1", "fe80::1", "fc00::1", "2001:db8::1",
+            "2001:10::1", "2001:20::1", "2001:2::1", "2001:3::1",
+            "2002::1", "3fff::1", "::ffff:127.0.0.1",
+        ] {
+            let ip: IpAddr = raw.parse().unwrap();
+            assert!(!is_public_routable_ip(ip), "must reject {raw}");
+        }
+        for raw in ["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111"] {
+            let ip: IpAddr = raw.parse().unwrap();
+            assert!(is_public_routable_ip(ip), "must allow public {raw}");
+        }
+    }
+
+    #[test]
+    fn dns_resolution_rejects_mixed_public_and_private_answers() {
+        use std::net::SocketAddr;
+        let public = SocketAddr::from(([1, 1, 1, 1], 443));
+        let private = SocketAddr::from(([10, 0, 0, 7], 443));
+        let loopback = SocketAddr::from(([127, 0, 0, 1], 443));
+        assert!(resolved_addresses_are_public(&[public]));
+        assert!(!resolved_addresses_are_public(&[public, private]));
+        assert!(!resolved_addresses_are_public(&[public, loopback]));
+        assert!(!resolved_addresses_are_public(&[]));
+    }
+
+    #[test]
+    fn dns_resolution_rejects_ipv6_private_and_link_local_answers() {
+        use std::net::SocketAddr;
+        for raw in ["::1", "fc00::1", "fe80::1", "2001:db8::1"] {
+            let ip: IpAddr = raw.parse().unwrap();
+            let address = SocketAddr::new(ip, 443);
+            assert!(!resolved_addresses_are_public(&[address]), "must reject {raw}");
+        }
+    }
+
+    #[test]
+    fn rejects_unapproved_hosts_and_subdomains() {
+        assert_eq!(
+            validate_target("https://sub.example.org/", &allowlist()).unwrap_err(),
+            "source-host-not-approved"
+        );
+    }
+
+    #[test]
+    fn rejects_ip_literals_local_hosts_credentials_and_custom_ports() {
+        let hosts = allowlist();
+        for raw in [
+            "http://127.0.0.1/",
+            "http://[::1]/",
+            "http://localhost/",
+            "https://user:pass@example.org/",
+            "https://example.org:8443/",
+        ] {
+            assert!(validate_target(raw, &hosts).is_err(), "{raw}");
+        }
+    }
+
+    #[tokio::test]
+    async fn malformed_json_is_rejected_without_network_access() {
+        let response = handle_line("{not-json").await;
+        assert_eq!(response.errors, vec!["invalid-json-request"]);
+        assert!(response.records.is_empty());
+        assert_eq!(response.execution["status"], "rejected");
+        assert_eq!(response.execution["network_requests"], 0);
+    }
+
+    #[tokio::test]
+    async fn request_for_unapproved_host_is_rejected_before_crawl() {
+        let request = json!({
+            "protocol": PROTOCOL,
+            "job_id": "offline_test",
+            "adapter_id": "spider",
+            "urls": ["https://unapproved.example/data"],
+            "concurrency": 1,
+            "timeout_ms": 5000,
+            "browser_mode": false,
+            "follow_links": false,
+            "obey_robots_txt": true,
+            "respect_retry_after": true,
+            "max_records": 10,
+            "external_actions": false,
+            "paid_services": false
+        });
+        let response = handle_line(&request.to_string()).await;
+        assert!(response.errors.iter().any(|error| error == "source-host-not-approved"));
+        assert!(response.records.is_empty());
+        assert_eq!(response.execution["network_requests"], 0);
+    }
+
+    #[test]
+    fn error_response_never_echoes_untrusted_payload() {
+        let response = response_error(
+            "job_1",
+            vec!["source-host-not-approved".to_string()],
+        );
+        let serialized = serde_json::to_string(&response).unwrap();
+        assert!(!serialized.contains("secret-token"));
+        assert_eq!(response.external_actions, false);
+        assert_eq!(response.paid_services, false);
+    }
+}
+);
+    let pattern = pattern.strip_suffix('
+
+    let mut receiver = website.subscribe(16);
+    let crawl_result = timeout(
+        Duration::from_millis(timeout_ms.saturating_add(1_000)),
+        website.crawl(),
+    ).await;
+    website.unsubscribe();
+
+    if crawl_result.is_err() {
+        return Err("crawl-timeout".into());
+    }
+
+    let mut records = Vec::new();
+    while let Ok(page) = receiver.try_recv() {
+        let html = page.get_content();
+        if html.is_empty() {
+            continue;
+        }
+        let digest = Sha256::digest(html.as_bytes());
+        let content_hash = format!("{:x}", digest);
+        let bounded_html: String = html.chars().take(MAX_CONTENT_CHARS).collect();
+        let evidence: String = html.chars().take(MAX_EVIDENCE_CHARS).collect();
+        let final_url = page.get_url().to_string();
+        let status = page.status_code.as_u16();
+        let extracted = extract_page_fields(&bounded_html, &final_url);
+
+        let truncation = truncation_metadata(
+            page.content_truncated,
+            html.chars().count(),
+            page.bytes_transferred,
+        );
+
+        records.push(json!({
+            "source_url": final_url,
+            "collected_at": Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
+            "http_status": status,
+            "robots_allowed": null,
+            "robots_enforcement": "spider-respect-robots-txt-enabled; per-URL decision not exposed by adapter",
+            "retry_after_respected": false,
+            "extractor": "spider-rs/2.53.9",
+            "content_hash": content_hash,
+            "evidence": [evidence],
+            "data": {
+                "html": bounded_html,
+                "truncation": truncation,
+                "extracted": extracted
+            }
+        }));
+    }
+    Ok(records)
+}
+
+async fn handle_line(line: &str) -> JobResponse {
+    let request: JobRequest = match serde_json::from_str(line) {
+        Ok(request) => request,
+        Err(_) => return response_error("invalid-request", vec!["invalid-json-request".into()]),
+    };
+    let job_id = request.job_id.clone();
+    let approved_hosts = approved_hosts_from_env();
+    let urls = match validate_job(&request, &approved_hosts) {
+        Ok(urls) => urls,
+        Err(errors) => return response_error(&job_id, errors),
+    };
+
+    // Initial pilot is deliberately serial even when the request allows two workers.
+    // We will raise effective concurrency only after live-source load tests.
+    let mut records = Vec::new();
+    let mut errors = Vec::new();
+    for url in &urls {
+        match crawl_one(url, request.timeout_ms).await {
+            Ok(mut page_records) => records.append(&mut page_records),
+            Err(error) => errors.push(format!("{}:{}", url.host_str().unwrap_or("unknown"), error)),
+        }
+        if records.len() >= request.max_records {
+            records.truncate(request.max_records);
+            break;
+        }
+    }
+
+    JobResponse {
+        protocol: PROTOCOL.into(),
+        job_id,
+        adapter_id: "spider".into(),
+        records,
+        errors,
+        external_actions: false,
+        paid_services: false,
+        execution: json!({
+            "status":"completed",
+            "mode":"local-http-only-serial-pilot",
+            "requested_concurrency":request.concurrency,
+            "effective_concurrency":1,
+            "browser_mode":false,
+            "follow_links":false,
+            "robots_txt":true,
+            "robots_decision_visibility":"not-exposed-by-spider-adapter",
+            "retry_after_requested":request.respect_retry_after,
+            "retry_after":"not-implemented",
+            "paid_services":false
+        }),
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    let stdin = io::stdin();
+    let stdout = io::stdout();
+    let mut output = stdout.lock();
+
+    let mut input = stdin.lock();
+    loop {
+        let line = match read_bounded_line(&mut input, MAX_REQUEST_LINE_BYTES) {
+            Ok(Some(line)) if !line.trim().is_empty() => line,
+            Ok(Some(_)) => continue,
+            Ok(None) => break,
+            Err(error) if error.kind() == io::ErrorKind::InvalidData => {
+                let response = response_error("invalid-request", vec![error.to_string()]);
+                if serde_json::to_writer(&mut output, &response).is_err()
+                    || writeln!(output).is_err()
+                    || output.flush().is_err()
+                {
+                    break;
+                }
+                continue;
+            }
+            Err(_) => break,
+        };
+        let response = handle_line(&line).await;
+        if serde_json::to_writer(&mut output, &response).is_err() {
+            break;
+        }
+        if writeln!(output).is_err() || output.flush().is_err() {
+            break;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn allowlist() -> HashSet<String> {
+        ["example.org".to_string(), "data.gov.rs".to_string()].into_iter().collect()
+    }
+
+    #[test]
+    fn extracts_title_description_text_headings_and_same_host_links() {
+        let html = r#"<html><head><title>Official Page</title><meta name="description" content="Verified public data"></head><body><nav><a href="/menu">Navigation only</a></nav><main><h1>Public records</h1><p>Source content for testing.</p><a href="/records">Records</a><a href="https://other.example/">External</a><a href="javascript:alert(1)">Unsafe</a></main><footer>Footer boilerplate</footer></body></html>"#;
+        let extracted = extract_page_fields(html, "https://example.org/");
+        assert_eq!(extracted["title"], "Official Page");
+        assert_eq!(extracted["description"], "Verified public data");
+        assert_eq!(extracted["canonical_external"], false);
+        assert_eq!(extracted["extraction_method"], "scraper-html-selectors");
+        assert_eq!(extracted["extraction_version"], "1");
+        assert!(extracted["text"].as_str().unwrap().contains("Source content for testing."));
+        assert!(!extracted["text"].as_str().unwrap().contains("Navigation only"));
+        assert!(!extracted["text"].as_str().unwrap().contains("Footer boilerplate"));
+        assert_eq!(extracted["headings"][0], "Public records");
+        assert_eq!(extracted["links"].as_array().unwrap().len(), 1);
+        assert_eq!(extracted["links"][0]["url"], "https://example.org/records");
+    }
+
+    #[test]
+    fn excludes_hidden_script_style_and_embedded_navigation_content() {
+        let html = r#"<html><body><main>
+            <p>Visible public record <span>with details</span>.</p>
+            <p hidden>Hidden text.</p>
+            <p aria-hidden="true">ARIA hidden text.</p>
+            <nav><p>Navigation text.</p></nav>
+            <footer><p>Footer text.</p></footer>
+            <script>secret_script_value()</script><style>.hidden{display:none}</style>
+            <noscript>Fallback script text.</noscript>
+        </main></body></html>"#;
+        let extracted = extract_page_fields(html, "https://example.org/");
+        let text = extracted["text"].as_str().unwrap();
+        assert!(text.contains("Visible public record"));
+        for forbidden in ["Hidden text.", "ARIA hidden text.", "Navigation text.",
+            "Footer text.", "secret_script_value", "Fallback script text."] {
+            assert!(!text.contains(forbidden), "must exclude {forbidden}");
+        }
+    }
+
+    #[test]
+    fn flags_external_canonical_as_untrusted_provenance() {
+        let html = r#"<html><head><link rel="canonical" href="https://other.example/page"></head><body><main><p>Content</p></main></body></html>"#;
+        let extracted = extract_page_fields(html, "https://example.org/");
+        assert_eq!(extracted["canonical_external"], true);
+        assert_eq!(extracted["canonical_same_host"], false);
+    }
+
+    #[test]
+    fn extraction_fixture_matrix_covers_ten_page_shapes() {
+        let fixtures = [
+            ("article", r#"<html><head><title>Article</title></head><body><article><h1>Article heading</h1><p>Article body.</p></article></body></html>"#, "Article body.", "semantic-container"),
+            ("main", r#"<html><head><title>Main</title></head><body><main><h1>Main heading</h1><p>Main body.</p></main></body></html>"#, "Main body.", "semantic-container"),
+            ("role-main", r#"<html><head><title>Role</title></head><body><div role="main"><h1>Role heading</h1><p>Role body.</p></div></body></html>"#, "Role body.", "semantic-container"),
+            ("body-fallback", r#"<html><head><title>Fallback</title></head><body><p>Fallback body.</p></body></html>"#, "Fallback body.", "body-fallback"),
+            ("table", r#"<html><head><title>Table</title></head><body><main><table><tr><th>Year</th><td>2026</td></tr></table></main></body></html>"#, "Year", "semantic-container"),
+            ("list", r#"<html><head><title>List</title></head><body><main><ul><li>First record</li><li>Second record</li></ul></main></body></html>"#, "Second record", "semantic-container"),
+            ("preformatted", r#"<html><head><title>Code</title></head><body><main><pre>alpha beta</pre></main></body></html>"#, "alpha beta", "semantic-container"),
+            ("nav-footer-noise", r#"<html><head><title>Noise</title></head><body><nav><h1>Nav heading</h1><p>Nav text.</p></nav><main><h1>Real heading</h1><p>Real content.</p></main><footer><p>Footer text.</p></footer></body></html>"#, "Real content.", "semantic-container"),
+            ("missing-title", r#"<html><body><main><p>Content without title.</p></main></body></html>"#, "Content without title.", "semantic-container"),
+            ("empty-body", r#"<html><head><title>Empty</title></head><body></body></html>"#, "", "body-fallback"),
+        ];
+        assert_eq!(fixtures.len(), 10);
+        for (name, html, expected_text, expected_root) in fixtures {
+            let extracted = extract_page_fields(html, "https://example.org/test");
+            assert_eq!(extracted["content_root"], expected_root, "fixture {name}");
+            assert!(extracted["text"].as_str().unwrap().contains(expected_text), "fixture {name}");
+            assert_eq!(extracted["text_char_count"].as_u64().unwrap() as usize,
+                extracted["text"].as_str().unwrap().chars().count(), "fixture {name}");
+        }
+        let noisy = extract_page_fields(fixtures[7].1, "https://example.org/test");
+        assert_eq!(noisy["headings"].as_array().unwrap().len(), 1);
+        assert_eq!(noisy["headings"][0], "Real heading");
+        assert!(!noisy["text"].as_str().unwrap().contains("Nav text."));
+        assert!(!noisy["text"].as_str().unwrap().contains("Footer text."));
+    }
+
+    #[test]
+    fn bounded_reader_rejects_oversized_line_and_recovers_at_next_line() {
+        let input = format!("{}\nvalid\n", "x".repeat(MAX_REQUEST_LINE_BYTES + 1));
+        let mut reader = io::Cursor::new(input.into_bytes());
+        let first = read_bounded_line(&mut reader, MAX_REQUEST_LINE_BYTES).unwrap_err();
+        assert_eq!(first.to_string(), "request-line-too-large");
+        assert_eq!(read_bounded_line(&mut reader, MAX_REQUEST_LINE_BYTES).unwrap().as_deref(), Some("valid"));
+        assert_eq!(read_bounded_line(&mut reader, MAX_REQUEST_LINE_BYTES).unwrap(), None);
+    }
+
+    #[test]
+    fn bounded_reader_accepts_exact_limit_and_strips_crlf() {
+        let input = format!("{}\r\n", "x".repeat(32));
+        let mut reader = io::Cursor::new(input.into_bytes());
+        assert_eq!(read_bounded_line(&mut reader, 32).unwrap().unwrap().len(), 32);
+    }
+
+    #[test]
+    fn rejects_overlong_urls_before_parsing() {
+        let raw = format!("https://example.org/{}", "a".repeat(MAX_URL_LENGTH));
+        assert_eq!(validate_target(&raw, &allowlist()).unwrap_err(), "url-length-exceeded");
+    }
+
+    #[test]
+    fn allows_exact_approved_public_host() {
+        let parsed = validate_target("https://example.org/data#section", &allowlist()).unwrap();
+        assert_eq!(parsed.as_str(), "https://example.org/data");
+    }
+
+    #[test]
+    fn rejects_non_public_ip_ranges() {
+        for raw in [
+            "0.0.0.0", "10.0.0.1", "100.64.0.1", "127.0.0.1",
+            "169.254.1.1", "172.16.0.1", "192.168.1.1",
+            "192.0.2.1", "192.88.99.1", "198.18.0.1", "198.51.100.1",
+            "203.0.113.1", "224.0.0.1", "255.255.255.255",
+            "::", "::1", "fe80::1", "fc00::1", "2001:db8::1",
+            "2001:10::1", "2001:20::1", "2001:2::1", "2001:3::1",
+            "2002::1", "3fff::1", "::ffff:127.0.0.1",
+        ] {
+            let ip: IpAddr = raw.parse().unwrap();
+            assert!(!is_public_routable_ip(ip), "must reject {raw}");
+        }
+        for raw in ["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111"] {
+            let ip: IpAddr = raw.parse().unwrap();
+            assert!(is_public_routable_ip(ip), "must allow public {raw}");
+        }
+    }
+
+    #[test]
+    fn dns_resolution_rejects_mixed_public_and_private_answers() {
+        use std::net::SocketAddr;
+        let public = SocketAddr::from(([1, 1, 1, 1], 443));
+        let private = SocketAddr::from(([10, 0, 0, 7], 443));
+        let loopback = SocketAddr::from(([127, 0, 0, 1], 443));
+        assert!(resolved_addresses_are_public(&[public]));
+        assert!(!resolved_addresses_are_public(&[public, private]));
+        assert!(!resolved_addresses_are_public(&[public, loopback]));
+        assert!(!resolved_addresses_are_public(&[]));
+    }
+
+    #[test]
+    fn dns_resolution_rejects_ipv6_private_and_link_local_answers() {
+        use std::net::SocketAddr;
+        for raw in ["::1", "fc00::1", "fe80::1", "2001:db8::1"] {
+            let ip: IpAddr = raw.parse().unwrap();
+            let address = SocketAddr::new(ip, 443);
+            assert!(!resolved_addresses_are_public(&[address]), "must reject {raw}");
+        }
+    }
+
+    #[test]
+    fn rejects_unapproved_hosts_and_subdomains() {
+        assert_eq!(
+            validate_target("https://sub.example.org/", &allowlist()).unwrap_err(),
+            "source-host-not-approved"
+        );
+    }
+
+    #[test]
+    fn rejects_ip_literals_local_hosts_credentials_and_custom_ports() {
+        let hosts = allowlist();
+        for raw in [
+            "http://127.0.0.1/",
+            "http://[::1]/",
+            "http://localhost/",
+            "https://user:pass@example.org/",
+            "https://example.org:8443/",
+        ] {
+            assert!(validate_target(raw, &hosts).is_err(), "{raw}");
+        }
+    }
+
+    #[tokio::test]
+    async fn malformed_json_is_rejected_without_network_access() {
+        let response = handle_line("{not-json").await;
+        assert_eq!(response.errors, vec!["invalid-json-request"]);
+        assert!(response.records.is_empty());
+        assert_eq!(response.execution["status"], "rejected");
+        assert_eq!(response.execution["network_requests"], 0);
+    }
+
+    #[tokio::test]
+    async fn request_for_unapproved_host_is_rejected_before_crawl() {
+        let request = json!({
+            "protocol": PROTOCOL,
+            "job_id": "offline_test",
+            "adapter_id": "spider",
+            "urls": ["https://unapproved.example/data"],
+            "concurrency": 1,
+            "timeout_ms": 5000,
+            "browser_mode": false,
+            "follow_links": false,
+            "obey_robots_txt": true,
+            "respect_retry_after": true,
+            "max_records": 10,
+            "external_actions": false,
+            "paid_services": false
+        });
+        let response = handle_line(&request.to_string()).await;
+        assert!(response.errors.iter().any(|error| error == "source-host-not-approved"));
+        assert!(response.records.is_empty());
+        assert_eq!(response.execution["network_requests"], 0);
+    }
+
+    #[test]
+    fn error_response_never_echoes_untrusted_payload() {
+        let response = response_error(
+            "job_1",
+            vec!["source-host-not-approved".to_string()],
+        );
+        let serialized = serde_json::to_string(&response).unwrap();
+        assert!(!serialized.contains("secret-token"));
+        assert_eq!(response.external_actions, false);
+        assert_eq!(response.paid_services, false);
+    }
+}
+).unwrap_or(pattern);
+    let p: Vec<char> = pattern.chars().collect();
+    let t: Vec<char> = target.chars().collect();
+    let mut dp = vec![vec![false; t.len() + 1]; p.len() + 1];
+    dp[0][0] = true;
+    for i in 0..p.len() {
+        for j in 0..=t.len() {
+            if !dp[i][j] { continue; }
+            if p[i] == '*' {
+                dp[i + 1][j] = true;
+                if j < t.len() { dp[i][j + 1] = true; }
+            } else if j < t.len() && p[i] == t[j] {
+                dp[i + 1][j + 1] = true;
+            }
+        }
+    }
+    if anchored { dp[p.len()][t.len()] }
+    else { (0..=t.len()).any(|j| dp[p.len()][j]) }
+}
+
+fn robots_allowed_for(content: &str, user_agent: &str, url: &Url) -> (bool, u64) {
+    let mut groups: Vec<RobotsGroup> = Vec::new();
+    let mut current = RobotsGroup::default();
+    let mut saw_rule = false;
+    for raw in content.lines() {
+        let line = raw.split('#').next().unwrap_or("").trim();
+        if line.is_empty() { continue; }
+        let Some((key, value)) = line.split_once(':') else { continue };
+        let key = key.trim().to_ascii_lowercase();
+        let value = value.trim();
+        if key == "user-agent" {
+            if saw_rule && !current.agents.is_empty() {
+                groups.push(current);
+                current = RobotsGroup::default();
+                saw_rule = false;
+            }
+            current.agents.push(value.to_ascii_lowercase());
+        } else if key == "allow" || key == "disallow" {
+            saw_rule = true;
+            if !value.is_empty() {
+                current.rules.push(RobotsRule { allow: key == "allow", pattern: value.to_string() });
+            }
+        } else if key == "crawl-delay" {
+            saw_rule = true;
+            if let Ok(seconds) = value.parse::<f64>() {
+                if seconds.is_finite() && seconds >= 0.0 {
+                    current.crawl_delay_ms = Some((seconds * 1000.0).min(10_000.0) as u64);
+                }
+            }
+        }
+    }
+    if !current.agents.is_empty() { groups.push(current); }
+
+    let agent = user_agent.to_ascii_lowercase();
+    let mut best_specificity = 0usize;
+    let mut selected: Vec<&RobotsGroup> = Vec::new();
+    for group in &groups {
+        let score = group.agents.iter().filter_map(|candidate| {
+            if candidate == "*" { Some(0) }
+            else if !candidate.is_empty() && agent.contains(candidate) { Some(candidate.len()) }
+            else { None }
+        }).max();
+        if let Some(score) = score {
+            if selected.is_empty() || score > best_specificity {
+                selected.clear();
+                best_specificity = score;
+            }
+            if score == best_specificity { selected.push(group); }
+        }
+    }
+
+    let mut winner: Option<(usize, bool)> = None;
+    let mut delay = 0u64;
+    let target = {
+        let mut path = url.path().to_string();
+        if let Some(query) = url.query() { path.push('?'); path.push_str(query); }
+        path
+    };
+    for group in selected {
+        delay = delay.max(group.crawl_delay_ms.unwrap_or(0));
+        for rule in &group.rules {
+            if robots_pattern_matches(&rule.pattern, &target) {
+                let specificity = rule.pattern.chars().filter(|c| *c != '*' && *c != '
+
+    let mut receiver = website.subscribe(16);
+    let crawl_result = timeout(
+        Duration::from_millis(timeout_ms.saturating_add(1_000)),
+        website.crawl(),
+    ).await;
+    website.unsubscribe();
+
+    if crawl_result.is_err() {
+        return Err("crawl-timeout".into());
+    }
+
+    let mut records = Vec::new();
+    while let Ok(page) = receiver.try_recv() {
+        let html = page.get_content();
+        if html.is_empty() {
+            continue;
+        }
+        let digest = Sha256::digest(html.as_bytes());
+        let content_hash = format!("{:x}", digest);
+        let bounded_html: String = html.chars().take(MAX_CONTENT_CHARS).collect();
+        let evidence: String = html.chars().take(MAX_EVIDENCE_CHARS).collect();
+        let final_url = page.get_url().to_string();
+        let status = page.status_code.as_u16();
+        let extracted = extract_page_fields(&bounded_html, &final_url);
+
+        let truncation = truncation_metadata(
+            page.content_truncated,
+            html.chars().count(),
+            page.bytes_transferred,
+        );
+
+        records.push(json!({
+            "source_url": final_url,
+            "collected_at": Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
+            "http_status": status,
+            "robots_allowed": null,
+            "robots_enforcement": "spider-respect-robots-txt-enabled; per-URL decision not exposed by adapter",
+            "retry_after_respected": false,
+            "extractor": "spider-rs/2.53.9",
+            "content_hash": content_hash,
+            "evidence": [evidence],
+            "data": {
+                "html": bounded_html,
+                "truncation": truncation,
+                "extracted": extracted
+            }
+        }));
+    }
+    Ok(records)
+}
+
+async fn handle_line(line: &str) -> JobResponse {
+    let request: JobRequest = match serde_json::from_str(line) {
+        Ok(request) => request,
+        Err(_) => return response_error("invalid-request", vec!["invalid-json-request".into()]),
+    };
+    let job_id = request.job_id.clone();
+    let approved_hosts = approved_hosts_from_env();
+    let urls = match validate_job(&request, &approved_hosts) {
+        Ok(urls) => urls,
+        Err(errors) => return response_error(&job_id, errors),
+    };
+
+    // Initial pilot is deliberately serial even when the request allows two workers.
+    // We will raise effective concurrency only after live-source load tests.
+    let mut records = Vec::new();
+    let mut errors = Vec::new();
+    for url in &urls {
+        match crawl_one(url, request.timeout_ms).await {
+            Ok(mut page_records) => records.append(&mut page_records),
+            Err(error) => errors.push(format!("{}:{}", url.host_str().unwrap_or("unknown"), error)),
+        }
+        if records.len() >= request.max_records {
+            records.truncate(request.max_records);
+            break;
+        }
+    }
+
+    JobResponse {
+        protocol: PROTOCOL.into(),
+        job_id,
+        adapter_id: "spider".into(),
+        records,
+        errors,
+        external_actions: false,
+        paid_services: false,
+        execution: json!({
+            "status":"completed",
+            "mode":"local-http-only-serial-pilot",
+            "requested_concurrency":request.concurrency,
+            "effective_concurrency":1,
+            "browser_mode":false,
+            "follow_links":false,
+            "robots_txt":true,
+            "robots_decision_visibility":"not-exposed-by-spider-adapter",
+            "retry_after_requested":request.respect_retry_after,
+            "retry_after":"not-implemented",
+            "paid_services":false
+        }),
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    let stdin = io::stdin();
+    let stdout = io::stdout();
+    let mut output = stdout.lock();
+
+    let mut input = stdin.lock();
+    loop {
+        let line = match read_bounded_line(&mut input, MAX_REQUEST_LINE_BYTES) {
+            Ok(Some(line)) if !line.trim().is_empty() => line,
+            Ok(Some(_)) => continue,
+            Ok(None) => break,
+            Err(error) if error.kind() == io::ErrorKind::InvalidData => {
+                let response = response_error("invalid-request", vec![error.to_string()]);
+                if serde_json::to_writer(&mut output, &response).is_err()
+                    || writeln!(output).is_err()
+                    || output.flush().is_err()
+                {
+                    break;
+                }
+                continue;
+            }
+            Err(_) => break,
+        };
+        let response = handle_line(&line).await;
+        if serde_json::to_writer(&mut output, &response).is_err() {
+            break;
+        }
+        if writeln!(output).is_err() || output.flush().is_err() {
+            break;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn allowlist() -> HashSet<String> {
+        ["example.org".to_string(), "data.gov.rs".to_string()].into_iter().collect()
+    }
+
+    #[test]
+    fn extracts_title_description_text_headings_and_same_host_links() {
+        let html = r#"<html><head><title>Official Page</title><meta name="description" content="Verified public data"></head><body><nav><a href="/menu">Navigation only</a></nav><main><h1>Public records</h1><p>Source content for testing.</p><a href="/records">Records</a><a href="https://other.example/">External</a><a href="javascript:alert(1)">Unsafe</a></main><footer>Footer boilerplate</footer></body></html>"#;
+        let extracted = extract_page_fields(html, "https://example.org/");
+        assert_eq!(extracted["title"], "Official Page");
+        assert_eq!(extracted["description"], "Verified public data");
+        assert_eq!(extracted["canonical_external"], false);
+        assert_eq!(extracted["extraction_method"], "scraper-html-selectors");
+        assert_eq!(extracted["extraction_version"], "1");
+        assert!(extracted["text"].as_str().unwrap().contains("Source content for testing."));
+        assert!(!extracted["text"].as_str().unwrap().contains("Navigation only"));
+        assert!(!extracted["text"].as_str().unwrap().contains("Footer boilerplate"));
+        assert_eq!(extracted["headings"][0], "Public records");
+        assert_eq!(extracted["links"].as_array().unwrap().len(), 1);
+        assert_eq!(extracted["links"][0]["url"], "https://example.org/records");
+    }
+
+    #[test]
+    fn excludes_hidden_script_style_and_embedded_navigation_content() {
+        let html = r#"<html><body><main>
+            <p>Visible public record <span>with details</span>.</p>
+            <p hidden>Hidden text.</p>
+            <p aria-hidden="true">ARIA hidden text.</p>
+            <nav><p>Navigation text.</p></nav>
+            <footer><p>Footer text.</p></footer>
+            <script>secret_script_value()</script><style>.hidden{display:none}</style>
+            <noscript>Fallback script text.</noscript>
+        </main></body></html>"#;
+        let extracted = extract_page_fields(html, "https://example.org/");
+        let text = extracted["text"].as_str().unwrap();
+        assert!(text.contains("Visible public record"));
+        for forbidden in ["Hidden text.", "ARIA hidden text.", "Navigation text.",
+            "Footer text.", "secret_script_value", "Fallback script text."] {
+            assert!(!text.contains(forbidden), "must exclude {forbidden}");
+        }
+    }
+
+    #[test]
+    fn flags_external_canonical_as_untrusted_provenance() {
+        let html = r#"<html><head><link rel="canonical" href="https://other.example/page"></head><body><main><p>Content</p></main></body></html>"#;
+        let extracted = extract_page_fields(html, "https://example.org/");
+        assert_eq!(extracted["canonical_external"], true);
+        assert_eq!(extracted["canonical_same_host"], false);
+    }
+
+    #[test]
+    fn extraction_fixture_matrix_covers_ten_page_shapes() {
+        let fixtures = [
+            ("article", r#"<html><head><title>Article</title></head><body><article><h1>Article heading</h1><p>Article body.</p></article></body></html>"#, "Article body.", "semantic-container"),
+            ("main", r#"<html><head><title>Main</title></head><body><main><h1>Main heading</h1><p>Main body.</p></main></body></html>"#, "Main body.", "semantic-container"),
+            ("role-main", r#"<html><head><title>Role</title></head><body><div role="main"><h1>Role heading</h1><p>Role body.</p></div></body></html>"#, "Role body.", "semantic-container"),
+            ("body-fallback", r#"<html><head><title>Fallback</title></head><body><p>Fallback body.</p></body></html>"#, "Fallback body.", "body-fallback"),
+            ("table", r#"<html><head><title>Table</title></head><body><main><table><tr><th>Year</th><td>2026</td></tr></table></main></body></html>"#, "Year", "semantic-container"),
+            ("list", r#"<html><head><title>List</title></head><body><main><ul><li>First record</li><li>Second record</li></ul></main></body></html>"#, "Second record", "semantic-container"),
+            ("preformatted", r#"<html><head><title>Code</title></head><body><main><pre>alpha beta</pre></main></body></html>"#, "alpha beta", "semantic-container"),
+            ("nav-footer-noise", r#"<html><head><title>Noise</title></head><body><nav><h1>Nav heading</h1><p>Nav text.</p></nav><main><h1>Real heading</h1><p>Real content.</p></main><footer><p>Footer text.</p></footer></body></html>"#, "Real content.", "semantic-container"),
+            ("missing-title", r#"<html><body><main><p>Content without title.</p></main></body></html>"#, "Content without title.", "semantic-container"),
+            ("empty-body", r#"<html><head><title>Empty</title></head><body></body></html>"#, "", "body-fallback"),
+        ];
+        assert_eq!(fixtures.len(), 10);
+        for (name, html, expected_text, expected_root) in fixtures {
+            let extracted = extract_page_fields(html, "https://example.org/test");
+            assert_eq!(extracted["content_root"], expected_root, "fixture {name}");
+            assert!(extracted["text"].as_str().unwrap().contains(expected_text), "fixture {name}");
+            assert_eq!(extracted["text_char_count"].as_u64().unwrap() as usize,
+                extracted["text"].as_str().unwrap().chars().count(), "fixture {name}");
+        }
+        let noisy = extract_page_fields(fixtures[7].1, "https://example.org/test");
+        assert_eq!(noisy["headings"].as_array().unwrap().len(), 1);
+        assert_eq!(noisy["headings"][0], "Real heading");
+        assert!(!noisy["text"].as_str().unwrap().contains("Nav text."));
+        assert!(!noisy["text"].as_str().unwrap().contains("Footer text."));
+    }
+
+    #[test]
+    fn bounded_reader_rejects_oversized_line_and_recovers_at_next_line() {
+        let input = format!("{}\nvalid\n", "x".repeat(MAX_REQUEST_LINE_BYTES + 1));
+        let mut reader = io::Cursor::new(input.into_bytes());
+        let first = read_bounded_line(&mut reader, MAX_REQUEST_LINE_BYTES).unwrap_err();
+        assert_eq!(first.to_string(), "request-line-too-large");
+        assert_eq!(read_bounded_line(&mut reader, MAX_REQUEST_LINE_BYTES).unwrap().as_deref(), Some("valid"));
+        assert_eq!(read_bounded_line(&mut reader, MAX_REQUEST_LINE_BYTES).unwrap(), None);
+    }
+
+    #[test]
+    fn bounded_reader_accepts_exact_limit_and_strips_crlf() {
+        let input = format!("{}\r\n", "x".repeat(32));
+        let mut reader = io::Cursor::new(input.into_bytes());
+        assert_eq!(read_bounded_line(&mut reader, 32).unwrap().unwrap().len(), 32);
+    }
+
+    #[test]
+    fn rejects_overlong_urls_before_parsing() {
+        let raw = format!("https://example.org/{}", "a".repeat(MAX_URL_LENGTH));
+        assert_eq!(validate_target(&raw, &allowlist()).unwrap_err(), "url-length-exceeded");
+    }
+
+    #[test]
+    fn allows_exact_approved_public_host() {
+        let parsed = validate_target("https://example.org/data#section", &allowlist()).unwrap();
+        assert_eq!(parsed.as_str(), "https://example.org/data");
+    }
+
+    #[test]
+    fn rejects_non_public_ip_ranges() {
+        for raw in [
+            "0.0.0.0", "10.0.0.1", "100.64.0.1", "127.0.0.1",
+            "169.254.1.1", "172.16.0.1", "192.168.1.1",
+            "192.0.2.1", "192.88.99.1", "198.18.0.1", "198.51.100.1",
+            "203.0.113.1", "224.0.0.1", "255.255.255.255",
+            "::", "::1", "fe80::1", "fc00::1", "2001:db8::1",
+            "2001:10::1", "2001:20::1", "2001:2::1", "2001:3::1",
+            "2002::1", "3fff::1", "::ffff:127.0.0.1",
+        ] {
+            let ip: IpAddr = raw.parse().unwrap();
+            assert!(!is_public_routable_ip(ip), "must reject {raw}");
+        }
+        for raw in ["8.8.8.8", "1.1.1.1", "2606:4700:4700::1111"] {
+            let ip: IpAddr = raw.parse().unwrap();
+            assert!(is_public_routable_ip(ip), "must allow public {raw}");
+        }
+    }
+
+    #[test]
+    fn dns_resolution_rejects_mixed_public_and_private_answers() {
+        use std::net::SocketAddr;
+        let public = SocketAddr::from(([1, 1, 1, 1], 443));
+        let private = SocketAddr::from(([10, 0, 0, 7], 443));
+        let loopback = SocketAddr::from(([127, 0, 0, 1], 443));
+        assert!(resolved_addresses_are_public(&[public]));
+        assert!(!resolved_addresses_are_public(&[public, private]));
+        assert!(!resolved_addresses_are_public(&[public, loopback]));
+        assert!(!resolved_addresses_are_public(&[]));
+    }
+
+    #[test]
+    fn dns_resolution_rejects_ipv6_private_and_link_local_answers() {
+        use std::net::SocketAddr;
+        for raw in ["::1", "fc00::1", "fe80::1", "2001:db8::1"] {
+            let ip: IpAddr = raw.parse().unwrap();
+            let address = SocketAddr::new(ip, 443);
+            assert!(!resolved_addresses_are_public(&[address]), "must reject {raw}");
+        }
+    }
+
+    #[test]
+    fn rejects_unapproved_hosts_and_subdomains() {
+        assert_eq!(
+            validate_target("https://sub.example.org/", &allowlist()).unwrap_err(),
+            "source-host-not-approved"
+        );
+    }
+
+    #[test]
+    fn rejects_ip_literals_local_hosts_credentials_and_custom_ports() {
+        let hosts = allowlist();
+        for raw in [
+            "http://127.0.0.1/",
+            "http://[::1]/",
+            "http://localhost/",
+            "https://user:pass@example.org/",
+            "https://example.org:8443/",
+        ] {
+            assert!(validate_target(raw, &hosts).is_err(), "{raw}");
+        }
+    }
+
+    #[tokio::test]
+    async fn malformed_json_is_rejected_without_network_access() {
+        let response = handle_line("{not-json").await;
+        assert_eq!(response.errors, vec!["invalid-json-request"]);
+        assert!(response.records.is_empty());
+        assert_eq!(response.execution["status"], "rejected");
+        assert_eq!(response.execution["network_requests"], 0);
+    }
+
+    #[tokio::test]
+    async fn request_for_unapproved_host_is_rejected_before_crawl() {
+        let request = json!({
+            "protocol": PROTOCOL,
+            "job_id": "offline_test",
+            "adapter_id": "spider",
+            "urls": ["https://unapproved.example/data"],
+            "concurrency": 1,
+            "timeout_ms": 5000,
+            "browser_mode": false,
+            "follow_links": false,
+            "obey_robots_txt": true,
+            "respect_retry_after": true,
+            "max_records": 10,
+            "external_actions": false,
+            "paid_services": false
+        });
+        let response = handle_line(&request.to_string()).await;
+        assert!(response.errors.iter().any(|error| error == "source-host-not-approved"));
+        assert!(response.records.is_empty());
+        assert_eq!(response.execution["network_requests"], 0);
+    }
+
+    #[test]
+    fn error_response_never_echoes_untrusted_payload() {
+        let response = response_error(
+            "job_1",
+            vec!["source-host-not-approved".to_string()],
+        );
+        let serialized = serde_json::to_string(&response).unwrap();
+        assert!(!serialized.contains("secret-token"));
+        assert_eq!(response.external_actions, false);
+        assert_eq!(response.paid_services, false);
+    }
+}
+).count();
+                if winner.map_or(true, |(current, allow)| {
+                    specificity > current || (specificity == current && rule.allow && !allow)
+                }) {
+                    winner = Some((specificity, rule.allow));
+                }
+            }
+        }
+    }
+    (winner.map(|(_, allow)| allow).unwrap_or(true), delay)
+}
+
+async fn check_robots(url: &Url, timeout_ms: u64, respect_retry_after: bool) -> Result<(bool, u64, String), String> {
+    let mut robots_url = url.clone();
+    robots_url.set_path("/robots.txt");
+    robots_url.set_query(None);
+    robots_url.set_fragment(None);
+    let response = fetch_guarded(&robots_url, timeout_ms, MAX_PAGE_BYTES, respect_retry_after).await?;
+    let status = response.status.as_u16();
+    if (200..300).contains(&status) {
+        let text = String::from_utf8_lossy(&response.body);
+        let (allowed, delay) = robots_allowed_for(&text, "CEOAI-Crawler", url);
+        return Ok((allowed, delay, "robots-txt-parsed".into()));
+    }
+    if (400..500).contains(&status) && status != 429 {
+        return Ok((true, 0, format!("robots-txt-unavailable-http-{status}")));
+    }
+    Ok((false, 0, format!("robots-txt-unreachable-http-{status}")))
+}
+
+async fn crawl_one(url: &Url, timeout_ms: u64, respect_retry_after: bool) -> Result<Vec<Value>, String> {
     validate_dns_target(url).await?;
+    let (robots_allowed, crawl_delay_ms, robots_state) =
+        check_robots(url, timeout_ms, respect_retry_after).await?;
+    if !robots_allowed { return Err(format!("robots-disallowed:{robots_state}")); }
+
     let mut website = Website::new(url.as_str());
     website
         .with_limit(1)
         .with_depth(1)
-        .with_respect_robots_txt(true)
+        // robots.txt was fetched and enforced via the guarded transport above.
+        .with_respect_robots_txt(false)
+        .with_fetch_engine(GuardedHttpEngine::new(timeout_ms, respect_retry_after))
         .with_redirect_policy(RedirectPolicy::None)
         .with_request_timeout(Some(Duration::from_millis(timeout_ms)))
         .with_crawl_timeout(Some(Duration::from_millis(timeout_ms)));
