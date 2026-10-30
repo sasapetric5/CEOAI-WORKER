@@ -104,10 +104,11 @@ pub(crate) async fn fetch_guarded(
     timeout_ms: u64,
     body_limit: usize,
     respect_retry_after: bool,
+    allow_redirects: bool,
 ) -> Result<GuardedResponse, String> {
     tokio::time::timeout(
         Duration::from_millis(timeout_ms),
-        fetch_guarded_inner(initial_url, timeout_ms, body_limit, respect_retry_after),
+        fetch_guarded_inner(initial_url, timeout_ms, body_limit, respect_retry_after, allow_redirects),
     )
     .await
     .map_err(|_| "transport-total-timeout".to_string())?
@@ -118,6 +119,7 @@ async fn fetch_guarded_inner(
     timeout_ms: u64,
     body_limit: usize,
     respect_retry_after: bool,
+    allow_redirects: bool,
 ) -> Result<GuardedResponse, String> {
     let hosts = approved_hosts();
     let mut current = initial_url.clone();
@@ -147,6 +149,15 @@ async fn fetch_guarded_inner(
         }
 
         if response.status().is_redirection() {
+            if !allow_redirects {
+                return Ok(GuardedResponse {
+                    status: response.status(),
+                    final_url: current,
+                    headers: response.headers().clone(),
+                    body: Vec::new(),
+                    peer,
+                });
+            }
             if redirect_index == MAX_REDIRECTS {
                 return Err("transport-redirect-limit".into());
             }
@@ -156,6 +167,9 @@ async fn fetch_guarded_inner(
             let next = current.join(location)
                 .map_err(|_| "transport-invalid-redirect")?;
             validate_url(&next, &hosts)?;
+            if next.host_str() != current.host_str() {
+                return Err("transport-cross-host-redirect-forbidden".into());
+            }
             current = next;
             continue;
         }
@@ -219,7 +233,7 @@ impl HttpFetchEngine for GuardedHttpEngine {
             return Err(EngineError::Request);
         }
         let url = Url::parse(request.url).map_err(|_| EngineError::Request)?;
-        let response = fetch_guarded(&url, self.timeout_ms, MAX_RESPONSE_BYTES, self.respect_retry_after)
+        let response = fetch_guarded(&url, self.timeout_ms, MAX_RESPONSE_BYTES, self.respect_retry_after, false)
             .await.map_err(|e| EngineError::Other(e))?;
         let status_code = spider::client::StatusCode::from_u16(response.status.as_u16())
             .map_err(|_| EngineError::Request)?;
