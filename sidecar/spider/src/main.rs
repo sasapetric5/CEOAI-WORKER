@@ -71,8 +71,8 @@ fn extract_page_fields(html: &str, page_url: &str) -> Value {
     }
 
     let mut headings = Vec::new();
-    if let Ok(selector) = Selector::parse("h1, h2, h3") {
-        for node in document.select(&selector).take(20) {
+    if let (Some(root), Ok(selector)) = (content_root, Selector::parse("h1, h2, h3")) {
+        for node in root.select(&selector).take(20) {
             let value = node.text().collect::<Vec<_>>().join(" ")
                 .split_whitespace().collect::<Vec<_>>().join(" ");
             if !value.is_empty() { headings.push(value.chars().take(300).collect::<String>()); }
@@ -105,7 +105,14 @@ fn extract_page_fields(html: &str, page_url: &str) -> Value {
         "headings": headings,
         "links": links,
         "extraction_method": "scraper-html-selectors",
-        "extraction_version": "1"
+        "extraction_version": "1",
+        "content_root": if content_root.is_some() && Selector::parse("main, article, [role=main]").ok()
+            .and_then(|selector| document.select(&selector).next()).is_some() {
+                "semantic-container"
+            } else { "body-fallback" },
+        "text_char_count": text.chars().count(),
+        "heading_count": headings.len(),
+        "same_host_link_count": links.len()
     })
 }
 
@@ -374,6 +381,35 @@ mod tests {
         assert_eq!(extracted["headings"][0], "Public records");
         assert_eq!(extracted["links"].as_array().unwrap().len(), 1);
         assert_eq!(extracted["links"][0]["url"], "https://example.org/records");
+    }
+
+    #[test]
+    fn extraction_fixture_matrix_covers_ten_page_shapes() {
+        let fixtures = [
+            ("article", r#"<html><head><title>Article</title></head><body><article><h1>Article heading</h1><p>Article body.</p></article></body></html>"#, "Article body.", "semantic-container"),
+            ("main", r#"<html><head><title>Main</title></head><body><main><h1>Main heading</h1><p>Main body.</p></main></body></html>"#, "Main body.", "semantic-container"),
+            ("role-main", r#"<html><head><title>Role</title></head><body><div role="main"><h1>Role heading</h1><p>Role body.</p></div></body></html>"#, "Role body.", "semantic-container"),
+            ("body-fallback", r#"<html><head><title>Fallback</title></head><body><p>Fallback body.</p></body></html>"#, "Fallback body.", "body-fallback"),
+            ("table", r#"<html><head><title>Table</title></head><body><main><table><tr><th>Year</th><td>2026</td></tr></table></main></body></html>"#, "Year", "semantic-container"),
+            ("list", r#"<html><head><title>List</title></head><body><main><ul><li>First record</li><li>Second record</li></ul></main></body></html>"#, "Second record", "semantic-container"),
+            ("preformatted", r#"<html><head><title>Code</title></head><body><main><pre>alpha beta</pre></main></body></html>"#, "alpha beta", "semantic-container"),
+            ("nav-footer-noise", r#"<html><head><title>Noise</title></head><body><nav><h1>Nav heading</h1><p>Nav text.</p></nav><main><h1>Real heading</h1><p>Real content.</p></main><footer><p>Footer text.</p></footer></body></html>"#, "Real content.", "semantic-container"),
+            ("missing-title", r#"<html><body><main><p>Content without title.</p></main></body></html>"#, "Content without title.", "semantic-container"),
+            ("empty-body", r#"<html><head><title>Empty</title></head><body></body></html>"#, "", "body-fallback"),
+        ];
+        assert_eq!(fixtures.len(), 10);
+        for (name, html, expected_text, expected_root) in fixtures {
+            let extracted = extract_page_fields(html, "https://example.org/test");
+            assert_eq!(extracted["content_root"], expected_root, "fixture {name}");
+            assert!(extracted["text"].as_str().unwrap().contains(expected_text), "fixture {name}");
+            assert_eq!(extracted["text_char_count"].as_u64().unwrap() as usize,
+                extracted["text"].as_str().unwrap().chars().count(), "fixture {name}");
+        }
+        let noisy = extract_page_fields(fixtures[7].1, "https://example.org/test");
+        assert_eq!(noisy["headings"].as_array().unwrap().len(), 1);
+        assert_eq!(noisy["headings"][0], "Real heading");
+        assert!(!noisy["text"].as_str().unwrap().contains("Nav text."));
+        assert!(!noisy["text"].as_str().unwrap().contains("Footer text."));
     }
 
     #[test]
