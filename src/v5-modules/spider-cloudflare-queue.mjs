@@ -347,7 +347,9 @@ async function sha256Hex(value) {
 export async function normalizeBrowserRunRecords(result, job) {
   const records = [];
   const rejected = [];
-  const robotsStates = Array.isArray(result.robots) ? result.robots : [];
+  // Browser Run's documented crawl response exposes per-URL status, not a
+  // per-origin robots metadata array or an "outcome" field. Disallowed URLs
+  // are returned with status "disallowed"; only completed records are admitted.
   for (const item of Array.isArray(result.records) ? result.records : []) {
     if (!item || typeof item !== "object") continue;
     let url;
@@ -356,15 +358,8 @@ export async function normalizeBrowserRunRecords(result, job) {
       rejected.push({ reason: "off-host-or-invalid-url" });
       continue;
     }
-    const robotsState = robotsStates.find(entry => {
-      try { return new URL(entry.origin).origin === url.origin; } catch { return false; }
-    });
-    if (!robotsState || !["available", "absent"].includes(robotsState.state)) {
-      rejected.push({ reason: "robots-rules-unavailable" });
-      continue;
-    }
-    if (item.status !== "completed" || item.outcome !== "success") {
-      rejected.push({ reason: item.outcome || ("record-" + String(item.status || "unknown")) });
+    if (item.status !== "completed") {
+      rejected.push({ reason: "record-" + String(item.status || "unknown") });
       continue;
     }
     const statusCode = item.metadata?.status;
