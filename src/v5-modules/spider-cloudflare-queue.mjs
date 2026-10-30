@@ -252,6 +252,9 @@ async function startBrowserRunJob(env, message) {
     limit: boundedInt(message.page_limit, 5, 1, MAX_PAGES),
     depth: boundedInt(message.depth, 1, 0, MAX_DEPTH),
     formats: ["markdown"],
+    // Declare only the uses required by CEOAI. Never request ai-train.
+    crawlPurposes: ["search", "ai-input"],
+    contentUse: "reference",
     render: message.render === true,
     source: "all",
     options: {
@@ -342,9 +345,9 @@ async function sha256Hex(value) {
 }
 
 export async function normalizeBrowserRunRecords(result, job) {
-  const approvedHosts = [job.hostname];
   const records = [];
   const rejected = [];
+  const robotsStates = Array.isArray(result.robots) ? result.robots : [];
   for (const item of Array.isArray(result.records) ? result.records : []) {
     if (!item || typeof item !== "object") continue;
     let url;
@@ -353,18 +356,37 @@ export async function normalizeBrowserRunRecords(result, job) {
       rejected.push({ reason: "off-host-or-invalid-url" });
       continue;
     }
-    if (item.status !== "completed") {
-      rejected.push({ reason: "record-not-completed" });
+    const robotsState = robotsStates.find(entry => {
+      try { return new URL(entry.origin).origin === url.origin; } catch { return false; }
+    });
+    if (robotsState?.state === "fetch_failed") {
+      rejected.push({ reason: "robots-rules-unavailable" });
+      continue;
+    }
+    if (item.status !== "completed" || (item.outcome && item.outcome !== "success")) {
+      rejected.push({ reason: item.outcome || ("record-" + String(item.status || "unknown")) });
+      continue;
+    }
+    const statusCode = item.metadata?.status;
+    if (!Number.isInteger(statusCode) || statusCode < 200 || statusCode >= 300) {
+      rejected.push({ reason: "http-status-not-successful" });
       continue;
     }
     const markdown = typeof item.markdown === "string" ? item.markdown.slice(0, MAX_MARKDOWN_CHARS) : "";
     if (!markdown) { rejected.push({ reason: "empty-markdown" }); continue; }
+    const title = typeof item.metadata?.title === "string" ? item.metadata.title.slice(0, 300) : "";
+    const collectedAt = new Date().toISOString();
     records.push({
       url: url.href,
-      title: typeof item.metadata?.title === "string" ? item.metadata.title.slice(0, 300) : "",
-      status_code: Number.isInteger(item.metadata?.status) ? item.metadata.status : 0,
+      source_url: url.href,
+      title,
+      status_code: statusCode,
+      http_status: statusCode,
+      collected_at: collectedAt,
       content_type: "text/markdown",
       content: markdown,
+      data: { title, content_type: "text/markdown", content: markdown },
+      evidence: [markdown.slice(0, 2000)],
       content_hash: await sha256Hex(markdown),
       extractor: "cloudflare-browser-run/markdown",
       robots_allowed: true,
@@ -373,13 +395,16 @@ export async function normalizeBrowserRunRecords(result, job) {
   }
   const resultEnvelope = {
     protocol: PROTOCOL,
+    job_id: job.job_id,
     adapter_id: "spider",
     execution: { engine: "cloudflare-browser-run", paid_services: false, external_actions: false },
+    external_actions: false,
+    paid_services: false,
     records,
     rejected,
   };
-  const validated = validateSpiderJobResult(resultEnvelope);
-  if (!validated.valid) throw new Error("spider-result-contract-invalid");
+  const validated = validateSpiderJobResult(resultEnvelope, { approvedHosts: [job.hostname] });
+  if (!validated.accepted) throw new Error("spider-result-contract-invalid");
   return resultEnvelope;
 }
 
