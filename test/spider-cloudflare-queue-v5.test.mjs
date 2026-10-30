@@ -218,3 +218,58 @@ test("normalizes only completed same-host pages into Spider protocol records", a
   assert.equal(result.records[0].extractor, "cloudflare-browser-run/markdown");
   assert.match(result.records[0].content_hash, /^[a-f0-9]{64}$/);
 });
+
+test("completed Browser Run results become owner-scoped ceoai-spider/1 records", async () => {
+  const job = {
+    protocol: "ceoai-spider/1",
+    job_id: "spider_job_006",
+    owner_session: "owner",
+    hostname: "example.org",
+    status: "running",
+    cloudflare_job_id: "cloudflare-id-1",
+    page_limit: 5,
+    render: false,
+  };
+  const data = new Map([["spider:job:spider_job_006", JSON.stringify(job)]]);
+  const env = {
+    CLOUDFLARE_ACCOUNT_ID: "a".repeat(32),
+    BROWSER_RUN_API_TOKEN: "test-token-value-that-is-long-enough",
+    KV_MEMORY: {
+      data,
+      async put(k, v) { this.data.set(k, v); },
+      async get(k, type) {
+        const v = this.data.get(k);
+        return v == null ? null : (type === "json" ? JSON.parse(v) : v);
+      },
+    },
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    assert.match(String(url), /cloudflare-id-1\?limit=10$/);
+    return Response.json({
+      success: true,
+      result: {
+        status: "completed", total: 2, finished: 2, browserSecondsUsed: 3,
+        records: [
+          { url: "https://example.org/a", status: "completed", markdown: "# A",
+            metadata: { status: 200, title: "A" } },
+          { url: "https://example.org/blocked", status: "disallowed", markdown: "",
+            metadata: { status: 0 } },
+        ],
+      },
+    });
+  };
+  try {
+    const result = await getCloudflareSpiderJob(env, "spider_job_006", "owner");
+    assert.equal(result.status, 200);
+    assert.equal(result.body.job.status, "completed");
+    assert.equal("owner_session" in result.body.job, false);
+    assert.equal("cloudflare_job_id" in result.body.job, false);
+    assert.equal(result.body.job.result.protocol, "ceoai-spider/1");
+    assert.equal(result.body.job.result.execution.engine, "cloudflare-browser-run");
+    assert.equal(result.body.job.result.records.length, 1);
+    assert.equal(result.body.job.result.records[0].robots_allowed, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
