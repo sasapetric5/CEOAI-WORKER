@@ -153,7 +153,7 @@ mod tests {
     #[test]
     fn rejects_empty_and_mixed_public_private_dns_answers() {
         assert_eq!(validate_dns_answers(&[]), Err("dns-empty-answer-set"));
-        assert!(validate_dns_answers(&["1.1.1.1".parse().unwrap()).is_ok());
+        assert!(validate_dns_answers(&["1.1.1.1".parse().unwrap()]).is_ok());
         assert_eq!(
             validate_dns_answers(&["1.1.1.1".parse().unwrap(), "10.0.0.8".parse().unwrap()]),
             Err("dns-non-public-answer")
