@@ -5,6 +5,7 @@
 // HTTP client; this distinction is returned in execution metadata.
 
 import { parseApprovedSourceHosts, validateCrawlTarget } from "./web-intelligence.mjs";
+import { validateSpiderJobResult } from "./spider-adapter-contract.mjs";
 
 const PROTOCOL = "ceoai-spider/1";
 const MAX_PAGES = 10;                 // Deliberately below Cloudflare Free's 100-page ceiling.
@@ -50,7 +51,7 @@ export function validateCloudflareSpiderInput(input, env = {}) {
     errors: [],
     request: {
       protocol: PROTOCOL,
-      job_id: validJobId(input.job_id) ? input.job_id : crypto.randomUUID(),
+      job_id: `spider_${crypto.randomUUID()}`,
       adapter_id: "spider",
       url: target.canonical_url,
       hostname: target.hostname,
@@ -117,6 +118,24 @@ async function storeJob(env, jobId, value) {
   await env.KV_MEMORY.put(`spider:job:${jobId}`, JSON.stringify(value), {
     expirationTtl: JOB_TTL_SECONDS,
   });
+}
+
+function publicJob(job) {
+  const { owner_session, cloudflare_job_id, ...safe } = job;
+  return safe;
+}
+
+async function reserveDailyJobSlot(env, jobId) {
+  // Queue consumer max_concurrency=1 serializes this KV read/modify/write.
+  const day = new Date().toISOString().slice(0, 10);
+  const countKey = `spider:daily:${day}`;
+  const reservationKey = `spider:daily:reservation:${jobId}`;
+  if (await env.KV_MEMORY.get(reservationKey)) return true;
+  const used = Number(await env.KV_MEMORY.get(countKey) || "0");
+  if (!Number.isSafeInteger(used) || used >= 5) return false;
+  await env.KV_MEMORY.put(countKey, String(used + 1), { expirationTtl: JOB_TTL_SECONDS });
+  await env.KV_MEMORY.put(reservationKey, "1", { expirationTtl: JOB_TTL_SECONDS });
+  return true;
 }
 
 export async function enqueueCloudflareSpiderJob(env, input, sessionId) {
@@ -232,6 +251,12 @@ export async function processCloudflareSpiderQueue(batch, env) {
         message.ack();
         continue;
       }
+      const hasDailySlot = await reserveDailyJobSlot(env, body.job_id);
+      if (!hasDailySlot) {
+        await storeJob(env, body.job_id, { ...existing, status: "daily_free_limit_reached", error: "free-daily-crawl-limit-reached" });
+        message.ack();
+        continue;
+      }
       const browserRunJobId = await startBrowserRunJob(env, body);
       await storeJob(env, body.job_id, {
         ...existing,
@@ -241,7 +266,7 @@ export async function processCloudflareSpiderQueue(batch, env) {
       });
       message.ack();
     } catch (error) {
-      if (error?.retryable) {
+      if (error?.retryable || error?.name === "TypeError" || error?.name === "TimeoutError") {
         message.retry({ delaySeconds: 30 });
         continue;
       }
@@ -259,7 +284,7 @@ async function sha256Hex(value) {
   return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function normalizeBrowserRunRecords(result, job) {
+export async function normalizeBrowserRunRecords(result, job) {
   const approvedHosts = [job.hostname];
   const records = [];
   const rejected = [];
@@ -317,18 +342,18 @@ export async function getCloudflareSpiderJob(env, jobId, sessionId) {
     return { status: 404, body: { success: false, error: "spider-job-not-found" } };
   }
   if (job.status !== "running" || !job.cloudflare_job_id) {
-    return { status: job.status === "queued" ? 202 : 200, body: { success: true, job } };
+    return { status: job.status === "queued" ? 202 : 200, body: { success: true, job: publicJob(job) } };
   }
 
   try {
     const result = await fetchBrowserRunResult(env, job.cloudflare_job_id);
     if (result.status === "running") {
-      return { status: 202, body: { success: true, job: { ...job, status: "running", progress: { total: result.total || 0, finished: result.finished || 0 } } } };
+      return { status: 202, body: { success: true, job: publicJob({ ...job, status: "running", progress: { total: result.total || 0, finished: result.finished || 0 } }) } };
     }
     if (result.status !== "completed") {
       const failed = { ...job, status: "failed", error: String(result.status || "browser-run-failed") };
       await storeJob(env, jobId, failed);
-      return { status: 200, body: { success: true, job: failed } };
+      return { status: 200, body: { success: true, job: publicJob(failed) } };
     }
 
     const normalized = await normalizeBrowserRunRecords(result, job);
@@ -351,9 +376,13 @@ export async function getCloudflareSpiderJob(env, jobId, sessionId) {
         browser_seconds_used: Number(result.browserSecondsUsed || 0),
       },
     };
+    const validated = validateSpiderJobResult(protocolResult, { approvedHosts: [job.hostname], now: Date.now() });
+    protocolResult.records = validated.records;
+    protocolResult.errors = [...protocolResult.errors, ...validated.errors];
+    protocolResult.validation_status = validated.execution_status;
     const completed = { ...job, status: "completed", completed_at: new Date().toISOString(), result: protocolResult };
     await storeJob(env, jobId, completed);
-    return { status: 200, body: { success: true, job: completed } };
+    return { status: 200, body: { success: true, job: publicJob(completed) } };
   } catch {
     return { status: 503, body: { success: false, error: "browser-run-result-unavailable" } };
   }
