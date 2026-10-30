@@ -1,5 +1,7 @@
 //! Experimental Cloudflare Worker compatibility probe for the Spider stack.
 
+mod guarded_transport;
+
 use serde::Serialize;
 use std::time::Duration;
 use worker::*;
@@ -29,7 +31,7 @@ async fn fetch(req: Request, _env: Env, _ctx: Context) -> Result<Response> {
         });
     }
 
-    if path == "/runtime-check" {
+    if path == "/transport-capabilities" {\n        let capabilities = guarded_transport::Capabilities::current_runtime();\n        let mut response = Response::from_json(&serde_json::json!({\n            "status": if capabilities.permits_crawl() { "ready" } else { "blocked" },\n            "runtime": "cloudflare-workers-fetch",\n            "capabilities": {\n                "dns_resolution": capabilities.dns_resolution,\n                "dns_pinning": capabilities.dns_pinning,\n                "peer_ip_verification": capabilities.peer_ip_verification,\n                "redirect_validation": capabilities.redirect_validation,\n                "bounded_streaming": capabilities.bounded_streaming\n            },\n            "crawl_enabled": capabilities.permits_crawl(),\n            "reason": "Workers Fetch does not expose the resolved DNS answer set and connected peer IP to this adapter; fail closed."\n        }))?;\n        response.headers_mut().set("cache-control", "no-store")?;\n        return Ok(response);\n    }\n\n    if path == "/crawl" {\n        let reason = guarded_transport::WorkerGuardedTransport::ensure_supported()\n            .err().unwrap_or("crawl-route-not-enabled");\n        let mut response = Response::from_json(&serde_json::json!({\n            "protocol": "ceoai-spider/1",\n            "status": "rejected",\n            "error": reason,\n            "network_requests": 0,\n            "external_actions": false,\n            "paid_services": false\n        }))?;\n        response.headers_mut().set("cache-control", "no-store")?;\n        return Ok(response.with_status(503));\n    }\n\n    if path == "/runtime-check" {
         let start = js_sys::Date::now();
         let timer = tokio::time::timeout(
             Duration::from_millis(250),
