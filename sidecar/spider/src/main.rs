@@ -226,6 +226,7 @@ fn is_public_routable_ip(ip: IpAddr) -> bool {
                 || (a == 172 && (16..=31).contains(&b))
                 || (a == 192 && b == 168)
                 || (a == 192 && b == 0 && (c == 0 || c == 2))
+                || (a == 192 && b == 88 && c == 99)
                 || (a == 198 && (b == 18 || b == 19))
                 || (a == 198 && b == 51 && c == 100)
                 || (a == 203 && b == 0 && c == 113)
@@ -233,10 +234,13 @@ fn is_public_routable_ip(ip: IpAddr) -> bool {
         }
         IpAddr::V6(ip) => {
             let segments = ip.segments();
+            // Conservative global-unicast allowlist. Reject IETF special-purpose
+            // 2001::/23, documentation, 6to4, and documentation-only 3fff::/20.
             (segments[0] & 0xe000) == 0x2000
+                && !(segments[0] == 0x2001 && segments[1] <= 0x01ff)
                 && !(segments[0] == 0x2001 && segments[1] == 0x0db8)
-                && !(segments[0] == 0x2001 && segments[1] == 0x0002)
                 && !(segments[0] == 0x2002)
+                && !(segments[0] == 0x3fff && (segments[1] & 0xf000) == 0)
                 && ip.to_ipv4_mapped().is_none()
         }
     }
@@ -560,10 +564,11 @@ mod tests {
         for raw in [
             "0.0.0.0", "10.0.0.1", "100.64.0.1", "127.0.0.1",
             "169.254.1.1", "172.16.0.1", "192.168.1.1",
-            "192.0.2.1", "198.18.0.1", "198.51.100.1",
+            "192.0.2.1", "192.88.99.1", "198.18.0.1", "198.51.100.1",
             "203.0.113.1", "224.0.0.1", "255.255.255.255",
             "::", "::1", "fe80::1", "fc00::1", "2001:db8::1",
-            "2002::1", "::ffff:127.0.0.1",
+            "2001:10::1", "2001:20::1", "2001:2::1", "2001:3::1",
+            "2002::1", "3fff::1", "::ffff:127.0.0.1",
         ] {
             let ip: IpAddr = raw.parse().unwrap();
             assert!(!is_public_routable_ip(ip), "must reject {raw}");
