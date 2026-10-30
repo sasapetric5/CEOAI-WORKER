@@ -1,58 +1,69 @@
-# CEOAI Spider — experimental Cloudflare Worker
+# CEOAI Spider — Cloudflare Queue / Browser Run adapter
 
-This is an isolated experimental Worker adapter. It does **not** replace the local
-stdin/stdout sidecar and is not connected to CEOAI production.
+This directory contains the earlier Rust/Emscripten compatibility probe. It is kept as an isolated experiment and is not the production crawler transport.
 
-## Why it exists
+The supported Cloudflare integration lives in `src/v5-modules/spider-cloudflare-queue.mjs` and is connected to CEOAI V5:
+- `POST /api/crawl` submits an authenticated crawl job.
+- Cloudflare Queue consumer starts an asynchronous Browser Run `/crawl` job.
+- `GET /api/crawl/{job_id}` polls the job and returns the normalized protocol result.
+- `KV_MEMORY` stores owner-scoped job state and results.
 
-Cloudflare's Emscripten/Tokio integration is an experimental preview. The
-project follows the upstream workers-rs Emscripten Tokio example and pins the
-workers-rs source revision used for this experiment.
+## Runtime architecture
+1. CEOAI session submits a bounded crawl request.
+2. CEOAI validates HTTP(S), rejects credentials, IP literals and non-standard ports, and requires an exact hostname in `SPIDER_APPROVED_HOSTS`.
+3. The request is sent to the `ceoai-spider-jobs` Queue.
+4. Queue consumer calls Cloudflare Browser Run `/crawl` and stores the Cloudflare job ID in `KV_MEMORY`.
+5. Polling retrieves Markdown results, normalizes them to `ceoai-spider/1`, calculates SHA-256 hashes and stores the result.
+6. Results are session-owner scoped. External actions and paid services are always false.
 
-The manifest deliberately includes the same Spider, Reqwest, Tokio, scraper,
-and URL dependencies as the local sidecar. The first gate is to prove that this
-dependency graph compiles for the wasm32-unknown-emscripten target.
+The remote fetch/render engine is Cloudflare Browser Run, not the native Rust Spider HTTP client. The adapter preserves the CEOAI Spider protocol and source-approval boundary. The native Rust Spider sidecar remains available for local guarded HTTP crawling. This separation is intentional: the Emscripten Worker does not claim native Rust DNS pinning or peer-IP verification.
 
-## Routes
+## Free-first limits
+- Maximum 10 pages per job; maximum depth 2.
+- Default `render: false` to avoid browser-hour consumption.
+- JavaScript rendering requires `SPIDER_RENDER_JS_ENABLED=true` and request `render: true`.
+- Cloudflare documents 5 crawl jobs/day and 10 browser minutes/day on Workers Free.
+- Queue batch size 1, maximum 2 retries.
+- Result response hard cap 2 MiB; Markdown per page capped at 20,000 characters.
+- Job state expires after 24 hours.
+- Reuses `KV_MEMORY` with `spider:job:` prefix; no new KV namespace.
+- Does not use Workers AI JSON extraction.
 
-- GET / — static description.
-- GET /health — runtime and dependency probe metadata.
-- GET /runtime-check — checks that a Tokio timer can be awaited inside a
-  Worker fetch handler.
+Cloudflare Free allowances are ceilings, not unlimited capacity. The integration is opt-in and defaults to disabled. It does not change the account plan or enable paid services.
 
-The Worker exposes GET /transport-capabilities and a fail-closed /crawl endpoint.
-The latter returns HTTP 503 and confirms that no network request was made until
-every transport capability is available. Native security-gate tests cover DNS
-answer validation (including mixed public/private answers), private IPv4/IPv6
-ranges, exact peer-IP pinning, redirect policy, and fail-closed behavior.
+## Required Cloudflare setup (not performed by code changes)
+1. Create a Queue named `ceoai-spider-jobs` in Cloudflare.
+2. Create an API token scoped only to the account's Browser Run Edit permission. Do not use a Global API Key.
+3. Add Worker variable `CLOUDFLARE_ACCOUNT_ID`.
+4. Add Worker secret `BROWSER_RUN_API_TOKEN`.
+5. Set `SPIDER_APPROVED_HOSTS` to exact approved hostnames, comma-separated.
+6. Only after confirming Workers Free and its limits, set `SPIDER_CLOUDFLARE_ENABLED=true`.
+7. Keep `SPIDER_RENDER_JS_ENABLED=false` unless JS rendering is necessary and its free browser-time budget is monitored.
 
-**Important runtime limitation:** the Workers Fetch API surface used by this Rust
-handler does not expose the resolved DNS answer set or connected peer IP. Cloudflare
-also documents outbound TCP Sockets, but the official API reference defines
-`socket.opened.remoteAddress` for outbound connections as the address passed to
-`connect()` (for inbound service-binding connections it can represent the peer).
-It is therefore not proof of the resolved remote IP. Cloudflare also says that
-outbound TCP connections to ports 80 and 443 should use `fetch()` instead, which
-prevents substituting raw TCP sockets for ordinary web crawling on those ports.
-Consequently, the documented Workers APIs currently available to this adapter do
-not provide a proven way to combine normal HTTP/HTTPS crawling with DNS pinning and
-actual peer-IP verification. DNS pinning and peer-IP verification remain unavailable
-here and `/crawl` stays disabled. Do not weaken the gate or treat generic `fetch()`
-success or `remoteAddress` as proof of safe egress.
+The repository declares the Queue binding but does not create the Queue, set secrets, change billing, or deploy anything. Do not enable until the Queue and scoped token exist.
 
-## Build
+## API contract
+Submit `POST /api/crawl` with JSON:
+```json
+{
+  "url": "https://example.org/docs/",
+  "page_limit": 5,
+  "depth": 1,
+  "render": false
+}
+```
 
-From this directory:
+Poll `GET /api/crawl/{job_id}`.
 
-    cargo install -q worker-build
-    worker-build --emscripten --release
+The result uses `ceoai-spider/1`, `adapter_id: "spider"`, and source records with HTTP status, robots permission, extractor metadata, evidence, content hash and Markdown. `execution.engine` explicitly identifies `cloudflare-browser-run`.
 
-Local preview, when the Emscripten toolchain is available:
+## Security notes
+- CEOAI session cookie, allowed origin and existing IP rate limiter are required.
+- Queue messages contain no provider secrets or user cookies.
+- Callers cannot provide arbitrary request headers, authentication cookies or browser scripts.
+- Browser Run respects `robots.txt`, crawl-delay and Cloudflare bot protections; it does not bypass CAPTCHAs or access controls.
+- Only same-host results are admitted to CEOAI protocol records.
+- The adapter does not claim raw socket peer-IP verification. It uses Cloudflare's managed crawler boundary.
 
-    npx wrangler dev
-
-The CI runs native security-gate tests and builds the Emscripten Worker. These
-checks do not constitute live Cloudflare network-runtime proof. Do not deploy this
-Worker or connect it to CEOAI until a supported controlled-egress primitive makes
-DNS pinning and peer-IP verification possible and the complete network security
-suite passes against that primitive.
+## Previous Emscripten probe
+The Rust/Emscripten build scripts remain for reproducibility. A successful wasm build proves dependency compilation and timer compatibility only; it does not prove native Rust guarded transport works inside Workers. Do not deploy the experimental Rust Worker as the crawler.
