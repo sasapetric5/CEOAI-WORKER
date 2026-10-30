@@ -7,13 +7,13 @@ const BLOCKED_HOST_SUFFIXES = [".localhost", ".local", ".internal", ".test", ".i
 const MAX_FUTURE_SKEW_MS = 5 * 60 * 1000;
 
 function parseHost(value) {
-  const host = String(value ?? "").trim().toLowerCase().replace(/\\.$/, "");
+  const host = String(value ?? "").trim().toLowerCase().replace(/\.$/, "");
   if (!host || host.includes("/") || host.includes("@") || host.includes(":")) return null;
   if (host === "localhost" || BLOCKED_HOST_SUFFIXES.some(suffix => host.endsWith(suffix))) return null;
   if (!/^(?=.{1,253}$)[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(host)) return null;
   if (host.includes("..")) return null;
   // Literal IPs are intentionally excluded; approved sources must be named DNS hosts.
-  if (/^\\d{1,3}(?:\\.\\d{1,3}){3}$/.test(host) || host.includes(":")) return null;
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host) || host.includes(":")) return null;
   return host;
 }
 
@@ -108,7 +108,7 @@ export function deduplicateCrawlRecords(records = []) {
   const output = [];
   for (const record of records) {
     if (!record || typeof record.source_url !== "string" || typeof record.content_hash !== "string") continue;
-    const key = record.source_url + "\\n" + record.content_hash.toLowerCase();
+    const key = record.source_url + "\n" + record.content_hash.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
     output.push(record);
