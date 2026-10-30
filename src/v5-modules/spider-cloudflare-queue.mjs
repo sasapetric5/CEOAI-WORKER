@@ -226,7 +226,7 @@ async function startBrowserRunJob(env, message) {
   const data = await readJsonBounded(response, 64 * 1024);
   if (!response.ok || data?.success !== true || typeof data.result !== "string") {
     const error = new Error("browser-run-create-failed");
-    error.retryable = response.status === 429 || response.status >= 500;
+    error.retryable = response.status === 429;
     throw error;
   }
   return data.result;
@@ -266,7 +266,7 @@ export async function processCloudflareSpiderQueue(batch, env) {
       });
       message.ack();
     } catch (error) {
-      if (error?.retryable || error?.name === "TypeError" || error?.name === "TimeoutError") {
+      if (error?.retryable) {
         message.retry({ delaySeconds: 30 });
         continue;
       }
