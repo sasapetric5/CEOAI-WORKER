@@ -326,3 +326,63 @@ test("fails closed when robots metadata is missing", async () => {
   assert.equal(result.records.length, 0);
   assert.deepEqual(result.rejected, [{ reason: "robots-rules-unavailable" }]);
 });
+test("end-to-end: HTTP enqueue -> Queue consumer -> Browser Run -> KV result", async () => {
+  const data = new Map();
+  const env = {
+    ...baseEnv,
+    KV_MEMORY: {
+      data,
+      async put(key, value) { data.set(key, value); },
+      async get(key, type) {
+        const value = data.get(key);
+        if (value == null) return null;
+        return type === "json" ? JSON.parse(value) : value;
+      },
+    },
+    SPIDER_QUEUE: {
+      messages: [],
+      async send(body) { this.messages.push({ body, ack() { this.acked = true; }, retry() { this.retried = true; } }); },
+    },
+  };
+  const originalFetch = globalThis.fetch;
+  const originalDateNow = Date.now;
+  globalThis.fetch = async (url, options = {}) => {
+    if (options.method === "POST") {
+      assert.match(String(url), /browser-run\\/crawl$/);
+      return Response.json({ success: true, result: "cf-e2e-job-123" });
+    }
+    assert.match(String(url), /browser-run\\/crawl\\/cf-e2e-job-123\\?limit=10$/);
+    return Response.json({ success: true, result: {
+      status: "completed", total: 1, finished: 1, browserSecondsUsed: 0,
+      robots: [{ origin: "https://example.org", state: "available", status: 200 }],
+      records: [{ url: "https://example.org/guide", status: "completed", outcome: "success",
+        markdown: "# Verified guide", metadata: { status: 200, title: "Verified guide" } }],
+    } });
+  };
+  try {
+    const request = new Request("https://ceoai.dev/api/crawl", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: "https://example.org/guide", page_limit: 3, depth: 1 }),
+    });
+    const accepted = await handleCloudflareSpiderRequest(request, env, "e2e-owner");
+    assert.equal(accepted.status, 202);
+    const acceptedBody = await accepted.json();
+    const jobId = acceptedBody.job.job_id;
+    assert.equal((await env.KV_MEMORY.get("spider:job:" + jobId, "json")).status, "queued");
+    assert.equal(env.SPIDER_QUEUE.messages.length, 1);
+    await processCloudflareSpiderQueue({ messages: env.SPIDER_QUEUE.messages }, env);
+    assert.equal(env.SPIDER_QUEUE.messages[0].acked, true);
+    assert.equal((await env.KV_MEMORY.get("spider:job:" + jobId, "json")).status, "running");
+    const poll = await getCloudflareSpiderJob(env, jobId, "e2e-owner");
+    assert.equal(poll.status, 200);
+    assert.equal(poll.body.job.status, "completed");
+    assert.equal(poll.body.job.result.records[0].data.title, "Verified guide");
+    assert.equal(poll.body.job.result.records[0].robots_allowed, true);
+    assert.equal("owner_session" in poll.body.job, false);
+    assert.equal("cloudflare_job_id" in poll.body.job, false);
+    assert.equal((await env.KV_MEMORY.get("spider:job:" + jobId, "json")).status, "completed");
+  } finally {
+    globalThis.fetch = originalFetch;
+    Date.now = originalDateNow;
+  }
+});
