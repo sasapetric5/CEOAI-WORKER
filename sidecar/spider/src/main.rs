@@ -300,6 +300,39 @@ fn response_error(job_id: &str, errors: Vec<String>) -> JobResponse {
     }
 }
 
+fn truncation_metadata(transport_truncated: bool, source_chars: usize, bytes_transferred: Option<f64>) -> Value {
+    let output_truncated = source_chars > MAX_CONTENT_CHARS;
+    json!({
+        "spider_transport_content_truncated": transport_truncated,
+        "spider_bytes_transferred": bytes_transferred,
+        "output_html_truncated": output_truncated,
+        "content_truncated": transport_truncated || output_truncated,
+        "content_limit_scope": "output-serialization-only; not a transport byte cap"
+    })
+}
+
+#[cfg(test)]
+mod truncation_metadata_tests {
+    use super::*;
+
+    #[test]
+    fn reports_transport_and_output_truncation_separately() {
+        let transport_only = truncation_metadata(true, 100, Some(2048.0));
+        assert_eq!(transport_only["spider_transport_content_truncated"], true);
+        assert_eq!(transport_only["output_html_truncated"], false);
+        assert_eq!(transport_only["content_truncated"], true);
+        assert_eq!(transport_only["spider_bytes_transferred"], 2048.0);
+
+        let output_only = truncation_metadata(false, MAX_CONTENT_CHARS + 1, None);
+        assert_eq!(output_only["spider_transport_content_truncated"], false);
+        assert_eq!(output_only["output_html_truncated"], true);
+        assert_eq!(output_only["content_truncated"], true);
+
+        let complete = truncation_metadata(false, 100, Some(512.0));
+        assert_eq!(complete["content_truncated"], false);
+    }
+}
+
 async fn crawl_one(url: &Url, timeout_ms: u64) -> Result<Vec<Value>, String> {
     validate_dns_target(url).await?;
     let mut website = Website::new(url.as_str());
@@ -336,6 +369,12 @@ async fn crawl_one(url: &Url, timeout_ms: u64) -> Result<Vec<Value>, String> {
         let status = page.status_code.as_u16();
         let extracted = extract_page_fields(&bounded_html, &final_url);
 
+        let truncation = truncation_metadata(
+            page.content_truncated,
+            html.chars().count(),
+            page.bytes_transferred,
+        );
+
         records.push(json!({
             "source_url": final_url,
             "collected_at": Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true),
@@ -348,7 +387,7 @@ async fn crawl_one(url: &Url, timeout_ms: u64) -> Result<Vec<Value>, String> {
             "evidence": [evidence],
             "data": {
                 "html": bounded_html,
-                "content_truncated": html.chars().count() > MAX_CONTENT_CHARS,
+                "truncation": truncation,
                 "extracted": extracted
             }
         }));
