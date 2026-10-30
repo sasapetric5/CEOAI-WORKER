@@ -40,3 +40,19 @@ hostname allowlist is not a substitute for OS/container egress restrictions or
 DNS-rebinding protection. Run it only in a restricted environment and never
 expose its stdin/stdout bridge to untrusted callers. It does not attempt to
 bypass authentication, CAPTCHAs, access controls, or robots.txt.
+
+
+## Response-size accounting (important)
+
+The sidecar's `MAX_CONTENT_CHARS` setting limits only the HTML string included in
+its JSONL output. It is **not** a network-download byte limit. The Spider
+`with_max_page_bytes` option is documented as Chrome-only and is not used by
+this HTTP-only build. Each record therefore reports Spider's
+`content_truncated` signal and `bytes_transferred` value separately from
+sidecar output truncation. Do not treat these metadata fields as proof that
+the HTTP response was capped at a specific byte count.
+
+A hard, configurable streaming byte cap for the HTTP transport remains an
+open security task. It must be implemented and tested at the actual HTTP body
+stream, before full buffering; do not enable untrusted-source crawling until
+that control and outbound DNS/IP enforcement are in place.
