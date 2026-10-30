@@ -402,9 +402,24 @@ export async function getCloudflareSpiderJob(env, jobId, sessionId) {
     return { status: 502, body: { success: false, error: "browser-run-result-unavailable" } };
   }
   if (data.result.status !== "completed") {
-    const updated = { ...job, status: data.result.status === "failed" ? "failed" : "running" };
+    const remoteStatus = String(data.result.status || "unknown");
+    const terminalStatuses = new Set([
+      "errored",
+      "failed",
+      "cancelled",
+      "cancelled_by_user",
+      "cancelled_due_to_limits",
+      "cancelled_due_to_timeout",
+    ]);
+    const terminal = terminalStatuses.has(remoteStatus);
+    const updated = {
+      ...job,
+      status: terminal ? "failed" : "running",
+      ...(terminal ? { error: `browser-run-${remoteStatus}` } : {}),
+      browser_run_status: remoteStatus,
+    };
     await storeJob(env, jobId, updated);
-    return { status: 202, body: { success: true, job: publicJob(updated) } };
+    return { status: terminal ? 200 : 202, body: { success: true, job: publicJob(updated) } };
   }
   const normalized = await normalizeBrowserRunRecords(data.result, job);
   const completed = {
