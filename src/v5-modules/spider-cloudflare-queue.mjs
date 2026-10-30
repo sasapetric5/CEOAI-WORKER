@@ -359,10 +359,11 @@ export async function normalizeBrowserRunRecords(result, job) {
     const robotsState = robotsStates.find(entry => {
       try { return new URL(entry.origin).origin === url.origin; } catch { return false; }
     });
-    if (robotsState?.state === "fetch_failed") {
+    if (!robotsState || !["available", "absent"].includes(robotsState.state)) {
       rejected.push({ reason: "robots-rules-unavailable" });
       continue;
     }
+    if (item.status !== "completed" || item.outcome !== "success") {
     if (item.status !== "completed" || (item.outcome && item.outcome !== "success")) {
       rejected.push({ reason: item.outcome || ("record-" + String(item.status || "unknown")) });
       continue;
