@@ -54,7 +54,7 @@ fn extract_page_fields(html: &str, page_url: &str) -> Value {
     let mut text = if text_parts.is_empty() {
         selected_text(&document, "body").unwrap_or_default()
     } else {
-        text_parts.join("\\n")
+        text_parts.join("\n")
     };
     if text.chars().count() > MAX_EXTRACTED_TEXT_CHARS {
         text = text.chars().take(MAX_EXTRACTED_TEXT_CHARS).collect();
