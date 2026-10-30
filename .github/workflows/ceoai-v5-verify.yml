@@ -44,5 +44,8 @@ jobs:
       - name: Verify Spider sidecar
         run: cargo test --manifest-path sidecar/spider/Cargo.toml
 
+      - name: Verify Cloudflare Worker transport security gate (native runtime tests)
+        run: cargo test --manifest-path sidecar/spider-cloudflare-worker/Cargo.toml
+
       - name: Live smoke test against approved public fixture
         run: node sidecar/spider/scripts/live-smoke-test.mjs
