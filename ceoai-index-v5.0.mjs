@@ -1003,10 +1003,10 @@ export default {
     const origin = request.headers.get("Origin") || "";
     // Parse the allowlist once per request; do not cache mutable environment config globally.
     const requestAllowedOrigins = allowedOrigins(env);
-    const originAllowed = isAllowedOrigin(origin || (isSpiderRoute ? url.origin : ""), requestAllowedOrigins);
     const isSpiderCreate = url.pathname === "/api/crawl";
     const spiderPollMatch = url.pathname.match(/^\/api\/crawl\/([a-zA-Z0-9_-]{8,100})$/);
     const isSpiderRoute = isSpiderCreate || Boolean(spiderPollMatch);
+    const originAllowed = isAllowedOrigin(origin || (isSpiderRoute ? url.origin : ""), requestAllowedOrigins);
     const isApi = ["/api/chat", "/api/agents", "/api/agents/run", "/api/agents/run-ai"].includes(url.pathname) || isSpiderRoute;
 
     // Safe diagnostics: never log prompts, cookies, IP addresses, origins, or secret values.
