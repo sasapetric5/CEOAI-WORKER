@@ -25,7 +25,9 @@ test("planner selects an enabled compatible adapter for browser tasks", () => {
   );
   assert.equal(result.accepted, true);
   assert.equal(result.adapter, "spider");
-  assert.equal(result.execution_enabled, true);
+  assert.equal(result.execution_enabled, false);
+  assert.equal(result.execution_status, "planned-only");
+  assert.equal(result.requires_runtime_binding, true);
   assert.equal(result.external_actions, false);
   assert.equal(result.paid_services, false);
 });
