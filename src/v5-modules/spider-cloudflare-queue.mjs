@@ -9,6 +9,7 @@ import { validateSpiderJobResult } from "./spider-adapter-contract.mjs";
 
 const PROTOCOL = "ceoai-spider/1";
 const MAX_PAGES = 10;                 // Deliberately below Cloudflare Free's 100-page ceiling.
+const MAX_DAILY_JOBS = 5;
 const MAX_DEPTH = 2;
 const MAX_RESULT_BYTES = 2 * 1024 * 1024;
 const MAX_MARKDOWN_CHARS = 20_000;
@@ -168,7 +169,7 @@ async function reserveDailyJobSlot(env, jobId) {
   const reservationKey = `spider:daily:reservation:${jobId}`;
   if (await env.KV_MEMORY.get(reservationKey)) return true;
   const used = Number(await env.KV_MEMORY.get(countKey) || "0");
-  if (!Number.isSafeInteger(used) || used >= 5) return false;
+  if (!Number.isSafeInteger(used) || used >= MAX_DAILY_JOBS) return false;
   await env.KV_MEMORY.put(countKey, String(used + 1), { expirationTtl: JOB_TTL_SECONDS });
   await env.KV_MEMORY.put(reservationKey, "1", { expirationTtl: JOB_TTL_SECONDS });
   return true;
@@ -476,6 +477,7 @@ export async function handleCloudflareSpiderRequest(request, env, sessionId) {
 
 export const CLOUDFLARE_SPIDER_LIMITS = Object.freeze({
   maxPages: MAX_PAGES,
+  maxDailyJobs: MAX_DAILY_JOBS,
   maxDepth: MAX_DEPTH,
   maxResultBytes: MAX_RESULT_BYTES,
   maxMarkdownChars: MAX_MARKDOWN_CHARS,
