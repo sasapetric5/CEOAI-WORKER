@@ -42,4 +42,4 @@ jobs:
           workspaces: sidecar/spider
 
       - name: Verify Spider sidecar
-        run: cargo test --manifest-path sidecar/spider/Cargo.toml --locked
+        run: cargo test --manifest-path sidecar/spider/Cargo.toml
