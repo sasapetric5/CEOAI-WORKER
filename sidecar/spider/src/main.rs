@@ -26,6 +26,8 @@ const MAX_LINKS: usize = 30;
 const MAX_PAGE_BYTES: usize = 2 * 1024 * 1024;
 const MIN_DOMAIN_DELAY_MS: u64 = 1_000;
 
+fn default_true() -> bool { true }
+
 fn selected_text(document: &Html, selector: &str) -> Option<String> {
     let selector = Selector::parse(selector).ok()?;
     let value = document.select(&selector).next()?
@@ -158,7 +160,7 @@ struct JobRequest {
     browser_mode: bool,
     follow_links: bool,
     obey_robots_txt: bool,
-    #[serde(default)]
+    #[serde(default = "default_true")]
     respect_retry_after: bool,
     max_records: usize,
     external_actions: bool,
@@ -349,6 +351,7 @@ fn validate_job(request: &JobRequest, approved_hosts: &HashSet<String>) -> Resul
     if request.browser_mode { errors.push("browser-mode-disabled-in-local-pilot".into()); }
     if request.follow_links { errors.push("link-following-disabled-in-local-pilot".into()); }
     if !request.obey_robots_txt { errors.push("robots-txt-must-be-enabled".into()); }
+    if !request.respect_retry_after { errors.push("retry-after-must-be-enabled".into()); }
     if request.external_actions { errors.push("external-actions-must-be-disabled".into()); }
     if request.paid_services { errors.push("paid-services-must-be-disabled".into()); }
 
@@ -691,6 +694,32 @@ mod tests {
 
     fn allowlist() -> HashSet<String> {
         ["example.org".to_string(), "data.gov.rs".to_string()].into_iter().collect()
+    }
+
+    #[test]
+    fn retry_after_is_enabled_by_default_and_cannot_be_disabled() {
+        let base = json!({
+            "protocol": PROTOCOL,
+            "job_id": "retry_after_policy",
+            "adapter_id": "spider",
+            "urls": ["https://example.org/"],
+            "concurrency": 1,
+            "timeout_ms": 5000,
+            "browser_mode": false,
+            "follow_links": false,
+            "obey_robots_txt": true,
+            "max_records": 1,
+            "external_actions": false,
+            "paid_services": false
+        });
+        let defaulted: JobRequest = serde_json::from_value(base.clone()).unwrap();
+        assert!(defaulted.respect_retry_after);
+
+        let mut disabled = base;
+        disabled["respect_retry_after"] = json!(false);
+        let request: JobRequest = serde_json::from_value(disabled).unwrap();
+        let errors = validate_job(&request, &allowlist()).unwrap_err();
+        assert!(errors.iter().any(|error| error == "retry-after-must-be-enabled"));
     }
 
     #[test]
