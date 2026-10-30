@@ -11,6 +11,7 @@ worker = { git = "https://github.com/cloudflare/workers-rs", rev = "ed043e60b421
 tokio = { version = "1", default-features = false, features = ["rt", "macros", "sync", "time", "net", "io-util"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+ceoai-spider-transport-policy = { path = "transport-policy" }
 async-trait = "0.1"
 reqwest = { version = "0.13", features = ["stream"] }
 scraper = "0.22"
