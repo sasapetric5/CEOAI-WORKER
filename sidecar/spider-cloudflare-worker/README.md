@@ -28,14 +28,17 @@ ranges, exact peer-IP pinning, redirect policy, and fail-closed behavior.
 
 **Important runtime limitation:** the Workers Fetch API surface used by this Rust
 handler does not expose the resolved DNS answer set or connected peer IP. Cloudflare
-also documents an outbound TCP Sockets API whose `socket.opened` result can expose
-`remoteAddress`; however, this Rust/Emscripten adapter does not currently consume
-that JavaScript API, and `remoteAddress` alone is not yet a complete tested HTTP
-transport. A future adapter can use that socket API to verify the actual peer before
-writing an HTTP request, then enforce TLS/SNI, redirects, timeouts and body limits.
-Until that implementation is integrated and tested in the real Workers runtime,
-DNS pinning and peer-IP verification remain unavailable here and `/crawl` stays
-disabled. Do not weaken the gate or treat generic `fetch()` success as safe egress.
+also documents outbound TCP Sockets, but the official API reference defines
+`socket.opened.remoteAddress` for outbound connections as the address passed to
+`connect()` (for inbound service-binding connections it can represent the peer).
+It is therefore not proof of the resolved remote IP. Cloudflare also says that
+outbound TCP connections to ports 80 and 443 should use `fetch()` instead, which
+prevents substituting raw TCP sockets for ordinary web crawling on those ports.
+Consequently, the documented Workers APIs currently available to this adapter do
+not provide a proven way to combine normal HTTP/HTTPS crawling with DNS pinning and
+actual peer-IP verification. DNS pinning and peer-IP verification remain unavailable
+here and `/crawl` stays disabled. Do not weaken the gate or treat generic `fetch()`
+success or `remoteAddress` as proof of safe egress.
 
 ## Build
 
