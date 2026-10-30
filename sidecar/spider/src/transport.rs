@@ -116,6 +116,7 @@ pub(crate) struct GuardedResponse {
     pub status: StatusCode,
     pub final_url: Url,
     pub headers: reqwest::header::HeaderMap,
+    pub declared_content_length: Option<u64>,
     pub body: Vec<u8>,
     pub peer: Option<SocketAddr>,
 }
@@ -175,6 +176,7 @@ async fn fetch_guarded_inner(
                     status: response.status(),
                     final_url: current,
                     headers: response.headers().clone(),
+                    declared_content_length: response.content_length(),
                     body: Vec::new(),
                     peer,
                 });
@@ -225,6 +227,7 @@ async fn fetch_guarded_inner(
             status,
             final_url: current,
             headers,
+            declared_content_length,
             body,
             peer,
         });
@@ -261,7 +264,7 @@ impl HttpFetchEngine for GuardedHttpEngine {
             headers: response.headers,
             remote_addr: response.peer,
             body: response.body,
-            declared_content_length,
+            declared_content_length: response.declared_content_length,
             served: true,
             ..Default::default()
         })
