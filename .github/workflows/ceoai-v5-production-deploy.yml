@@ -1,0 +1,69 @@
+name: CEOAI V5.0 production deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_production:
+        description: "Type deploy to authorize updating the existing ceoai-worker production Worker"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ceoai-v5-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Full verification before deployment
+    if: ${{ inputs.confirm_production == 'deploy' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out verified v5.0 source
+        uses: actions/checkout@v4
+        with:
+          ref: v5.0
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run complete Worker verification
+        run: npm run verify
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Run Spider sidecar tests
+        run: cargo test --manifest-path sidecar/spider/Cargo.toml
+
+  deploy:
+    name: Deploy existing ceoai-worker Worker
+    needs: verify
+    if: ${{ needs.verify.result == 'success' && inputs.confirm_production == 'deploy' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the exact v5.0 source
+        uses: actions/checkout@v4
+        with:
+          ref: v5.0
+      - name: Validate Cloudflare credentials are configured
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CF_API_TOKEN" ]; then
+            echo "::error::GitHub Actions secret CLOUDFLARE_API_TOKEN is not configured."
+            exit 1
+          fi
+          if [ -z "$CF_ACCOUNT_ID" ]; then
+            echo "::error::GitHub Actions variable CLOUDFLARE_ACCOUNT_ID is not configured."
+            exit 1
+          fi
+      - name: Deploy with Wrangler
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --config wrangler.toml
