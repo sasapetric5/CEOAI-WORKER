@@ -184,7 +184,7 @@ fn read_bounded_line<R: BufRead>(reader: &mut R, max_bytes: usize) -> io::Result
             break;
         }
         saw_data = true;
-        let newline = available.iter().position(|byte| *byte == b'\\n');
+        let newline = available.iter().position(|byte| *byte == b'\n');
         let consumed = newline.map(|index| index + 1).unwrap_or(available.len());
         let payload_len = newline.map(|index| index).unwrap_or(consumed);
         if !oversized {
@@ -200,7 +200,7 @@ fn read_bounded_line<R: BufRead>(reader: &mut R, max_bytes: usize) -> io::Result
     if oversized {
         return Err(io::Error::new(io::ErrorKind::InvalidData, "request-line-too-large"));
     }
-    if bytes.last() == Some(&b'\\r') { bytes.pop(); }
+    if bytes.last() == Some(&b'\r') { bytes.pop(); }
     String::from_utf8(bytes)
         .map(Some)
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "request-line-not-utf8"))
@@ -606,7 +606,7 @@ mod tests {
 
     #[test]
     fn bounded_reader_rejects_oversized_line_and_recovers_at_next_line() {
-        let input = format!("{}\\nvalid\\n", "x".repeat(MAX_REQUEST_LINE_BYTES + 1));
+        let input = format!("{}\nvalid\n", "x".repeat(MAX_REQUEST_LINE_BYTES + 1));
         let mut reader = io::Cursor::new(input.into_bytes());
         let first = read_bounded_line(&mut reader, MAX_REQUEST_LINE_BYTES).unwrap_err();
         assert_eq!(first.to_string(), "request-line-too-large");
@@ -616,7 +616,7 @@ mod tests {
 
     #[test]
     fn bounded_reader_accepts_exact_limit_and_strips_crlf() {
-        let input = format!("{}\\r\\n", "x".repeat(32));
+        let input = format!("{}\r\n", "x".repeat(32));
         let mut reader = io::Cursor::new(input.into_bytes());
         assert_eq!(read_bounded_line(&mut reader, 32).unwrap().unwrap().len(), 32);
     }
