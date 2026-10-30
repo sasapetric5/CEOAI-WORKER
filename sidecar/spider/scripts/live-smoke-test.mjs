@@ -17,6 +17,7 @@ const request = {
   paid_services: false,
 };
 
+const startedAt = process.hrtime.bigint();
 const result = spawnSync(
   "cargo",
   ["run", "--quiet", "--manifest-path", "sidecar/spider/Cargo.toml"],
@@ -35,6 +36,7 @@ const result = spawnSync(
 if (result.error) throw result.error;
 assert.equal(result.status, 0, `sidecar process failed: ${result.stderr}`);
 
+const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
 const lines = result.stdout.trim().split(/\r?\n/);
 assert.equal(lines.length, 1, "sidecar must return exactly one JSONL response");
 const response = JSON.parse(lines[0]);
@@ -63,6 +65,8 @@ console.log(JSON.stringify({
   host: "example.org",
   http_status: page.http_status,
   records: response.records.length,
+  sidecar_end_to_end_ms: Math.round(elapsedMs),
+  timing_note: "Includes process startup; not pure network latency",
   content_hash: page.content_hash,
   paid_services: false,
   external_actions: false,
