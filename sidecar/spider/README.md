@@ -67,8 +67,4 @@ Use OS/container egress restrictions as a second security boundary and never
 expose its stdin/stdout bridge directly to untrusted callers. It does not
 bypass authentication, CAPTCHAs, access controls, or robots.txt.
 
-The Cloudflare Emscripten Worker experiment is isolated under
-`sidecar/spider-cloudflare-worker`. It is only a runtime/build compatibility
-probe and is not connected to CEOAI production. Its successful compile would
-not, by itself, prove that the guarded transport's DNS pinning and peer-IP
-verification behave identically in the Workers runtime.
+Cloudflare integration is provided by the opt-in Queue / Browser Run adapter in `src/v5-modules/spider-cloudflare-queue.mjs`. It preserves the `ceoai-spider/1` contract but explicitly reports `cloudflare-browser-run` as its engine; it does not claim to run the native Rust Spider HTTP transport inside Workers. See `sidecar/spider-cloudflare-worker/README.md` for setup, free limits and security boundaries. The earlier Emscripten Rust Worker remains an isolated compile/runtime probe only.
