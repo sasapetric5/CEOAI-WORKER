@@ -29,6 +29,7 @@ const baseEnv = {
 
 test("Cloudflare Spider limits remain conservative and free-first", () => {
   assert.equal(CLOUDFLARE_SPIDER_LIMITS.maxPages, 10);
+  assert.equal(CLOUDFLARE_SPIDER_LIMITS.maxDailyJobs, 5);
   assert.equal(CLOUDFLARE_SPIDER_LIMITS.maxDepth, 2);
   assert.equal(CLOUDFLARE_SPIDER_LIMITS.defaultRender, false);
   assert.equal(CLOUDFLARE_SPIDER_LIMITS.paidServices, false);
