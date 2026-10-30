@@ -64,6 +64,42 @@ export function validateCloudflareSpiderInput(input, env = {}) {
   };
 }
 
+async function readRequestTextBounded(request, maxBytes) {
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel("request-size-limit");
+        const error = new Error("request-too-large");
+        error.status = 413;
+        throw error;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    const error = new Error("request-invalid-utf8");
+    error.status = 400;
+    throw error;
+  }
+}
+
 async function readJsonBounded(response, maxBytes = 64 * 1024) {
   const declared = Number(response.headers.get("Content-Length") || "0");
   if (declared > maxBytes) throw new Error("cloudflare-response-too-large");
@@ -397,12 +433,19 @@ export async function handleCloudflareSpiderRequest(request, env, sessionId) {
     const declared = Number(request.headers.get("Content-Length") || "0");
     if (declared > 8_192) return Response.json({ success: false, error: "request-too-large" }, { status: 413 });
     let input;
+    let rawBody;
     try {
-      const text = await request.text();
-      if (new TextEncoder().encode(text).byteLength > 8_192) throw new Error("too-large");
-      input = JSON.parse(text);
+      rawBody = await readRequestTextBounded(request, 8_192);
+    } catch (error) {
+      return Response.json(
+        { success: false, error: error?.status === 413 ? "request-too-large" : "invalid-request-body" },
+        { status: error?.status === 413 ? 413 : 400 }
+      );
+    }
+    try {
+      input = JSON.parse(rawBody);
     } catch {
-      return Response.json({ success: false, error: "invalid-json-or-body-too-large" }, { status: 400 });
+      return Response.json({ success: false, error: "invalid-json" }, { status: 400 });
     }
     const result = await enqueueCloudflareSpiderJob(env, input, sessionId);
     return Response.json(result, { status: result.status || (result.accepted ? 202 : 400), headers: { "Cache-Control": "no-store" } });
