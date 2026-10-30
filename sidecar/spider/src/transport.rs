@@ -4,7 +4,7 @@ use reqwest::{header::LOCATION, redirect::Policy, StatusCode};
 use spider::fetch_engine::{
     EngineError, EngineMethod, EngineRequest, EngineResponse, HttpFetchEngine,
 };
-use url::Url;
+use url::{Host, Url};
 
 const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 const MAX_REDIRECTS: usize = 3;
@@ -147,7 +147,7 @@ pub(crate) async fn fetch_guarded(
         }
 
         let status = response.status();
-        let headers = response.headers().clone();
+        let headers = response.headers().clone();\n        let declared_content_length = headers.get(reqwest::header::CONTENT_LENGTH)\n            .and_then(|v| v.to_str().ok())\n            .and_then(|v| v.parse::<u64>().ok());
         if respect_retry_after
             && (status == StatusCode::TOO_MANY_REQUESTS || status == StatusCode::SERVICE_UNAVAILABLE)
             && retry_index < MAX_RETRIES
@@ -216,7 +216,7 @@ impl HttpFetchEngine for GuardedHttpEngine {
             headers: response.headers,
             remote_addr: response.peer,
             body: response.body,
-            declared_content_length: None,
+            declared_content_length,
             served: true,
             ..Default::default()
         })
@@ -237,7 +237,7 @@ mod tests {
             "https://evil.example/",
             "file:///etc/passwd",
             "https://user:pass@example.org/",
-            "https://example.org:8443/",
+            "https://example.org:8443/",\n            "https://8.8.8.8/",
         ] {
             let url = Url::parse(raw).unwrap();
             assert!(validate_url(&url, &hosts).is_err(), "must reject {raw}");
