@@ -276,6 +276,27 @@ test("completed Browser Run results become owner-scoped ceoai-spider/1 records",
   }
 });
 
+
+test("accepts the Cloudflare Dashboard secret name SPIDER_BROWSER_RUN_TOKEN", async () => {
+  const env = {
+    ...baseEnv,
+    BROWSER_RUN_API_TOKEN: undefined,
+    SPIDER_BROWSER_RUN_TOKEN: "dashboard-secret-token-value-long-enough",
+    KV_MEMORY: {
+      data: new Map(),
+      async put(k, v) { this.data.set(k, v); },
+      async get(k, type) {
+        const v = this.data.get(k);
+        return v == null ? null : (type === "json" ? JSON.parse(v) : v);
+      },
+    },
+    SPIDER_QUEUE: { sent: [], async send(v) { this.sent.push(v); } },
+  };
+  const result = await enqueueCloudflareSpiderJob(env, { url: "https://example.org/" }, "session");
+  assert.equal(result.accepted, true);
+  assert.equal(env.SPIDER_QUEUE.sent.length, 1);
+});
+
 test("HTTP adapter enforces streaming request cap without Content-Length", async () => {
   const oversized = new Request("https://ceoai.dev/api/crawl", {
     method: "POST",
