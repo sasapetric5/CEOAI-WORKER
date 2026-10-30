@@ -241,8 +241,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "a11y-fix",
@@ -272,8 +272,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "absence-audit",
@@ -303,8 +303,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "adr-review",
@@ -334,8 +334,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "agent-audit",
@@ -364,8 +364,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "agent-compare",
@@ -394,8 +394,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "agent-design",
@@ -424,8 +424,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "agent-grade",
@@ -454,8 +454,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "agent-guardrail",
@@ -486,8 +486,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "agent-metrics",
@@ -516,8 +516,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "agent-trace",
@@ -546,8 +546,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "ai-cost-optimize",
@@ -576,8 +576,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "ai-policy-review",
@@ -608,8 +608,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "ai-safety-check",
@@ -640,8 +640,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "alignment-check",
@@ -670,8 +670,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "api-design",
@@ -701,8 +701,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "api-docs",
@@ -732,8 +732,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "aria-label-audit",
@@ -763,8 +763,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "assumption-audit",
@@ -795,8 +795,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "auth-audit",
@@ -827,8 +827,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "aws-observability",
@@ -857,8 +857,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "aws-security",
@@ -889,8 +889,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "bki-cite-audit",
@@ -921,8 +921,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "blog-draft",
@@ -951,8 +951,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "bus-analytics",
@@ -981,8 +981,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "business-review",
@@ -1012,8 +1012,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "changelog-subscribe",
@@ -1044,8 +1044,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "claim-verify",
@@ -1076,8 +1076,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "code-review",
@@ -1107,8 +1107,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "codegen-eval",
@@ -1138,8 +1138,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "competitive-intel",
@@ -1170,8 +1170,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "content-calendar",
@@ -1200,8 +1200,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "content-design",
@@ -1230,8 +1230,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "content-review",
@@ -1260,8 +1260,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "coverage",
@@ -1291,8 +1291,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "coverage-gate",
@@ -1322,8 +1322,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "crucible-telemetry",
@@ -1352,8 +1352,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "daily-research",
@@ -1384,8 +1384,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "data-lineage",
@@ -1416,8 +1416,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "data-masking",
@@ -1448,8 +1448,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "data-quality",
@@ -1480,8 +1480,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "debug-test",
@@ -1511,8 +1511,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "deep-research-mode",
@@ -1543,8 +1543,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "diff-explain",
@@ -1574,8 +1574,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "doc-coauthoring",
@@ -1604,8 +1604,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "doc-drift",
@@ -1635,8 +1635,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "doc-harden",
@@ -1667,8 +1667,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "doc-self-check",
@@ -1699,8 +1699,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "etl-design",
@@ -1730,8 +1730,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     },
     {
       "id": "frontend-design",
@@ -1761,8 +1761,8 @@
       "content_hash": null,
       "runtime_status": "not-enabled",
       "review_status": "candidate",
-      "external_actions": null,
-      "paid_services": null
+      "external_actions": false,
+      "paid_services": false
     }
   ]
 }
