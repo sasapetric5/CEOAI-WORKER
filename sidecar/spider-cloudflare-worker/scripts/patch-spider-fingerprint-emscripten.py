@@ -1,25 +1,27 @@
 #!/usr/bin/env python3
-"""Apply a narrow Emscripten fallback to spider_fingerprint 2.39.0.
+"""Apply narrow, idempotent Emscripten compatibility patches.
 
-Upstream currently defines get_sec_ch_ua_platform only for desktop/mobile OSes.
-Emscripten has no matching target_os cfg, so the dependency fails to compile.
-This adds the standards-compatible "Unknown" platform hint for unsupported OSes.
-Remove this workaround once upstream ships the equivalent fallback.
+The pinned Spider release has native-only fingerprint, thread-pool and
+multi-thread test assumptions. Cloudflare Workers use a host-driven event
+loop and do not provide a general-purpose OS thread pool.
 """
 from pathlib import Path
-import sys
 
-matches = list((Path.home() / ".cargo" / "registry" / "src").glob(
+registry = Path.home() / ".cargo" / "registry" / "src"
+
+# 1. Provide a valid Client Hint platform for Emscripten.
+fingerprint_files = list(registry.glob(
     "*/spider_fingerprint-2.39.0/src/spoof_headers.rs"
 ))
-if len(matches) != 1:
+if len(fingerprint_files) != 1:
     raise SystemExit(
-        f"expected exactly one spider_fingerprint 2.39.0 source, found {len(matches)}"
+        f"expected exactly one spider_fingerprint 2.39.0 source, found {len(fingerprint_files)}"
     )
-
-source = matches[0]
-text = source.read_text(encoding="utf-8")
-fallback = '''#[cfg(not(any(
+fingerprint = fingerprint_files[0]
+fingerprint_text = fingerprint.read_text(encoding="utf-8")
+fallback_marker = "sec-ch-ua-platform fallback for targets such as Emscripten."
+if fallback_marker not in fingerprint_text:
+    fallback = r'''#[cfg(not(any(
     target_os = "macos",
     target_os = "windows",
     target_os = "linux",
@@ -32,83 +34,72 @@ fn get_sec_ch_ua_platform() -> &'static str {
 }
 
 '''
-if "sec-ch-ua-platform fallback for targets such as Emscripten." in text:
-    print("spider_fingerprint Emscripten fallback already applied")
-    raise SystemExit(0)
+    anchor = '#[cfg(target_arch = "x86")]'
+    if fingerprint_text.count(anchor) != 1:
+        raise SystemExit("unexpected fingerprint source layout; refusing to patch")
+    fingerprint_text = fingerprint_text.replace(anchor, fallback + anchor, 1)
+    fingerprint.write_text(fingerprint_text, encoding="utf-8")
 
-anchor = '#[cfg(target_arch = "x86")]'
-if text.count(anchor) != 1:
-    raise SystemExit("unexpected spider_fingerprint source layout; refusing to patch")
-text = text.replace(anchor, fallback + anchor, 1)
-source.write_text(text, encoding="utf-8")
-print(f"patched {source}")
-
-# Spider's default HTTP connector creates an OS thread and a Tokio
-# multi-thread runtime. Cloudflare Workers are host-event-loop driven;
-# schedule the connector future on the already-active Tokio runtime instead.
-spider_roots = list((Path.home() / ".cargo" / "registry" / "src").glob(
-    "*/spider-2.53.9/src"
-))
+# 2. Disable Spider's native background thread pool on wasm and dispatch
+# connector futures on the Worker-managed Tokio runtime instead.
+spider_roots = list(registry.glob("*/spider-2.53.9/src"))
 if len(spider_roots) != 1:
     raise SystemExit(
         f"expected exactly one spider 2.53.9 source, found {len(spider_roots)}"
     )
-
-connect = spider_roots[0] / "utils" / "connect.rs"
+spider_src = spider_roots[0]
+connect = spider_src / "utils" / "connect.rs"
 connect_text = connect.read_text(encoding="utf-8")
 
-native_init = "/// Init a background thread for request connect handling.\n"
-wasm_init = """#[cfg(target_arch = "wasm32")]
+native_fn = "pub fn init_background_runtime() {"
+native_guard = '#[cfg(not(target_arch = "wasm32"))]\n' + native_fn
+wasm_fn = '''#[cfg(target_arch = "wasm32")]
 pub fn init_background_runtime() {
-    // No OS threads in Workers. The request's host-driven Tokio runtime
-    // will execute connector futures directly.
+    // Workers have no general-purpose OS thread pool. Connector futures
+    // are scheduled on the host-driven runtime by send_to_background_runtime.
     BACKGROUND_THREAD_CONNECT_ENABLED.store(false, std::sync::atomic::Ordering::Relaxed);
 }
 
-"""
-if "No OS threads in Workers." not in connect_text:
-    if connect_text.count(native_init) != 1:
-        raise SystemExit("unexpected Spider connect.rs init layout; refusing to patch")
-    connect_text = connect_text.replace(native_init, wasm_init + native_init, 1)
-    connect_text = connect_text.replace(
-        "pub fn init_background_runtime() {",
-        "#[cfg(not(target_arch = \"wasm32\"))]\npub fn init_background_runtime() {",
-        1,
-    )
+'''
+if native_guard not in connect_text:
+    if connect_text.count(native_fn) != 1:
+        raise SystemExit("unexpected Spider init_background_runtime layout")
+    connect_text = connect_text.replace(native_fn, native_guard, 1)
+if "Connector futures are scheduled on the host-driven runtime" not in connect_text:
+    anchor = "/// Init a background thread for request connect handling.\n"
+    if connect_text.count(anchor) != 1:
+        raise SystemExit("unexpected Spider init documentation layout")
+    connect_text = connect_text.replace(anchor, wasm_fn + anchor, 1)
 
-send_anchor = "fn send_to_background_runtime(future: impl Future<Output = ()> + Send + 'static) {"
-if "tokio::spawn(future);" not in connect_text:
-    if connect_text.count(send_anchor) != 1:
-        raise SystemExit("unexpected Spider connect.rs sender layout; refusing to patch")
-    connect_text = connect_text.replace(
-        send_anchor,
-        "#[cfg(not(target_arch = \"wasm32\"))]\n" + send_anchor,
-        1,
-    )
-    layer_anchor = "/// This tower service injects futures with a oneshot channel, and then sends them to the background runtime for processing.\n"
-    wasm_sender = """#[cfg(target_arch = "wasm32")]
+sender = "fn send_to_background_runtime(future: impl Future<Output = ()> + Send + 'static) {"
+sender_guard = '#[cfg(not(target_arch = "wasm32"))]\n' + sender
+wasm_sender = '''#[cfg(target_arch = "wasm32")]
 fn send_to_background_runtime(future: impl Future<Output = ()> + Send + 'static) {
-    // The Worker handler is already executing inside the host-driven runtime.
     tokio::spawn(future);
 }
 
-"""
-    if connect_text.count(layer_anchor) != 1:
-        raise SystemExit("unexpected Spider connect.rs layer layout; refusing to patch")
-    connect_text = connect_text.replace(layer_anchor, wasm_sender + layer_anchor, 1)
-
+'''
+if sender_guard not in connect_text:
+    if connect_text.count(sender) != 1:
+        raise SystemExit("unexpected Spider background sender layout")
+    connect_text = connect_text.replace(sender, sender_guard, 1)
+if "tokio::spawn(future);" not in connect_text:
+    anchor = "/// This tower service injects futures with a oneshot channel, and then sends them to the background runtime for processing.\n"
+    if connect_text.count(anchor) != 1:
+        raise SystemExit("unexpected Spider background layer documentation layout")
+    connect_text = connect_text.replace(anchor, wasm_sender + anchor, 1)
 connect.write_text(connect_text, encoding="utf-8")
 
-# Upstream has a multi-thread Tokio unit test outside a target guard. It is
-# useful on native hosts but cannot be compiled into a Worker binary.
-page = spider_roots[0] / "page.rs"
+# 3. Exclude one upstream native multi-thread concurrency test from wasm
+# compilation. It tests OS-thread parallelism, unavailable in Workers.
+page = spider_src / "page.rs"
 page_text = page.read_text(encoding="utf-8")
 test_attr = '#[tokio::test(flavor = "multi_thread", worker_threads = 4)]\nasync fn test_host_dns_cache_concurrent_no_deadlock()'
 guarded_attr = '#[cfg(all(test, not(target_arch = "wasm32")))]\n' + test_attr
 if guarded_attr not in page_text:
     if page_text.count(test_attr) != 1:
-        raise SystemExit("unexpected Spider page.rs test layout; refusing to patch")
+        raise SystemExit("unexpected Spider native concurrency test layout")
     page_text = page_text.replace(test_attr, guarded_attr, 1)
     page.write_text(page_text, encoding="utf-8")
 
-print("patched Spider 2.53.9 for host-driven Emscripten runtime")
+print("Emscripten compatibility patches applied (idempotent)")
