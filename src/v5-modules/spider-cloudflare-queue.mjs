@@ -364,7 +364,6 @@ export async function normalizeBrowserRunRecords(result, job) {
       continue;
     }
     if (item.status !== "completed" || item.outcome !== "success") {
-    if (item.status !== "completed" || (item.outcome && item.outcome !== "success")) {
       rejected.push({ reason: item.outcome || ("record-" + String(item.status || "unknown")) });
       continue;
     }
