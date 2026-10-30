@@ -43,7 +43,7 @@ impl Capabilities {
     }
 }
 
-pub(crate) fn is_public_ip(ip: IpAddr) -> bool {
+pub fn is_public_ip(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(ip) => {
             let [a, b, c, d] = ip.octets();
@@ -65,6 +65,9 @@ pub(crate) fn is_public_ip(ip: IpAddr) -> bool {
                 && !(s[0] == 0x2001 && s[1] <= 0x01ff)
                 && !(s[0] == 0x2001 && s[1] == 0x0db8)
                 && !(s[0] == 0x2002)
+                && !(s[0] == 0x0064 && s[1] == 0xff9b && s[2] == 0 && s[3] == 0 && s[4] == 0 && s[5] == 0)
+                && !(s[0] == 0x0064 && s[1] == 0xff9b && s[2] == 1)
+                && !(s[0] == 0x0100 && s[1] == 0 && s[2] == 0 && s[3] == 0)
                 && !(s[0] == 0x3fff && (s[1] & 0xf000) == 0)
                 && ip.to_ipv4_mapped().is_none()
         }
@@ -74,7 +77,7 @@ pub(crate) fn is_public_ip(ip: IpAddr) -> bool {
 /// DNS is accepted only when every answer is public. Mixed public/private
 /// answer sets are rejected to prevent DNS rebinding and address selection
 /// ambiguity.
-pub(crate) fn validate_dns_answers(addresses: &[IpAddr]) -> Result<(), &'static str> {
+pub fn validate_dns_answers(addresses: &[IpAddr]) -> Result<(), &'static str> {
     if addresses.is_empty() {
         return Err("dns-empty-answer-set");
     }
@@ -86,7 +89,7 @@ pub(crate) fn validate_dns_answers(addresses: &[IpAddr]) -> Result<(), &'static 
 
 /// The peer must be one of the exact addresses resolved for this request and
 /// must use the requested destination port.
-pub(crate) fn verify_peer(
+pub fn verify_peer(
     resolved: &[SocketAddr],
     peer: Option<SocketAddr>,
 ) -> Result<(), &'static str> {
@@ -100,7 +103,7 @@ pub(crate) fn verify_peer(
     Ok(())
 }
 
-pub(crate) fn validate_redirect(
+pub fn validate_redirect(
     current: &Url,
     next: &Url,
     approved_hosts: &HashSet<String>,
@@ -167,7 +170,7 @@ mod tests {
             "169.254.1.1", "172.16.0.1", "192.168.1.1", "192.0.2.1",
             "198.18.0.1", "198.51.100.1", "203.0.113.1", "224.0.0.1",
             "255.255.255.255", "::", "::1", "fc00::1", "fe80::1",
-            "2001:db8::1", "2002::1", "::ffff:127.0.0.1",
+            "2001:db8::1", "2002::1", "64:ff9b::808:808", "64:ff9b:1::1", "100::1", "::ffff:127.0.0.1",
         ] {
             assert!(!is_public_ip(raw.parse().unwrap()), "must reject {raw}");
         }
@@ -185,6 +188,10 @@ mod tests {
             Err("peer-address-not-pinned")
         );
         assert_eq!(verify_peer(&[pinned], None), Err("peer-address-unavailable"));
+        assert_eq!(
+            verify_peer(&[pinned], Some(SocketAddr::from(([1, 1, 1, 1], 80)))),
+            Err("peer-address-not-pinned")
+        );
         assert_eq!(
             verify_peer(&[pinned], Some(SocketAddr::from(([127, 0, 0, 1], 443)))),
             Err("peer-address-non-public")
