@@ -29,8 +29,14 @@ export function validateCloudflareSpiderInput(input, env = {}) {
   const target = validateCrawlTarget(input.url, approvedHosts);
   if (!target.allowed) return { accepted: false, errors: [target.reason] };
 
-  const pageLimit = boundedInt(input.page_limit, 5, 1, MAX_PAGES);
-  const depth = boundedInt(input.depth, 1, 0, MAX_DEPTH);
+  if (input.page_limit !== undefined && (!Number.isInteger(input.page_limit) || input.page_limit < 1 || input.page_limit > MAX_PAGES)) {
+    return { accepted: false, errors: ["page-limit-out-of-range"] };
+  }
+  if (input.depth !== undefined && (!Number.isInteger(input.depth) || input.depth < 0 || input.depth > MAX_DEPTH)) {
+    return { accepted: false, errors: ["depth-out-of-range"] };
+  }
+  const pageLimit = input.page_limit ?? 5;
+  const depth = input.depth ?? 1;
   const render = input.render === true;
   if (render && env.SPIDER_RENDER_JS_ENABLED !== "true") {
     return { accepted: false, errors: ["javascript-rendering-not-enabled"] };
@@ -190,7 +196,6 @@ async function startBrowserRunJob(env, message) {
     options: {
       includeExternalLinks: false,
       includeSubdomains: false,
-      includePatterns: [message.url],
     },
   };
   const response = await fetch(base, {
