@@ -392,7 +392,7 @@ export async function getCloudflareSpiderJob(env, jobId, sessionId) {
   }
 
   const { base, token } = cloudflareApiConfig(env);
-  const url = `${base.replace(/\\/crawl$/, "")}/${encodeURIComponent(job.cloudflare_job_id)}?limit=${MAX_PAGES}`;
+  const url = `${base}/${encodeURIComponent(job.cloudflare_job_id)}?limit=${MAX_PAGES}`;
   const response = await fetch(url, {
     headers: apiHeaders(token),
     signal: AbortSignal.timeout(15_000),
