@@ -7,8 +7,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "check": "node --check ceoai-index-v5.0.mjs && node --check src/v5-modules/pii-shield.mjs",
-    "test": "node test-ceoai-v5.0.mjs && node --test test/*.test.mjs",
+    "check": "node --check ceoai-index-v5.0.mjs && node --check src/v5-modules/pii-shield.mjs && node --check src/v5-modules/hmac-auth.mjs",
+    "test": "node test-ceoai-v5.0.mjs && node --test test/*.test.mjs && node --test test/hmac-auth-v5.test.mjs",
     "verify": "npm run check && npm test"
   }
 }
