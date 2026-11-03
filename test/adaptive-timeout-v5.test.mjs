@@ -26,7 +26,8 @@ test("adaptive timeout follows provider latency but remains within hard bounds",
   assert.equal(adaptiveProviderTimeout(20000, 1000), MIN_PROVIDER_TIMEOUT_MS);
   assert.equal(adaptiveProviderTimeout(20000, 5000), 16000 > MAX_PROVIDER_TIMEOUT_MS ? MAX_PROVIDER_TIMEOUT_MS : 16000);
   assert.equal(adaptiveProviderTimeout(20000, 120000), MAX_PROVIDER_TIMEOUT_MS);
-  assert.equal(adaptiveProviderTimeout(5000, 1000), 5000);
+  // 1s EWMA => 1s * 3 + 1s safety margin = 4s, within the 5s remaining budget.
+  assert.equal(adaptiveProviderTimeout(5000, 1000), 4000);
 });
 
 test("no new provider attempt starts when the remaining deadline is too short", () => {
