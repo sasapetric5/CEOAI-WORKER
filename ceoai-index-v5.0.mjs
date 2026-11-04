@@ -715,7 +715,7 @@ async function fetchSearchSearxng(env, query) {
 async function fetchSearchBing(env, query) {
   // Microsoft's legacy Bing Search APIs were retired in 2025; require a configured compatible endpoint.
   const endpointValue = typeof env.BING_SEARCH_ENDPOINT === "string" ? env.BING_SEARCH_ENDPOINT.trim() : "";
-  if (!endpointValue || typeof env.BING_SEARCH_KEY !== "string" || !env.BING_SEARCH_KEY.trim() |) return null;
+  if (!endpointValue || typeof env.BING_SEARCH_KEY !== "string" || !env.BING_SEARCH_KEY.trim()) return null;
   let endpoint;
   try {
     endpoint = new URL(endpointValue);
@@ -749,7 +749,7 @@ async function fetchSearchConsole(env, query) {
   // Search Console is a site-owned analytics data source, not a general web search API.
   const siteUrl = typeof env.GSC_SITE_URL === "string" ? env.GSC_SITE_URL.trim() : "";
   const token = typeof env.GSC_ACCESS_TOKEN === "string" ? env.GSC_ACCESS_TOKEN.trim() : "";
-  if (!siteUrl || !token || env.GSC_ENABLED !== "true" |) return null;
+  if (!siteUrl || !token || env.GSC_ENABLED !== "true") return null;
   let parsedSite;
   try {
     parsedSite = new URL(siteUrl);
@@ -788,7 +788,7 @@ async function fetchSearchConsole(env, query) {
 
 async function fetchSearchSerpApi(env, query) {
   // SerpAPI uses the owner-supplied key; quota/provider errors are handled by cooldown and failover.
-  if (typeof env.SERPAPI_KEY !== "string" || !env.SERPAPI_KEY.trim() |) return null;
+  if (typeof env.SERPAPI_KEY !== "string" || !env.SERPAPI_KEY.trim()) return null;
   if (await isInCooldown(env, "search-serpapi")) return null;
   try {
     const endpoint = new URL("https://serpapi.com/search.json");
