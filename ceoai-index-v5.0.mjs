@@ -1203,7 +1203,18 @@ export default {
       if (intent === CAPABILITY.research) {
         // Reuse CEOAI's existing search-provider failover; search text is always untrusted evidence.
         try {
-          const enriched = await enrichWithSearchFailover(env, task);
+          // Free-only discovery: no paid search APIs are called by the app gateway.
+          // DuckDuckGo Instant Answer is a no-key, best-effort source; URL reading uses Jina Reader.
+          const urlMatch = task.match(/https?:\\/\\/[^\\s<>"']+/i);
+          let enriched = { text: "", source: null };
+          if (urlMatch && env.JINA_READER_ENABLED !== "false" &&
+              !(await isInCooldown(env, "search-jina"))) {
+            const pageText = await fetchUrlWithJina(urlMatch[0]);
+            if (pageText) enriched = { text: pageText, source: "jina-reader" };
+          } else {
+            const text = await fetchSearchDuckDuckGo(env, task);
+            if (text) enriched = { text, source: "duckduckgo" };
+          }
           if (typeof enriched?.text === "string" && enriched.text.trim()) {
             agentInput = {
               ...input,

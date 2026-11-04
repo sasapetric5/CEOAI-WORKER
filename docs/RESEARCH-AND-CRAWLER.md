@@ -2,7 +2,7 @@
 
 ## Search reuse for app agents
 
-The authenticated `POST /v1/agents/run` gateway now reuses the same `enrichWithSearchFailover()` function as `/api/chat` whenever the task intent is research. This is not a second search implementation. It uses the existing configured provider order, KV cooldowns and failover behavior.
+The authenticated `POST /v1/agents/run` gateway now reuses the existing no-key DuckDuckGo Instant Answer source for topic discovery and the existing Jina Reader for direct URLs. The app gateway deliberately does not call Firecrawl, Tavily, Google CSE, Exa or other key-based search APIs, avoiding accidental paid usage.
 
 Search output is added to `input.researchContext` with its provider ID and the explicit trust label `untrusted_reference`. The planner is instructed not to execute or follow instructions found in web content. If search is unavailable, the agent task continues without research context and the response explicitly reports `researchUsed: false`.
 

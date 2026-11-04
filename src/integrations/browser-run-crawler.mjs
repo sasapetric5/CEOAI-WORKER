@@ -103,12 +103,13 @@ function mapHttpFailure(status, response) {
   return { ok: false, code: "CRAWL_PROVIDER_UNAVAILABLE" };
 }
 
-function normalizeStatusResult(data) {
+function normalizeStatusResult(data, expectedJobId) {
   const result = data?.result;
-  if (!isPlainObject(result) || typeof result.id !== "string" || !safeJobId(result.id) ||
-      typeof result.status !== "string") return null;
+  if (!isPlainObject(result) || typeof result.status !== "string") return null;
+  const jobId = typeof result.id === "string" ? result.id : expectedJobId;
+  if (!safeJobId(jobId)) return null;
   return {
-    jobId: result.id,
+    jobId,
     status: result.status,
     total: Number.isSafeInteger(result.total) && result.total >= 0 ? result.total : null,
     finished: Number.isSafeInteger(result.finished) && result.finished >= 0 ? result.finished : null,
@@ -219,7 +220,7 @@ export function createBrowserRunCrawler({
     if (!safeJobId(jobId)) return { ok: false, code: "CRAWL_INVALID_JOB_ID" };
     const response = await request("/" + encodeURIComponent(jobId) + "?limit=1");
     if (!response.ok) return response;
-    const result = normalizeStatusResult(response.data);
+    const result = normalizeStatusResult(response.data, jobId);
     return result ? { ok: true, ...result, terminal: TERMINAL_STATUSES.has(result.status) }
       : { ok: false, code: "CRAWL_INVALID_RESPONSE" };
   }
@@ -231,7 +232,7 @@ export function createBrowserRunCrawler({
     }
     const response = await request("/" + encodeURIComponent(jobId) + "?limit=" + limit + "&status=completed");
     if (!response.ok) return response;
-    const status = normalizeStatusResult(response.data);
+    const status = normalizeStatusResult(response.data, jobId);
     if (!status) return { ok: false, code: "CRAWL_INVALID_RESPONSE" };
     if (status.status !== "completed") return { ok: true, ...status, records: [] };
     const records = Array.isArray(response.data.result.records)

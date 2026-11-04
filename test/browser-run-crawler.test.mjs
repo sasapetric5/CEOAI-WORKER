@@ -104,7 +104,7 @@ test("getStatus requests only lightweight status and validates the job ID", asyn
   const fake = fakeFetch(async (url, options) => {
     assert.equal(options.method, "GET");
     assert.equal(url.endsWith("/crawl_job_12345678?limit=1"), true);
-    return Response.json({ success: true, result: { id: "crawl_job_12345678", status: "running", total: 8, finished: 3 } });
+    return Response.json({ success: true, result: { status: "running", total: 8, finished: 3 } });
   });
   const crawler = createBrowserRunCrawler({ accountId: ACCOUNT, apiToken: TOKEN, fetchImpl: fake.fetchImpl });
   assert.equal((await crawler.getStatus("../bad")).code, "CRAWL_INVALID_JOB_ID");

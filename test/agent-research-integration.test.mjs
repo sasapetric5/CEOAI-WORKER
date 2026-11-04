@@ -69,10 +69,10 @@ test("ContentCraft agent gateway reuses configured web search and marks results 
   let sawResearch = false;
   globalThis.fetch = async (url, options) => {
     const target = String(url);
-    if (target === "https://api.tavily.com/search") {
+    if (target.startsWith("https://api.duckduckgo.com/")) {
       searchCalls++;
       return Response.json({
-        results: [{ title: "Cloudflare Queues", url: "https://developers.cloudflare.com/queues/", content: "Queue documentation excerpt." }],
+        AbstractText: "Queue documentation excerpt.", AbstractURL: "https://developers.cloudflare.com/queues/", RelatedTopics: [],
       });
     }
     if (target === "https://openrouter.ai/api/v1/chat/completions") {
@@ -82,7 +82,7 @@ test("ContentCraft agent gateway reuses configured web search and marks results 
       if (!synthesis) {
         const plan = JSON.parse(body.messages[1].content);
         const context = plan.context?.input?.researchContext ?? plan.originalInput?.researchContext;
-        sawResearch = context?.source === "tavily" &&
+        sawResearch = context?.source === "duckduckgo" &&
           context?.trust === "untrusted_reference" &&
           context?.content?.includes("Queue documentation excerpt.") === true;
       }
@@ -94,7 +94,7 @@ test("ContentCraft agent gateway reuses configured web search and marks results 
     throw new Error("Unexpected network destination");
   };
   try {
-    const env = environment({ TAVILY_API_KEY: "test-tavily-key" });
+    const env = environment({ DUCKDUCKGO_ENABLED: "true" });
     const response = await worker.fetch(await signedRequest({
       task: "Pretraži web i istraži Cloudflare Queues obrasce.",
       input: { appFeature: "ContentCraft research" },
@@ -104,7 +104,7 @@ test("ContentCraft agent gateway reuses configured web search and marks results 
     const data = await response.json();
     assert.equal(data.success, true);
     assert.equal(data.researchUsed, true);
-    assert.equal(data.researchSource, "tavily");
+    assert.equal(data.researchSource, "duckduckgo");
     assert.equal(searchCalls, 1);
     assert.equal(modelCalls, 2);
     assert.equal(sawResearch, true);
@@ -127,7 +127,7 @@ test("agent gateway continues safely when no search provider returns results", a
         : JSON.stringify({ type: "final", output: "Nije dostupan svež rezultat pretrage." });
       return Response.json({ choices: [{ message: { content } }] });
     }
-    throw new Error("Search provider should not be called without configuration");
+    throw new Error("Search provider should not be called when disabled");
   };
   try {
     const response = await worker.fetch(await signedRequest({
