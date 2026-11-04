@@ -487,13 +487,16 @@ function quotaCooldownTTL(error) {
 }
 
 async function fetchSearchTavily(env, query) {
-  if (typeof env.TAVILY_KEY !== "string" || !env.TAVILY_KEY.trim()) return null;
+  const key = typeof env.TAVILY_API_KEY === "string" && env.TAVILY_API_KEY.trim()
+    ? env.TAVILY_API_KEY.trim()
+    : (typeof env.TAVILY_KEY === "string" ? env.TAVILY_KEY.trim() : "");
+  if (!key) return null;
 
   if (await isInCooldown(env, "search-tavily")) return null;
   try {
     const response = await withTimeoutFetch("https://api.tavily.com/search", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${env.TAVILY_KEY.trim()}` },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
       body: JSON.stringify({ query: String(query).slice(0, 400), max_results: 5, search_depth: "basic" }),
     }, SEARCH_TIMEOUT_MS);
     if (!response.ok) {
