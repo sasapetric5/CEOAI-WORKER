@@ -18,6 +18,7 @@ const MAX_SUMMARY_CHARS = 4000;
 const MAX_HISTORY_MESSAGES = 16;
 const MAX_HISTORY_INPUT_MESSAGES = 64;
 const MAX_REPLY_CHARS = 12000;
+import { verifyHmacSignature } from "./src/v5-modules/hmac-auth.mjs";
 import { handleOpenAIChatCompletions } from "./src/openai-compat.mjs";
 import { prepareConversation, appendReply, withSummary } from "./src/v5-modules/history.mjs";
 import { handleMemoryReset } from "./src/v5-modules/session.mjs";
@@ -999,7 +1000,30 @@ export default {
       });
     }
 
-    if (url.pathname === "/v1/chat/completions") return handleOpenAIChatCompletions(request, env);
+    if (url.pathname === "/v1/chat/completions") {
+      const hasHmacHeaders = ["X-App-Id", "X-Timestamp", "X-Nonce", "X-Signature"]
+        .some(name => request.headers.has(name));
+      if (hasHmacHeaders) {
+        let rawBody;
+        try {
+          rawBody = await request.clone().arrayBuffer();
+        } catch {
+          return json({ error: { message: "Invalid request body.", type: "authentication_error", code: "invalid_body" } }, 400);
+        }
+        const auth = await verifyHmacSignature(request, rawBody, env);
+        if (!auth.valid) {
+          return json({
+            error: {
+              message: auth.status === 503 ? "App authentication service unavailable." : "Unauthorized.",
+              type: auth.status === 503 ? "server_error" : "authentication_error",
+              code: auth.status === 503 ? "authentication_unavailable" : "unauthorized"
+            }
+          }, auth.status);
+        }
+        return handleOpenAIChatCompletions(request, env, { hmacAuthenticated: true, appId: auth.appId });
+      }
+      return handleOpenAIChatCompletions(request, env);
+    }
 
     if (url.pathname === "/api/reset") return handleMemoryReset(request, env);
 
