@@ -86,7 +86,7 @@ test("agent gateway rejects missing HMAC before any model call",async()=>{
 test("agent gateway rejects app IDs outside its explicit application policy",async()=>{
  const mock=mockFreeModel();
  try{
-  const env=environment({HMAC_ALLOWED_APPS:"CONTENTCRAFT-APP,AIFORCE-APP,UNKNOWN-APP",APP_SECRET_UNKNOWN_APP:"test-unknown-app-secret-at-least-32-bytes"});
+  const env=environment({HMAC_ALLOWED_APPS:"CONTENTCRAFT-APP,AIFORCE-APP,UNKNOWN-APP",APP_SECRET_UNKNOWN_APP:secret});
   const response=await worker.fetch(await signedRequest({task:"test"},{id:"UNKNOWN-APP"}),env);
   assert.equal(response.status,403);assert.equal((await response.json()).code,"APP_NOT_ENABLED");assert.equal(mock.calls,0);
  }finally{mock.restore();}
