@@ -3,18 +3,20 @@ import {createKVSkillSystem,createBuiltinSkillSystem} from "./skill-system.mjs";
 import {createAgentRegistry} from "./agent-registry.mjs";
 import {BUILTIN_AGENTS} from "./builtin-agents.mjs";
 import {createMultiAgentSupervisor} from "./multi-agent-supervisor.mjs";
-function attach(skillSystem,{toolRegistry,maxAgents,maxToolCalls}){
+import {createSkillMCPResources} from "./skill-mcp-resources.mjs";
+function attach(skillSystem,{toolRegistry,maxAgents,maxToolCalls,mcpAuthorize=null,mcpAudit=null,mcpPageSize=20}){
  const agents=createAgentRegistry({agents:BUILTIN_AGENTS,skillRegistry:skillSystem.registry,toolRegistry});
  const supervisor=createMultiAgentSupervisor({agentRegistry:agents,skillRegistry:skillSystem.registry,agentLoop:skillSystem.agentLoop,maxAgents,maxToolCalls});
- return Object.freeze({...skillSystem,agents,multiAgentSupervisor:supervisor});
+ const mcpResources=mcpAuthorize===null?null:createSkillMCPResources({skillRegistry:skillSystem.registry,authorize:mcpAuthorize,audit:mcpAudit,maxPageSize:mcpPageSize});
+ return Object.freeze({...skillSystem,agents,multiAgentSupervisor:supervisor,mcpResources});
 }
-export function createBuiltinAgentSystem({toolRegistry,agentLoopFactory,maxAgents=3,maxToolCalls=4}={}){
+export function createBuiltinAgentSystem({toolRegistry,agentLoopFactory,maxAgents=3,maxToolCalls=4,mcpAuthorize=null,mcpAudit=null,mcpPageSize=20}={}){
  const skills=createBuiltinSkillSystem({toolRegistry,agentLoopFactory,maxSelectedSkills:3});
  if(!skills.agentLoop)throw new TypeError("AGENT_LOOP_FACTORY_REQUIRED");
- return attach(skills,{toolRegistry,maxAgents,maxToolCalls});
+ return attach(skills,{toolRegistry,maxAgents,maxToolCalls,mcpAuthorize,mcpAudit,mcpPageSize});
 }
-export async function createKVAgentSystem({kv,toolRegistry,agentLoopFactory,maxAgents=3,maxToolCalls=4,capabilityPolicy={},indexKey,documentPrefix}={}){
+export async function createKVAgentSystem({kv,toolRegistry,agentLoopFactory,maxAgents=3,maxToolCalls=4,capabilityPolicy={},indexKey,documentPrefix,mcpAuthorize=null,mcpAudit=null,mcpPageSize=20}={}){
  const skills=await createKVSkillSystem({kv,toolRegistry,agentLoopFactory,maxSelectedSkills:3,capabilityPolicy,indexKey,documentPrefix});
  if(!skills.agentLoop)throw new TypeError("AGENT_LOOP_FACTORY_REQUIRED");
- return attach(skills,{toolRegistry,maxAgents,maxToolCalls});
+ return attach(skills,{toolRegistry,maxAgents,maxToolCalls,mcpAuthorize,mcpAudit,mcpPageSize});
 }
