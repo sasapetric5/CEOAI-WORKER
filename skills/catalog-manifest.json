@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "target": "CEOAI-WORKER",
   "updatedAt": "2026-11-04",
   "runtime": {
@@ -53,5 +53,24 @@
       "license": "MIT",
       "status": "reviewed; runtime patterns to adapt, no full runtime copied"
     }
-  ]
-}
+  ],
+  "agents": {
+    "registry": "src/agent/agent-registry.mjs",
+    "profiles": "src/agent/builtin-agents.mjs",
+    "supervisor": "src/agent/multi-agent-supervisor.mjs",
+    "composition": "src/agent/agent-system.mjs",
+    "profileCount": 5,
+    "defaultMaxAgents": 3,
+    "sequentialExecution": true,
+    "sharedToolBudget": true,
+    "perAgentToolPermissions": "intersection of agent profile, skill policy and caller allowlist"
+  },
+  "mcp": {
+    "adapter": "src/agent/skill-mcp-resources.mjs",
+    "mode": "read-only resources/list and resources/read",
+    "authorization": "mandatory callback; no public default",
+    "toolsExposed": false,
+    "writeOperations": false,
+    "httpEndpointExposed": false
+  }
+}\n
