@@ -896,7 +896,7 @@ try {
   const searchEnv = makeEnv({
     AI_ENABLED: "true", EXTERNAL_AI_ENABLED: "true",
     GEMINI_KEY_1: "test-gemini",
-    TAVILY_KEY: "test-tavily", TAVILY_FREE_CONFIRMED: "true",
+    TAVILY_API_KEY: "test-tavily", TAVILY_FREE_CONFIRMED: "false",
     GOOGLE_CSE_KEY: "test-cse-key", GOOGLE_CSE_CX: "test-cx", GOOGLE_CSE_FREE_CONFIRMED: "true",
   });
   const { cookie: sCookie } = await getSession(searchEnv);
