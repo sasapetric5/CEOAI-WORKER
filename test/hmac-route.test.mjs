@@ -32,6 +32,7 @@ function makeEnv() {
   return {
     AI_ENABLED: "true",
     EXTERNAL_AI_ENABLED: "true",
+    OPENROUTER_FREE_CONFIRMED: "true",
     HMAC_ALLOWED_APPS: appId,
     APP_SECRET_CONTENTCRAFT_APP: secret,
     KV_MEMORY: {
