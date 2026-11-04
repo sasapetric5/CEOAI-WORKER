@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "target": "CEOAI-WORKER",
   "updatedAt": "2026-11-04",
   "runtime": {
@@ -72,5 +72,17 @@
     "toolsExposed": false,
     "writeOperations": false,
     "httpEndpointExposed": false
+  },
+  "providerAgentRuntime": {
+    "planner": "src/agent/provider-agent-planner.mjs",
+    "runtime": "src/agent/provider-agent-runtime.mjs",
+    "providerPoolEntry": "runConfiguredProviderCompletion",
+    "internalEntry": "runCEOAIInternalAgentTask",
+    "providerReuse": "existing CEOAI provider pool, model selection, cooldown and quota failover",
+    "maxModelCallsPerTask": 4,
+    "defaultSynthesis": true,
+    "toolExecution": "requires explicit approval and caller allowlist",
+    "httpRoute": false,
+    "paidProvidersAdded": false
   }
-}\n
+}

@@ -23,6 +23,7 @@ import { handleOpenAIChatCompletions } from "./src/openai-compat.mjs";
 import { prepareConversation, appendReply, withSummary } from "./src/v5-modules/history.mjs";
 import { handleMemoryReset } from "./src/v5-modules/session.mjs";
 import { parseRetryAfterSeconds, providerFailureCooldown } from "./src/v5-modules/provider-policy.mjs";
+import { createProviderAgentRuntime } from "./src/agent/provider-agent-runtime.mjs";
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
 // Quota cooldowns differ by provider signal: monthly exhaustion must not be retried every few hours.
@@ -311,6 +312,61 @@ function validMistralModel(value) {
   return m.length <= 120 && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(m);
 }
 
+function buildProviderPool(env) {
+  const configuredComplexModel = typeof env.OPENROUTER_COMPLEX_MODEL === "string"
+    ? env.OPENROUTER_COMPLEX_MODEL.trim() : "";
+  if (configuredComplexModel && !(typeof (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY) === "string" && (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY).trim()) && !warnedOpenRouterModelWithoutKey) {
+    console.warn("OPENROUTER_COMPLEX_MODEL is configured but OPENROUTER_KEY is missing; optional candidate disabled.");
+    warnedOpenRouterModelWithoutKey = true;
+  }
+  if (configuredComplexModel && !validOpenRouterModel(configuredComplexModel) && !warnedInvalidOpenRouterModel) {
+    console.warn("OPENROUTER_COMPLEX_MODEL is invalid; expected a valid model ID of up to 200 characters.");
+    warnedInvalidOpenRouterModel = true;
+  }
+  const glmFlashModel = typeof env.ZAI_GLM_FLASH_MODEL === "string" && /^[A-Za-z0-9._-]{1,80}$/.test(env.ZAI_GLM_FLASH_MODEL.trim())
+    ? env.ZAI_GLM_FLASH_MODEL.trim() : "glm-4.5-flash";
+  const mistralModel = typeof env.MISTRAL_MODEL === "string" && validMistralModel(env.MISTRAL_MODEL)
+    ? env.MISTRAL_MODEL.trim() : "open-mistral-nemo";
+  const xaiModel = typeof env.XAI_MODEL === "string" && /^[A-Za-z0-9._-]{1,80}$/.test(env.XAI_MODEL.trim())
+    ? env.XAI_MODEL.trim() : "grok-beta";
+  const nvidiaModel = typeof env.NVIDIA_MODEL === "string" && /^[A-Za-z0-9._\/-]{1,120}$/.test(env.NVIDIA_MODEL.trim())
+    ? env.NVIDIA_MODEL.trim() : "meta/llama-3.1-8b-instruct";
+  const hfModel = typeof env.HF_MODEL === "string" && /^[A-Za-z0-9._\/-]{1,120}$/.test(env.HF_MODEL.trim())
+    ? env.HF_MODEL.trim() : "Qwen/Qwen2.5-7B-Instruct";
+
+  // Configured owner-supplied credentials activate provider candidates. Runtime quota/provider errors trigger cooldown and fallback.
+  const pool = [
+    // Cloudflare Workers AI joins the pool when its binding and enable switch are present.
+    { id: "workers-ai-1", provider: "workers-ai", model: MODEL, key: "", enabled: Boolean(env.AI) && env.WORKERS_AI_ENABLED === "true", env, tier: "fast" },
+    { id: "glm-flash-1", provider: "glm-flash", model: glmFlashModel, key: env.ZAI_GLM_FLASH_KEY_1, tier: "fast" },
+    { id: "glm-flash-2", provider: "glm-flash", model: glmFlashModel, key: env.ZAI_GLM_FLASH_KEY_2, tier: "fast" },
+    { id: "gemini-1", provider: "gemini", model: "gemini-1.5-flash", key: (env.GEMINI_API_KEY_PRIMARY || env.GEMINI_KEY_1), tier: "fast" },
+    { id: "gemini-2", provider: "gemini", model: "gemini-1.5-flash", key: (env.GEMINI_API_KEY_SECONDARY || env.GEMINI_KEY_2), tier: "fast" },
+    { id: "gemini-3", provider: "gemini", model: "gemini-1.5-flash", key: (env.GEMINI_API_KEY_TERTIARY || env.GEMINI_KEY_3), tier: "fast" },
+    { id: "openrouter-1", provider: "openrouter", model: "meta-llama/llama-3-8b-instruct:free", key: (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY), tier: "fast" },
+    ...(typeof (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY) === "string" && (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY).trim()
+      ? [{ id: "deepseek-1", provider: "deepseek", model: "deepseek-chat", key: (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY), tier: "complex" }]
+      : []),
+    ...(validOpenRouterModel(configuredComplexModel) && typeof (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY) === "string" && (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY).trim()
+      ? [{ id: "openrouter-complex", provider: "openrouter", model: configuredComplexModel, key: (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY), tier: "complex" }]
+      : []),
+    ...(typeof (env.MISTRAL_API_KEY || env.MISTRAL_KEY) === "string" && (env.MISTRAL_API_KEY || env.MISTRAL_KEY).trim()
+      ? [{ id: "mistral-1", provider: "mistral", model: mistralModel, key: (env.MISTRAL_API_KEY || env.MISTRAL_KEY), tier: "complex" }]
+      : []),
+    // xAI, NVIDIA, and Hugging Face join the pool when their owner-supplied credentials are present.
+    ...(typeof env.XAI_KEY === "string" && env.XAI_KEY.trim()
+      ? [{ id: "xai-1", provider: "xai", model: xaiModel, key: env.XAI_KEY, tier: "complex" }]
+      : []),
+    ...(typeof env.NVIDIA_KEY === "string" && env.NVIDIA_KEY.trim()
+      ? [{ id: "nvidia-1", provider: "nvidia", model: nvidiaModel, key: env.NVIDIA_KEY, tier: "complex" }]
+      : []),
+    ...(typeof env.HF_TOKEN === "string" && env.HF_TOKEN.trim()
+      ? [{ id: "hf-1", provider: "huggingface", model: hfModel, key: env.HF_TOKEN, tier: "fast" }]
+      : []),
+  ].filter(p => p.provider === "workers-ai" ? p.enabled : (typeof p.key === "string" && p.key.trim()));
+  return pool;
+}
+
 async function withTimeoutFetch(url, options, timeoutMs = PROVIDER_TIMEOUT_MS) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort("Provider timeout"), timeoutMs);
@@ -480,6 +536,52 @@ function quotaCooldownTTL(error) {
     return DAILY_QUOTA_COOLDOWN_TTL;
   }
   return QUOTA_COOLDOWN_TTL;
+}
+
+/**
+ * Shared provider-pool entry point for internal agent planning.
+ * Reuses configured provider credentials, model IDs, ranking, cooldown and failover.
+ * This helper does not create or expose an HTTP route.
+ */
+export async function runConfiguredProviderCompletion(env, messages, intent = CAPABILITY.reasoning) {
+  if (!env || env.AI_ENABLED !== "true") return { ok: false, code: "AI_DISABLED" };
+  if (!Array.isArray(messages) || messages.length < 1 || messages.length > 12) return { ok: false, code: "INVALID_MODEL_MESSAGES" };
+  let bytes = 0;
+  for (const message of messages) {
+    if (!message || typeof message.role !== "string" || typeof message.content !== "string") return { ok: false, code: "INVALID_MODEL_MESSAGES" };
+    bytes += new TextEncoder().encode(message.role + message.content).byteLength;
+    if (bytes > 24000) return { ok: false, code: "MODEL_CONTEXT_TOO_LARGE" };
+  }
+  const pool = buildProviderPool(env);
+  let candidates = env.ZAI_GLM_FLASH_ONLY === "true" ? pool.filter(p => p.provider === "glm-flash") : pool.slice();
+  candidates = candidates.map((p, idx) => ({ p, idx, score: scoreProviderForIntent(p.provider, intent) }))
+    .sort((a, b) => b.score - a.score || a.idx - b.idx).map(x => x.p);
+  if (!candidates.length) return { ok: false, code: "NO_PROVIDER_CONFIGURED" };
+  const deadline = Date.now() + 24000;
+  let sawCooldown = false, sawQuota = false, sawRateLimit = false;
+  for (const candidate of candidates) {
+    const remaining = deadline - Date.now();
+    if (remaining < 2000) break;
+    if (await isInCooldown(env, candidate.id)) { sawCooldown = true; continue; }
+    if (inFlightProviders.has(candidate.id)) { sawCooldown = true; continue; }
+    inFlightProviders.add(candidate.id);
+    try {
+      const text = await executeModel(candidate, messages, remaining);
+      if (typeof text === "string" && text.trim()) return { ok: true, text: text.slice(0, MAX_REPLY_CHARS), providerId: candidate.id };
+    } catch (error) {
+      const status = Number(error?.status) || 0;
+      const quota = isQuotaError(error);
+      if (quota || status === 429) { sawRateLimit = true; if (quota) sawQuota = true; }
+      const cooldown = providerFailureCooldown({ status, quotaExhausted: quota, retryAfterSeconds: error?.retryAfterSeconds });
+      if (cooldown) {
+        const ttl = quota ? quotaCooldownTTL(error) : cooldown.ttl;
+        try { await env.KV_MEMORY.put(`cooldown:${candidate.id}`, quota ? "quota" : "1", { expirationTtl: ttl }); } catch {}
+      }
+    } finally {
+      inFlightProviders.delete(candidate.id);
+    }
+  }
+  return { ok: false, code: sawQuota ? "PROVIDER_QUOTA_EXHAUSTED" : (sawRateLimit || sawCooldown ? "PROVIDER_COOLDOWN" : "PROVIDERS_UNAVAILABLE") };
 }
 
 async function fetchSearchTavily(env, query) {
@@ -967,6 +1069,27 @@ async function compressHistory(env, oldSummary, oldMessages) {
   return summary;
 }
 
+/**
+ * Internal application entry point for the bounded specialist-agent system.
+ * Not mapped to an HTTP route. The caller must explicitly approve execution.
+ */
+export async function runCEOAIInternalAgentTask(env, { system, task, input = {}, limit = 3, agentIds, allowedToolIds = [], allowToolExecution = false, maxToolCalls = 4, maxModelCalls = 4, synthesize = true, intent = CAPABILITY.reasoning } = {}) {
+  if (allowToolExecution !== true) return { ok: false, code: "EXECUTION_NOT_APPROVED", agents: [], results: [] };
+  if (!env || env.AI_ENABLED !== "true") return { ok: false, code: "AI_DISABLED", agents: [], results: [] };
+  if (!env.KV_MEMORY) return { ok: false, code: "MEMORY_BINDING_UNAVAILABLE", agents: [], results: [] };
+  try {
+    const runtime = createProviderAgentRuntime({
+      system,
+      maxModelCalls,
+      intent,
+      generateText: (messages, requestedIntent) => runConfiguredProviderCompletion(env, messages, requestedIntent),
+    });
+    return await runtime.runTask({ task, input, limit, agentIds, allowedToolIds, allowToolExecution: true, maxToolCalls, synthesize });
+  } catch {
+    return { ok: false, code: "AGENT_RUNTIME_UNAVAILABLE", agents: [], results: [] };
+  }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -1201,57 +1324,7 @@ export default {
         });
       }
 
-      const configuredComplexModel = typeof env.OPENROUTER_COMPLEX_MODEL === "string"
-        ? env.OPENROUTER_COMPLEX_MODEL.trim() : "";
-      if (configuredComplexModel && !(typeof (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY) === "string" && (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY).trim()) && !warnedOpenRouterModelWithoutKey) {
-        console.warn("OPENROUTER_COMPLEX_MODEL is configured but OPENROUTER_KEY is missing; optional candidate disabled.");
-        warnedOpenRouterModelWithoutKey = true;
-      }
-      if (configuredComplexModel && !validOpenRouterModel(configuredComplexModel) && !warnedInvalidOpenRouterModel) {
-        console.warn("OPENROUTER_COMPLEX_MODEL is invalid; expected a valid model ID of up to 200 characters.");
-        warnedInvalidOpenRouterModel = true;
-      }
-      const glmFlashModel = typeof env.ZAI_GLM_FLASH_MODEL === "string" && /^[A-Za-z0-9._-]{1,80}$/.test(env.ZAI_GLM_FLASH_MODEL.trim())
-        ? env.ZAI_GLM_FLASH_MODEL.trim() : "glm-4.5-flash";
-      const mistralModel = typeof env.MISTRAL_MODEL === "string" && validMistralModel(env.MISTRAL_MODEL)
-        ? env.MISTRAL_MODEL.trim() : "open-mistral-nemo";
-      const xaiModel = typeof env.XAI_MODEL === "string" && /^[A-Za-z0-9._-]{1,80}$/.test(env.XAI_MODEL.trim())
-        ? env.XAI_MODEL.trim() : "grok-beta";
-      const nvidiaModel = typeof env.NVIDIA_MODEL === "string" && /^[A-Za-z0-9._\/-]{1,120}$/.test(env.NVIDIA_MODEL.trim())
-        ? env.NVIDIA_MODEL.trim() : "meta/llama-3.1-8b-instruct";
-      const hfModel = typeof env.HF_MODEL === "string" && /^[A-Za-z0-9._\/-]{1,120}$/.test(env.HF_MODEL.trim())
-        ? env.HF_MODEL.trim() : "Qwen/Qwen2.5-7B-Instruct";
-
-      // Configured owner-supplied credentials activate provider candidates. Runtime quota/provider errors trigger cooldown and fallback.
-      const pool = [
-        // Cloudflare Workers AI joins the pool when its binding and enable switch are present.
-        { id: "workers-ai-1", provider: "workers-ai", model: MODEL, key: "", enabled: Boolean(env.AI) && env.WORKERS_AI_ENABLED === "true", env, tier: "fast" },
-        { id: "glm-flash-1", provider: "glm-flash", model: glmFlashModel, key: env.ZAI_GLM_FLASH_KEY_1, tier: "fast" },
-        { id: "glm-flash-2", provider: "glm-flash", model: glmFlashModel, key: env.ZAI_GLM_FLASH_KEY_2, tier: "fast" },
-        { id: "gemini-1", provider: "gemini", model: "gemini-1.5-flash", key: (env.GEMINI_API_KEY_PRIMARY || env.GEMINI_KEY_1), tier: "fast" },
-        { id: "gemini-2", provider: "gemini", model: "gemini-1.5-flash", key: (env.GEMINI_API_KEY_SECONDARY || env.GEMINI_KEY_2), tier: "fast" },
-        { id: "gemini-3", provider: "gemini", model: "gemini-1.5-flash", key: (env.GEMINI_API_KEY_TERTIARY || env.GEMINI_KEY_3), tier: "fast" },
-        { id: "openrouter-1", provider: "openrouter", model: "meta-llama/llama-3-8b-instruct:free", key: (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY), tier: "fast" },
-        ...(typeof (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY) === "string" && (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY).trim()
-          ? [{ id: "deepseek-1", provider: "deepseek", model: "deepseek-chat", key: (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY), tier: "complex" }]
-          : []),
-        ...(validOpenRouterModel(configuredComplexModel) && typeof (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY) === "string" && (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY).trim()
-          ? [{ id: "openrouter-complex", provider: "openrouter", model: configuredComplexModel, key: (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY), tier: "complex" }]
-          : []),
-        ...(typeof (env.MISTRAL_API_KEY || env.MISTRAL_KEY) === "string" && (env.MISTRAL_API_KEY || env.MISTRAL_KEY).trim()
-          ? [{ id: "mistral-1", provider: "mistral", model: mistralModel, key: (env.MISTRAL_API_KEY || env.MISTRAL_KEY), tier: "complex" }]
-          : []),
-        // xAI, NVIDIA, and Hugging Face join the pool when their owner-supplied credentials are present.
-        ...(typeof env.XAI_KEY === "string" && env.XAI_KEY.trim()
-          ? [{ id: "xai-1", provider: "xai", model: xaiModel, key: env.XAI_KEY, tier: "complex" }]
-          : []),
-        ...(typeof env.NVIDIA_KEY === "string" && env.NVIDIA_KEY.trim()
-          ? [{ id: "nvidia-1", provider: "nvidia", model: nvidiaModel, key: env.NVIDIA_KEY, tier: "complex" }]
-          : []),
-        ...(typeof env.HF_TOKEN === "string" && env.HF_TOKEN.trim()
-          ? [{ id: "hf-1", provider: "huggingface", model: hfModel, key: env.HF_TOKEN, tier: "fast" }]
-          : []),
-      ].filter(p => p.provider === "workers-ai" ? p.enabled : (typeof p.key === "string" && p.key.trim()));
+      const pool = buildProviderPool(env);
 
       // Explicit GLM-only mode: no other provider may be called.
       let candidates = env.ZAI_GLM_FLASH_ONLY === "true"

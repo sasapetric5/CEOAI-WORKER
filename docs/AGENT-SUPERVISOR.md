@@ -51,3 +51,10 @@ To enable it through `createKVAgentSystem()`, provide an application-owned `mcpA
 - Skill text remains untrusted reference material.
 - MCP access is read-only and authorized on every request.
 - No new paid service, binding, database, or production endpoint.
+
+## Existing provider integration
+The internal `runCEOAIInternalAgentTask()` entry point connects the supervisor to the existing V5 provider pool. It reuses configured credentials, model selection, intent ranking, KV cooldown and quota-aware failover; no new provider, key, binding or paid service is introduced.
+
+The provider planner in `src/agent/provider-agent-planner.mjs` requests strict JSON decisions, validates tool IDs against the loop's approved tool list, treats skill text as untrusted reference material, and rejects malformed or oversized outputs. The runtime in `src/agent/provider-agent-runtime.mjs` creates a fresh planner per task and shares one model-call budget across specialist turns and optional synthesis.
+
+The integration is internal-only. No new HTTP route is registered and the existing `/api/chat` handler is not redirected. Calls require `AI_ENABLED=true`, the existing `KV_MEMORY` binding and explicit `allowToolExecution: true`. Tool IDs default to an empty allowlist. AI model-call limits and tool-call limits are separate and bounded.
