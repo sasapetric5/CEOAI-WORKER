@@ -9,7 +9,7 @@ import {createKVSkillSystem} from "../src/agent/skill-system.mjs";
 const tools={get:id=>id==="approved_lookup"?{id}:null,execute:async()=>({ok:false,code:"UNEXPECTED_TOOL_EXECUTION"})};
 
 test("built-in registry indexes eight skills and keeps content out of metadata",async()=>{
- const r=createBuiltinSkillRegistry({toolRegistry:tools});assert.equal(r.size,8);
+ const r=createBuiltinSkillRegistry({toolRegistry:tools});assert.equal(r.size,9);
  assert.equal(Object.hasOwn(r.get("cloudflare_queue_reliability"),"content"),false);
  assert.match((await r.load("cloudflare_queue_reliability")).content,/at-least-once/i);
 });

@@ -26,7 +26,7 @@ import { parseRetryAfterSeconds, providerFailureCooldown } from "./src/v5-module
 import { createProviderAgentRuntime } from "./src/agent/provider-agent-runtime.mjs";
 import { createToolRegistry } from "./src/agent/tool-registry.mjs";
 import { createAgentLoop } from "./src/agent/agent-loop.mjs";
-import { createBuiltinAgentSystem } from "./src/agent/agent-system.mjs";
+import { createBuiltinResearchAgentSystem } from "./src/agent/research-agent-system.mjs";
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
 // Quota cooldowns differ by provider signal: monthly exhaustion must not be retried every few hours.
@@ -1117,14 +1117,13 @@ const APP_AGENT_POLICIES = Object.freeze({
 });
 
 function createRequestAgentSystem(maxAgents) {
-  // This app gateway intentionally has no external-action tools in this integration stage.
-  const toolRegistry = createToolRegistry({ tools: [], enabled: false });
-  return createBuiltinAgentSystem({
-    toolRegistry,
+  // The public app gateway receives no tool capabilities. Internal callers may
+  // explicitly grant the read-only Hacker News search capability when needed.
+  return createBuiltinResearchAgentSystem({
+    fetchImpl: globalThis.fetch,
     maxAgents,
     maxToolCalls: 1,
-    agentLoopFactory: ({ toolRegistry, skillRegistry }) =>
-      createAgentLoop({ toolRegistry, skillRegistry, maxSteps: 2, maxToolCalls: 1 }),
+    maxSteps: 2,
   });
 }
 
