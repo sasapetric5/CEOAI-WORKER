@@ -1196,17 +1196,43 @@ export default {
           inputBytes > 4000 || !Number.isSafeInteger(limit) || limit < 1 || limit > policy.maxAgents) {
         return json({ success: false, error: "Zadatak, ulazni podaci ili broj agenata nisu validni.", code: "INVALID_AGENT_REQUEST" }, 400);
       }
+      const intent = chooseIntent(task);
+      let agentInput = input;
+      let researchUsed = false;
+      let researchSource = null;
+      if (intent === CAPABILITY.research) {
+        // Reuse CEOAI's existing search-provider failover; search text is always untrusted evidence.
+        try {
+          const enriched = await enrichWithSearchFailover(env, task);
+          if (typeof enriched?.text === "string" && enriched.text.trim()) {
+            agentInput = {
+              ...input,
+              researchContext: {
+                source: typeof enriched.source === "string" ? enriched.source.slice(0, 40) : "unknown",
+                content: enriched.text.slice(0, 6000),
+                trust: "untrusted_reference",
+              },
+            };
+            researchUsed = true;
+            researchSource = typeof enriched.source === "string" ? enriched.source.slice(0, 40) : "unknown";
+          }
+        } catch {
+          // Search is enrichment only. A provider failure must not bypass the existing AI failover.
+        }
+      }
       const system = createRequestAgentSystem(policy.maxAgents);
       const result = await runCEOAIInternalAgentTask(env, {
-        system, task, input, limit, allowedToolIds: [], allowToolExecution: true,
+        system, task, input: agentInput, limit, allowedToolIds: [], allowToolExecution: true,
         maxToolCalls: 1, maxModelCalls: policy.maxModelCalls, synthesize: true,
-        intent: chooseIntent(task),
+        intent,
       });
       console.info("CEOAI_AGENT_APP", JSON.stringify({
         appId: auth.appId,
         success: result.ok === true,
         agents: Array.isArray(result.agents) ? result.agents : [],
         partial: result.partial === true,
+        researchUsed,
+        researchSource,
         modelCalls: result.modelUsage?.used ?? 0,
         code: result.ok === true ? null : (typeof result.code === "string" ? result.code : "AGENT_FAILED"),
       }));
@@ -1220,6 +1246,8 @@ export default {
         agents: result.agents,
         partial: result.partial === true,
         modelUsage: result.modelUsage,
+        researchUsed,
+        researchSource,
       }, 200);
     }
 
