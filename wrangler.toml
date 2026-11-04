@@ -27,3 +27,11 @@ namespace_id = "2026102401"
 [ratelimits.simple]
 limit = 20
 period = 60
+
+[[durable_objects.bindings]]
+name = "SECURITY_DO"
+class_name = "SecurityOrchestratorDO"
+
+[[migrations]]
+tag = "v1-security-orchestrator"
+new_sqlite_classes = ["SecurityOrchestratorDO"]
