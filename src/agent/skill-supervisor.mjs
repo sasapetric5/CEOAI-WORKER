@@ -34,7 +34,7 @@ export function createSkillSupervisor({ skillRegistry, agentLoop = null, maxSele
       });
     }
     if (!loaded.length) return { ok: false, code: "SKILL_CONTENT_UNAVAILABLE", skills: [] };
-    return { ok: true, primarySkillId: loaded+0].id, skills: loaded, selectedCount: loaded.length };
+    return { ok: true, primarySkillId: loaded[0].id, skills: loaded, selectedCount: loaded.length };
   }
 
   async function run({ task, skillIds, limit = maxSelectedSkills, requiredTags = [], input = {}, plan, ...runOptions } = {}) {
