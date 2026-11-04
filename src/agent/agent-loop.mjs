@@ -35,6 +35,11 @@ export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, max
       if (typeof plan !== "function") return fail("PLANNER_REQUIRED", 0, 0);
       if (!Array.isArray(allowedToolIds) || allowedToolIds.some((id) => typeof id !== "string")) return fail("INVALID_CAPABILITIES", 0, 0);
       if (!withinContextLimit(input)) return fail("INPUT_TOO_LARGE_OR_INVALID", 0, 0);
+      let skillDocument = null;
+      if (typeof skillRegistry.load === "function") {
+        try { skillDocument = await skillRegistry.load(skillId); }
+        catch { return fail("SKILL_LOAD_FAILED", 0, 0); }
+      }
       const sharedBudget = budget === undefined ? createAgentBudget({ maxToolCalls }) : budget;
       const budgetData = budgetState.get(sharedBudget);
       if (!budgetData) return fail("INVALID_AGENT_BUDGET", 0, 0);
@@ -47,7 +52,19 @@ export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, max
       for (let step = 1; step <= maxSteps; step++) {
         let decision;
         try {
-          decision = await plan({ skillId, step, input: current, availableToolIds: skill.allowedToolIds.filter((id) => capabilities.has(id)), toolCalls, budgetUsed: budgetData.used, budgetRemaining: Math.max(0, budgetData.maxToolCalls - budgetData.used) });
+          decision = await plan({
+            skillId,
+            skill: { id: skill.id, version: skill.version, description: skill.description },
+            skillInstructions: skillDocument?.content ?? null,
+            skillSource: skillDocument?.source ?? null,
+            instructionTrust: "untrusted_reference_only",
+            step,
+            input: current,
+            availableToolIds: skill.allowedToolIds.filter((id) => capabilities.has(id)),
+            toolCalls,
+            budgetUsed: budgetData.used,
+            budgetRemaining: Math.max(0, budgetData.maxToolCalls - budgetData.used),
+          });
         } catch {
           return failRun("PLANNER_FAILED", step, toolCalls);
         }
