@@ -1117,13 +1117,14 @@ const APP_AGENT_POLICIES = Object.freeze({
 });
 
 function createRequestAgentSystem(maxAgents) {
-  // The public app gateway receives no tool capabilities. Internal callers may
-  // explicitly grant the read-only Hacker News search capability when needed.
-  return createBuiltinResearchAgentSystem({
-    fetchImpl: globalThis.fetch,
+  // This app gateway intentionally has no external-action tools in this integration stage.
+  const toolRegistry = createToolRegistry({ tools: [], enabled: false });
+  return createBuiltinAgentSystem({
+    toolRegistry,
     maxAgents,
     maxToolCalls: 1,
-    maxSteps: 2,
+    agentLoopFactory: ({ toolRegistry, skillRegistry }) =>
+      createAgentLoop({ toolRegistry, skillRegistry, maxSteps: 2, maxToolCalls: 1 }),
   });
 }
 
