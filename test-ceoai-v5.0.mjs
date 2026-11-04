@@ -562,12 +562,12 @@ try {
   assert.ok(rankCalls[0].includes("api.deepseek.com"), "coding intent should try DeepSeek first");
 } finally { globalThis.fetch = originalFetchRank; }
 
-// V5-2: xAI is excluded unless XAI_FREE_CONFIRMED=true.
+// V5-2: owner-supplied xAI key activates the provider; a simulated outage must fail over.
 const originalFetchXai = globalThis.fetch;
 const xaiCalls = [];
 globalThis.fetch = async (url, options = {}) => {
   xaiCalls.push(String(url));
-  if (String(url).includes("api.x.ai")) throw new Error("xAI must not be called without free confirmation");
+  if (String(url).includes("api.x.ai")) throw new Error("Simulated xAI outage");
   if (String(url).includes("generativelanguage.googleapis.com")) {
     return new Response(JSON.stringify({candidates:[{content:{parts:[{text:"Gemini ok"}]}}]}), {status:200, headers:{"Content-Type":"application/json"}});
   }
@@ -577,14 +577,14 @@ try {
   const xaiEnv = makeEnv({
     AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true",
     XAI_KEY:"must-not-call",
-    // XAI_FREE_CONFIRMED intentionally unset
+    // No free-confirmation flag is required
     GEMINI_KEY_1:"test-gemini",
   });
   const {cookie: xaiCookie} = await getSession(xaiEnv);
   const xaiResponse = await worker.fetch(apiRequest(xaiCookie, JSON.stringify({prompt:"Analiziraj strategiju i trade-off"})), xaiEnv);
   assert.equal(xaiResponse.status, 200);
   assert.equal((await xaiResponse.json()).reply, "Gemini ok");
-  assert.equal(xaiCalls.filter(u => u.includes("api.x.ai")).length, 0);
+  assert.ok(xaiCalls.some(u => u.includes("api.x.ai")), "configured xAI must be attempted without a free-confirmation flag");
 } finally { globalThis.fetch = originalFetchXai; }
 
 // V5-3: xAI is included when free confirmed and ranks high for reasoning.
@@ -641,12 +641,12 @@ try {
   }
 } finally { globalThis.fetch = originalFetchMistral; }
 
-// V5-5: NVIDIA excluded without NVIDIA_FREE_CONFIRMED.
+// V5-5: owner-supplied NVIDIA key activates the provider.
 const originalFetchNv = globalThis.fetch;
 const nvCalls = [];
 globalThis.fetch = async (url) => {
   nvCalls.push(String(url));
-  if (String(url).includes("integrate.api.nvidia.com")) throw new Error("NVIDIA must not be called");
+  if (String(url).includes("integrate.api.nvidia.com")) throw new Error("Simulated NVIDIA outage");
   if (String(url).includes("api.deepseek.com")) {
     return new Response(JSON.stringify({choices:[{message:{content:"DeepSeek"}}]}), {status:200, headers:{"Content-Type":"application/json"}});
   }
@@ -660,7 +660,7 @@ try {
   const {cookie: nvCookie} = await getSession(nvEnv);
   const nvResponse = await worker.fetch(apiRequest(nvCookie, JSON.stringify({prompt:"Napisи TypeScript klasu sa testovima"})), nvEnv);
   assert.equal(nvResponse.status, 200);
-  assert.equal(nvCalls.filter(u => u.includes("nvidia.com")).length, 0);
+  assert.ok(nvCalls.some(u => u.includes("nvidia.com")), "configured NVIDIA must be attempted without a free-confirmation flag");
 } finally { globalThis.fetch = originalFetchNv; }
 
 // V5-6: research intent with URL attempts Jina Reader (mocked).
@@ -701,12 +701,12 @@ try {
   assert.match((await strictResponse2.json()).error, /Zaštita od preopterećenja|RATE|preopterećenja|limit/i);
 }
 
-// V5-8: HF excluded without HF_FREE_CONFIRMED.
+// V5-8: owner-supplied Hugging Face token activates the provider.
 const originalFetchHf = globalThis.fetch;
 const hfCalls = [];
 globalThis.fetch = async (url) => {
   hfCalls.push(String(url));
-  if (String(url).includes("huggingface.co")) throw new Error("HF must not be called");
+  if (String(url).includes("huggingface.co")) throw new Error("Simulated Hugging Face outage");
   if (String(url).includes("generativelanguage.googleapis.com")) {
     return new Response(JSON.stringify({candidates:[{content:{parts:[{text:"Gemini"}]}}]}), {status:200, headers:{"Content-Type":"application/json"}});
   }
@@ -720,7 +720,7 @@ try {
   const {cookie: hfCookie} = await getSession(hfEnv);
   const hfResponse = await worker.fetch(apiRequest(hfCookie, JSON.stringify({prompt:"Zdravo"})), hfEnv);
   assert.equal(hfResponse.status, 200);
-  assert.equal(hfCalls.filter(u => u.includes("huggingface")).length, 0);
+  assert.ok(hfCalls.some(u => u.includes("huggingface")), "configured Hugging Face must be attempted without a free-confirmation flag");
 } finally { globalThis.fetch = originalFetchHf; }
 
 
