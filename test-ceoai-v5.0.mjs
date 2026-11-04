@@ -641,25 +641,26 @@ try {
   }
 } finally { globalThis.fetch = originalFetchMistral; }
 
-// V5-5: owner-supplied NVIDIA key activates the provider.
+// V5-5: owner-supplied NVIDIA key activates the provider after the first candidate fails.
 const originalFetchNv = globalThis.fetch;
 const nvCalls = [];
 globalThis.fetch = async (url) => {
   nvCalls.push(String(url));
-  if (String(url).includes("integrate.api.nvidia.com")) throw new Error("Simulated NVIDIA outage");
-  if (String(url).includes("api.deepseek.com")) {
-    return new Response(JSON.stringify({choices:[{message:{content:"DeepSeek"}}]}), {status:200, headers:{"Content-Type":"application/json"}});
+  if (String(url).includes("integrate.api.nvidia.com")) {
+    return new Response(JSON.stringify({choices:[{message:{content:"NVIDIA preuzeo"}}]}), {status:200, headers:{"Content-Type":"application/json"}});
   }
+  if (String(url).includes("api.deepseek.com")) throw new Error("Simulated DeepSeek outage");
   throw new Error("Unexpected: " + url);
 };
 try {
   const nvEnv = makeEnv({
     AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true",
-    NVIDIA_KEY:"must-not-call", DEEPSEEK_KEY:"test-ds",
+    NVIDIA_KEY:"test-nvidia", DEEPSEEK_KEY:"test-ds",
   });
   const {cookie: nvCookie} = await getSession(nvEnv);
   const nvResponse = await worker.fetch(apiRequest(nvCookie, JSON.stringify({prompt:"Napisи TypeScript klasu sa testovima"})), nvEnv);
   assert.equal(nvResponse.status, 200);
+  assert.equal((await nvResponse.json()).reply, "NVIDIA preuzeo");
   assert.ok(nvCalls.some(u => u.includes("nvidia.com")), "configured NVIDIA must be attempted without a free-confirmation flag");
 } finally { globalThis.fetch = originalFetchNv; }
 
