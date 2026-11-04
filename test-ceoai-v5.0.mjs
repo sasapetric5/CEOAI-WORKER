@@ -71,13 +71,14 @@ const disabled = await worker.fetch(apiRequest(cookie, JSON.stringify({prompt:'Z
 assert.equal(disabled.status, 503);
 assert.match((await disabled.json()).error, /AI je isključen/);
 
-// Free-only safety policy: keys alone must not enable potentially billable providers.
+// Owner-confirmed credentials activate providers without *_FREE_CONFIRMED gates.
+// Simulated provider failures must trigger failover; no real external request is made.
 {
   const calls = [];
   const original = globalThis.fetch;
   globalThis.fetch = async (url) => {
     calls.push(String(url));
-    throw new Error("Unexpected network call in free-only policy test");
+    throw new Error("Simulated provider outage");
   };
   try {
     const policyEnv = makeEnv({
@@ -98,9 +99,9 @@ assert.match((await disabled.json()).error, /AI je isključen/);
       apiRequest(policyCookie, JSON.stringify({ prompt: "Zdravo" })),
       policyEnv
     );
-    assert.equal(response.status, 503, "no provider should be eligible without free-quota confirmation");
-    assert.match((await response.json()).error, /Nema konfigurisanog provajdera/);
-    assert.equal(calls.length, 0, "must not contact a potentially billable provider");
+    assert.equal(response.status, 503, "all simulated providers are unavailable");
+    assert.match((await response.json()).error, /AI provajderi trenutno nisu dostupni/);
+    assert.ok(calls.length >= 2, "configured providers must be attempted with automatic failover");
   } finally {
     globalThis.fetch = original;
   }
