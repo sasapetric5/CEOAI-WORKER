@@ -251,15 +251,15 @@ function isAllowedOrigin(origin, origins) {
   return origins.has(origin);
 }
 
-function validOpenRouterFreeModel(value) {
+function validOpenRouterModel(value) {
   if (typeof value !== "string") return false;
   const model = value.trim();
-  // OpenRouter model IDs use a conservative allowlist; cap configuration input at 200 chars.
-  return model.length <= 200 && /^[A-Za-z0-9][A-Za-z0-9._:/-]*:free$/.test(model);
+  // Accept the configured model ID; provider-side quota or access errors are handled by failover.
+  return model.length <= 200 && /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/.test(model);
 }
 
 // Task capability tags used for capability-aware provider ranking.
-// Providers declare strengths; the orchestrator picks the highest-scoring free candidate.
+// Providers declare strengths; the orchestrator picks the highest-scoring configured candidate.
 const CAPABILITY = {
   fast: "fast",
   coding: "coding",
@@ -304,11 +304,11 @@ function scoreProviderForIntent(providerName, intent) {
   return caps[intent] || caps.fast || 1;
 }
 
-function validMistralFreeModel(value) {
+function validMistralModel(value) {
   if (typeof value !== "string") return false;
   const m = value.trim();
-  // Conservative allowlist of commonly free / open Mistral models.
-  return /^(open-mistral-nemo|open-mistral-7b|open-mixtral-8x7b|mistral-small-latest|pixtral-12b-2409)$/i.test(m);
+  // Accept the configured Mistral model; access and quota errors trigger provider failover.
+  return m.length <= 120 && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(m);
 }
 
 function validFreeConfirmedFlag(env, name) {
@@ -826,19 +826,19 @@ async function enrichWithSearchFailover(env, prompt) {
     if (pageText) return { text: pageText.slice(0, 8000), source: "jina" };
   }
 
-  // 2) Firecrawl free credit (scrape URL or search)
+  // 2) Firecrawl (scrape URL or search)
   const firecrawl = await fetchSearchFirecrawl(env, String(prompt || query));
   if (firecrawl) return { text: firecrawl, source: "firecrawl" };
 
-  // 3) Tavily free
+  // 3) Tavily
   const tavily = await fetchSearchTavily(env, query);
   if (tavily) return { text: tavily, source: "tavily" };
 
-  // 4) Google Custom Search free tier
+  // 4) Google Custom Search
   const cse = await fetchSearchGoogleCse(env, query);
   if (cse) return { text: cse, source: "google-cse" };
 
-  // 5) Exa free credits
+  // 5) Exa
   const exa = await fetchSearchExa(env, query);
   if (exa) return { text: exa, source: "exa" };
 
@@ -850,7 +850,7 @@ async function enrichWithSearchFailover(env, prompt) {
   const searxng = await fetchSearchSearxng(env, query);
   if (searxng) return { text: searxng, source: "searxng" };
 
-  // 8) SerpAPI — only when the operator explicitly confirms free quota.
+  // 8) SerpAPI — activated by the owner-supplied key.
   const serpapi = await fetchSearchSerpApi(env, query);
   if (serpapi) return { text: serpapi, source: "serpapi" };
 
@@ -1198,7 +1198,7 @@ export default {
       if (researchContext) {
         messages.push({
           role: "system",
-          content: "Ispod je istraživački kontekst prikupljen preko free search/data provajdera. Koristi ga kao izvor činjenica; ne tvrdi da si sam posetio spoljne servise." + researchContext,
+          content: "Ispod je istraživački kontekst prikupljen preko konfigurisanih search/data provajdera. Koristi ga kao izvor činjenica; ne tvrdi da si sam posetio spoljne servise." + researchContext,
         });
       }
 
@@ -1208,13 +1208,13 @@ export default {
         console.warn("OPENROUTER_COMPLEX_MODEL is configured but OPENROUTER_KEY is missing; optional candidate disabled.");
         warnedOpenRouterModelWithoutKey = true;
       }
-      if (configuredComplexModel && !validOpenRouterFreeModel(configuredComplexModel) && !warnedInvalidOpenRouterModel) {
-        console.warn("OPENROUTER_COMPLEX_MODEL is invalid; expected a model ID up to 200 characters ending in :free.");
+      if (configuredComplexModel && !validOpenRouterModel(configuredComplexModel) && !warnedInvalidOpenRouterModel) {
+        console.warn("OPENROUTER_COMPLEX_MODEL is invalid; expected a valid model ID of up to 200 characters.");
         warnedInvalidOpenRouterModel = true;
       }
       const glmFlashModel = typeof env.ZAI_GLM_FLASH_MODEL === "string" && /^[A-Za-z0-9._-]{1,80}$/.test(env.ZAI_GLM_FLASH_MODEL.trim())
         ? env.ZAI_GLM_FLASH_MODEL.trim() : "glm-4.5-flash";
-      const mistralModel = typeof env.MISTRAL_MODEL === "string" && validMistralFreeModel(env.MISTRAL_MODEL)
+      const mistralModel = typeof env.MISTRAL_MODEL === "string" && validMistralModel(env.MISTRAL_MODEL)
         ? env.MISTRAL_MODEL.trim() : "open-mistral-nemo";
       const xaiModel = typeof env.XAI_MODEL === "string" && /^[A-Za-z0-9._-]{1,80}$/.test(env.XAI_MODEL.trim())
         ? env.XAI_MODEL.trim() : "grok-beta";
@@ -1236,8 +1236,8 @@ export default {
         ...(typeof (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY) === "string" && (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY).trim()
           ? [{ id: "deepseek-1", provider: "deepseek", model: "deepseek-chat", key: (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY), tier: "complex" }]
           : []),
-        ...(validOpenRouterFreeModel(configuredComplexModel) && typeof (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY) === "string" && (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY).trim()
-          ? [{ id: "openrouter-complex-free", provider: "openrouter", model: configuredComplexModel, key: (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY), tier: "complex" }]
+        ...(validOpenRouterModel(configuredComplexModel) && typeof (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY) === "string" && (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY).trim()
+          ? [{ id: "openrouter-complex", provider: "openrouter", model: configuredComplexModel, key: (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY), tier: "complex" }]
           : []),
         ...(typeof (env.MISTRAL_API_KEY || env.MISTRAL_KEY) === "string" && (env.MISTRAL_API_KEY || env.MISTRAL_KEY).trim()
           ? [{ id: "mistral-1", provider: "mistral", model: mistralModel, key: (env.MISTRAL_API_KEY || env.MISTRAL_KEY), tier: "complex" }]
