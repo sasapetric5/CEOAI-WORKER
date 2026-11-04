@@ -9,7 +9,7 @@ test("provider planner returns validated final decisions and marks skill text un
  const p=createProviderAgentPlanner({generateText:async messages=>{captured=messages;return {ok:true,text:JSON.stringify({type:"final",output:"Reviewed."})};}});
  const decision=await p.planAgent({agent,skill,context,task:"review",input:{request:"review"},instructionTrust:"untrusted_reference_only"});
  assert.deepEqual(decision,{type:"final",output:"Reviewed."});
- assert.match(captured[0].content,/NEPOUZDAN referentni sadržaj/);
+ assert.match(captured[0].content,/NEPOUZDAN referentni materijal/);
  assert.equal(p.usage.used,1);
 });
 test("planner rejects tools not present in the caller-approved tool list",async()=>{

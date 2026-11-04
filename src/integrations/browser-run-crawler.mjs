@@ -15,12 +15,12 @@ function isPlainObject(value) {
 }
 
 function safeHost(hostname) {
-  const host = String(hostname || "").toLowerCase().replace(/\\.$/, "");
+  const host = String(hostname || "").toLowerCase().replace(/\.$/, "");
   if (!host || host.length > 253) return false;
-  if (host.includes(":") || /^\\d+(?:\\.\\d+){0,3}$/.test(host) ||
-      /^(?:0x[0-9a-f]+|\\d+)(?:\\.(?:0x[0-9a-f]+|\\d+)){0,3}$/i.test(host)) return false;
+  if (host.includes(":") || /^\d+(?:\.\d+){0,3}$/.test(host) ||
+      /^(?:0x[0-9a-f]+|\d+)(?:\.(?:0x[0-9a-f]+|\d+)){0,3}$/i.test(host)) return false;
   if (host === "localhost" || host === "metadata.google.internal" ||
-      /\\.(?:localhost|local|lan|home|internal|test|invalid|onion|arpa)$/.test(host)) return false;
+      /\.(?:localhost|local|lan|home|internal|test|invalid|onion|arpa)$/.test(host)) return false;
   const labels = host.split(".");
   return labels.length >= 2 && labels.every(label =>
     label.length > 0 && label.length <= 63 &&
@@ -127,7 +127,7 @@ function normalizeRecord(record) {
   return {
     url,
     title: typeof metadata.title === "string" ? metadata.title.slice(0, 300) : null,
-    markdown: record.markdown.replace(/\\u0000/g, "").slice(0, MAX_RECORD_CHARS),
+    markdown: record.markdown.replace(/\u0000/g, "").slice(0, MAX_RECORD_CHARS),
     httpStatus: Number.isInteger(metadata.status) && metadata.status >= 100 && metadata.status <= 599
       ? metadata.status : null,
   };
