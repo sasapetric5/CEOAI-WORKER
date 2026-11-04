@@ -610,14 +610,14 @@ try {
   assert.ok(xaiOnCalls[0].includes("api.x.ai"));
 } finally { globalThis.fetch = originalFetchXaiOn; }
 
-// V5-4: Mistral free model allowlist rejects unknown models (falls back to default open-mistral-nemo in pool build — key present means candidate exists).
+// V5-4: configured Mistral model IDs are accepted; provider-side errors use failover.
 const originalFetchMistral = globalThis.fetch;
 const mistralCalls = [];
 globalThis.fetch = async (url, options = {}) => {
   mistralCalls.push(String(url));
   const body = options.body ? JSON.parse(options.body) : {};
   if (String(url).includes("api.mistral.ai")) {
-    assert.equal(body.model, "open-mistral-nemo"); // invalid model name should fall back
+    assert.equal(body.model, "custom-mistral-model"); // configured model is passed through
     return new Response(JSON.stringify({choices:[{message:{content:"Mistral odgovor"}}]}), {status:200, headers:{"Content-Type":"application/json"}});
   }
   if (String(url).includes("generativelanguage.googleapis.com")) {
@@ -628,7 +628,7 @@ globalThis.fetch = async (url, options = {}) => {
 try {
   const mistralEnv = makeEnv({
     AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true",
-    MISTRAL_KEY:"test-mistral", MISTRAL_MODEL:"definitely-not-a-free-model",
+    MISTRAL_KEY:"test-mistral", MISTRAL_MODEL:"custom-mistral-model",
     GEMINI_KEY_1:"test-gemini",
   });
   const {cookie: mCookie} = await getSession(mistralEnv);
@@ -1152,18 +1152,18 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
   }
 }
 
-// Cloudflare Workers AI: binding and API key alone are insufficient without both explicit opt-ins.
+// Cloudflare Workers AI: binding and enable switch activate it without a free-confirmation flag.
 {
   let calls = 0;
   const original = globalThis.fetch;
   globalThis.fetch = async () => { calls++; throw new Error("unexpected external call"); };
   try {
-    const cloudflareDisabledEnv = makeEnv({
+    const cloudflareEnabledEnv = makeEnv({
       AI_ENABLED: "true",
       EXTERNAL_AI_ENABLED: "true",
       WORKERS_AI_ENABLED: "true",
       WORKERS_AI_FREE_CONFIRMED: "false",
-      AI: { async run() { calls++; return { response: "must not run" }; } },
+      AI: { async run() { calls++; return { response: "Workers AI bez dodatne potvrde" }; } },
       GEMINI_API_KEY_PRIMARY: "",
       GEMINI_KEY_1: "",
       OPENROUTER_API_KEY: "",
@@ -1175,14 +1175,14 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
       MISTRAL_API_KEY: "",
       MISTRAL_KEY: "",
     });
-    const { cookie: cfDisabledCookie } = await getSession(cloudflareDisabledEnv);
+    const { cookie: cfEnabledCookie } = await getSession(cloudflareEnabledEnv);
     const response = await worker.fetch(
-      apiRequest(cfDisabledCookie, JSON.stringify({ prompt: "Zdravo" })),
-      cloudflareDisabledEnv
+      apiRequest(cfEnabledCookie, JSON.stringify({ prompt: "Zdravo" })),
+      cloudflareEnabledEnv
     );
-    assert.equal(response.status, 503);
-    assert.match((await response.json()).error, /Nema konfigurisanog provajdera/);
-    assert.equal(calls, 0, "unconfirmed Workers AI must not execute");
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).reply, "Workers AI bez dodatne potvrde");
+    assert.equal(calls, 1, "Workers AI binding must run without free confirmation");
   } finally {
     globalThis.fetch = original;
   }
