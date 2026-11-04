@@ -1,0 +1,198 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { SpiderJobLedgerDO } from "../src/durable-objects/spider-job-ledger-do.mjs";
+import { createSpiderQueueHandler, enqueueSpiderCrawl } from "../src/integrations/spider-queue.mjs";
+
+const id = "123e4567-e89b-42d3-a456-426614174000";
+const browserId = "crawl_job_12345678";
+const now = () => 1_798_000_000_000;
+
+function makeStorage() {
+  const values = new Map();
+  return {
+    values,
+    async get(key) { return values.get(key); },
+    async put(key, value) { values.set(key, structuredClone(value)); },
+    async transaction(fn) {
+      const staged = new Map(values);
+      const result = await fn({
+        async get(key) { return staged.get(key); },
+        async put(key, value) { staged.set(key, structuredClone(value)); },
+      });
+      values.clear();
+      for (const [key, value] of staged) values.set(key, value);
+      return result;
+    },
+    async setAlarm(value) { this.alarmAt = value; },
+    async deleteAll() { values.clear(); },
+  };
+}
+
+function makeLedgerNamespace() {
+  const contexts = new Map();
+  return {
+    idFromName(name) { return name; },
+    get(name) {
+      if (!contexts.has(name)) contexts.set(name, { storage: makeStorage() });
+      const ctx = contexts.get(name);
+      return {
+        async fetch(url, init) {
+          return new SpiderJobLedgerDO(ctx).fetch(new Request(url, init));
+        },
+      };
+    },
+    contexts,
+  };
+}
+
+function makeMessage(body) {
+  const calls = [];
+  return {
+    body, calls,
+    ack() { calls.push("ack"); },
+    retry(options) { calls.push({ retry: options }); },
+  };
+}
+
+function setup(createCrawler) {
+  const sent = [];
+  const stored = new Map();
+  const env = {
+    SPIDER_QUEUE: { async send(body, options) { sent.push({ body, options }); } },
+    SPIDER_LEDGER: makeLedgerNamespace(),
+    SPIDER_BROWSER_RUN_ACCOUNT_ID: "0123456789abcdef0123456789abcdef",
+    SPIDER_BROWSER_RUN_TOKEN: "test-token",
+    KV_MEMORY: { async put(key, value, options) { stored.set(key, { value, options }); } },
+  };
+  return { env, sent, stored, handler: createSpiderQueueHandler({ createCrawler, now }) };
+}
+
+test("ledger claims a crawl once and never repeats an ambiguous Browser Run POST", async () => {
+  const ctx = { storage: makeStorage() };
+  const ledger = new SpiderJobLedgerDO(ctx);
+  const call = (path, input) => ledger.fetch(new Request("https://ledger.test" + path, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+  })).then(response => response.json());
+  const job = { id, url: "https://docs.example.com/", pageLimit: 10, depth: 1, now: now() };
+  const first = await call("/job/claim-start", job);
+  const duplicate = await call("/job/claim-start", job);
+  assert.equal(first.claimed, true);
+  assert.equal(duplicate.claimed, false);
+  assert.equal(duplicate.state.status, "starting");
+  const stale = await call("/job/claim-start", { ...job, now: now() + 120_001 });
+  assert.equal(stale.state.status, "start_unknown");
+  const afterUnknown = await call("/job/claim-start", { ...job, now: now() + 180_000 });
+  assert.equal(afterUnknown.claimed, false);
+  assert.equal(afterUnknown.state.status, "start_unknown");
+});
+
+test("daily account quota is atomic and duplicate job claims do not consume a second slot", async () => {
+  const ns = makeLedgerNamespace();
+  const stub = ns.get("quota:2026-11-05");
+  const call = input => stub.fetch(new Request("https://ledger.test/quota/claim", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+  })).then(response => response.json());
+  const first = await call({ date: "2026-11-05", id, limit: 5, now: now() });
+  const duplicate = await call({ date: "2026-11-05", id, limit: 5, now: now() });
+  assert.equal(first.allowed, true);
+  assert.equal(duplicate.duplicate, true);
+  for (let i = 1; i < 5; i++) {
+    const otherId = "123e4567-e89b-42d3-a456-42661417400" + i;
+    assert.equal((await call({ date: "2026-11-05", id: otherId, limit: 5, now: now() })).allowed, true);
+  }
+  const sixth = await call({ date: "2026-11-05", id: "123e4567-e89b-42d3-a456-426614174099", limit: 5, now: now() });
+  assert.equal(sixth.allowed, false);
+  assert.equal(sixth.count, 5);
+});
+
+test("producer validates and publishes a bounded HTTPS job", async () => {
+  const sent = [];
+  const env = { SPIDER_QUEUE: { async send(body) { sent.push(body); } } };
+  const result = await enqueueSpiderCrawl(env, { url: "https://docs.example.com/start?token=secret", jobId: id });
+  assert.equal(result.ok, true);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].url, "https://docs.example.com/start");
+  assert.equal(sent[0].id, id);
+  assert.equal((await enqueueSpiderCrawl(env, { url: "http://127.0.0.1" })).code, "CRAWL_URL_REJECTED");
+  assert.equal(sent.length, 1);
+});
+
+test("start message creates one Browser Run job and schedules polling", async () => {
+  let starts = 0;
+  const crawler = {
+    async startCrawl() { starts++; return { ok: true, jobId: browserId }; },
+    async getStatus() { return { ok: true, status: "running" }; },
+    async getResults() { throw new Error("not called"); },
+  };
+  const { env, sent, handler } = setup(() => crawler);
+  const message = makeMessage({ version: 1, kind: "start", id, url: "https://docs.example.com/", pageLimit: 10, depth: 1, queuedAt: now() });
+  await handler({ messages: [message] }, env);
+  assert.equal(starts, 1);
+  assert.equal(message.calls[0], "ack");
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].body.kind, "poll");
+  assert.equal(sent[0].options.delaySeconds, 60);
+
+  const duplicate = makeMessage(message.body);
+  await handler({ messages: [duplicate] }, env);
+  assert.equal(starts, 1);
+  assert.equal(duplicate.calls[0], "ack");
+  assert.equal(sent.length, 2);
+});
+
+test("polling stores bounded untrusted records and marks the job complete idempotently", async () => {
+  const crawler = {
+    async startCrawl() { return { ok: true, jobId: browserId }; },
+    async getStatus() { return { ok: true, status: "completed", total: 1, finished: 1 }; },
+    async getResults() { return { ok: true, status: "completed", records: [{ url: "https://docs.example.com/", markdown: "# docs" }] }; },
+  };
+  const { env, sent, stored, handler } = setup(() => crawler);
+  const start = makeMessage({ version: 1, kind: "start", id, url: "https://docs.example.com/", pageLimit: 10, depth: 1, queuedAt: now() });
+  await handler({ messages: [start] }, env);
+  const poll = makeMessage({ version: 1, kind: "poll", id, attempt: 0 });
+  await handler({ messages: [poll] }, env);
+  assert.equal(poll.calls[0], "ack");
+  const saved = stored.get("spider:result:" + id);
+  assert.ok(saved);
+  assert.equal(saved.options.expirationTtl, 7 * 24 * 60 * 60);
+  assert.equal(JSON.parse(saved.value).trust, "untrusted_reference");
+
+  const duplicate = makeMessage(poll.body);
+  await handler({ messages: [duplicate] }, env);
+  assert.equal(duplicate.calls[0], "ack");
+  assert.equal(stored.size, 1);
+});
+
+test("missing Browser Run credentials fail closed without calling the provider", async () => {
+  let starts = 0;
+  const crawler = { async startCrawl() { starts++; return { ok: true, jobId: browserId }; } };
+  const { env, handler } = setup(() => crawler);
+  delete env.SPIDER_BROWSER_RUN_TOKEN;
+  const message = makeMessage({ version: 1, kind: "start", id, url: "https://docs.example.com/", pageLimit: 10, depth: 1, queuedAt: now() });
+  await handler({ messages: [message] }, env);
+  assert.equal(starts, 0);
+  assert.equal(message.calls[0], "ack");
+});
+
+test("uncertain Browser Run start is not automatically retried", async () => {
+  let starts = 0;
+  const crawler = { async startCrawl() { starts++; return { ok: false, code: "CRAWL_PROVIDER_UNAVAILABLE" }; } };
+  const { env, handler } = setup(() => crawler);
+  const message = makeMessage({ version: 1, kind: "start", id, url: "https://docs.example.com/", pageLimit: 10, depth: 1, queuedAt: now() });
+  await handler({ messages: [message] }, env);
+  assert.equal(starts, 1);
+  assert.equal(message.calls[0], "ack");
+  const duplicate = makeMessage(message.body);
+  await handler({ messages: [duplicate] }, env);
+  assert.equal(starts, 1);
+  assert.equal(duplicate.calls[0], "ack");
+});
+
+test("malformed queue messages are acknowledged and never reach Browser Run", async () => {
+  let calls = 0;
+  const { env, handler } = setup(() => ({ async startCrawl() { calls++; } }));
+  const message = makeMessage({ version: 99, kind: "start", id, url: "https://docs.example.com/", pageLimit: 1000 });
+  await handler({ messages: [message] }, env);
+  assert.equal(calls, 0);
+  assert.equal(message.calls[0], "ack");
+});
