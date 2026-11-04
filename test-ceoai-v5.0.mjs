@@ -702,30 +702,28 @@ try {
   assert.match((await strictResponse2.json()).error, /Zaštita od preopterećenja|RATE|preopterećenja|limit/i);
 }
 
-// V5-8: owner-supplied Hugging Face token activates the provider.
+// V5-8: owner-supplied Hugging Face token activates the provider after Gemini fails.
 const originalFetchHf = globalThis.fetch;
 const hfCalls = [];
 globalThis.fetch = async (url) => {
   hfCalls.push(String(url));
-  if (String(url).includes("huggingface.co")) throw new Error("Simulated Hugging Face outage");
-  if (String(url).includes("generativelanguage.googleapis.com")) {
-    return new Response(JSON.stringify({candidates:[{content:{parts:[{text:"Gemini"}]}}]}), {status:200, headers:{"Content-Type":"application/json"}});
+  if (String(url).includes("huggingface.co")) {
+    return new Response(JSON.stringify({choices:[{message:{content:"Hugging Face preuzeo"}}]}), {status:200, headers:{"Content-Type":"application/json"}});
   }
+  if (String(url).includes("generativelanguage.googleapis.com")) throw new Error("Simulated Gemini outage");
   throw new Error("Unexpected: " + url);
 };
 try {
   const hfEnv = makeEnv({
     AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true",
-    HF_TOKEN:"must-not-call", GEMINI_KEY_1:"test-gemini",
+    HF_TOKEN:"test-hf-token", GEMINI_KEY_1:"test-gemini",
   });
   const {cookie: hfCookie} = await getSession(hfEnv);
   const hfResponse = await worker.fetch(apiRequest(hfCookie, JSON.stringify({prompt:"Zdravo"})), hfEnv);
   assert.equal(hfResponse.status, 200);
+  assert.equal((await hfResponse.json()).reply, "Hugging Face preuzeo");
   assert.ok(hfCalls.some(u => u.includes("huggingface")), "configured Hugging Face must be attempted without a free-confirmation flag");
 } finally { globalThis.fetch = originalFetchHf; }
-
-
-
 
 // V5-9: quota exhaustion on first provider → automatic failover to second.
 const originalFetchQuota = globalThis.fetch;
