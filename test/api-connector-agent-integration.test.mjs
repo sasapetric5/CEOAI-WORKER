@@ -21,7 +21,7 @@ test("Supervisor can discover and use read-only research only when caller grants
   const task = "Research Hacker News discussions about Cloudflare Queues";
   const prepared = await system.multiAgentSupervisor.prepare({ task, limit: 1 });
   assert.equal(prepared.ok, true);
-  assert.equal(prepared.agents[0].id, "knowledge_retrieval_engineer");
+  assert.equal(prepared.agents[0].id, "public_research_specialist");
   assert.equal(prepared.agents[0].skillId, "hacker_news_public_research");
 
   const denied = await system.multiAgentSupervisor.run({
