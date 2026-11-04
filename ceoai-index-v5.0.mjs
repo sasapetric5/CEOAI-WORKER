@@ -26,7 +26,7 @@ import { parseRetryAfterSeconds, providerFailureCooldown } from "./src/v5-module
 import { createProviderAgentRuntime } from "./src/agent/provider-agent-runtime.mjs";
 import { createToolRegistry } from "./src/agent/tool-registry.mjs";
 import { createAgentLoop } from "./src/agent/agent-loop.mjs";
-import { createBuiltinResearchAgentSystem } from "./src/agent/research-agent-system.mjs";
+import { createBuiltinAgentSystem } from "./src/agent/agent-system.mjs";
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
 // Quota cooldowns differ by provider signal: monthly exhaustion must not be retried every few hours.

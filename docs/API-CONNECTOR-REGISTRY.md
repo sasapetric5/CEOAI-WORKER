@@ -9,6 +9,6 @@ Security boundary:
 - Output is projected onto an allowlisted field set; upstream error bodies and unrecognized fields are not returned.
 - Search results are untrusted reference data. The registry does not grant agent tools or permissions.
 
-The registry is exposed to the specialist Supervisor through one bounded `hacker_news_search` tool. Only the `knowledge_retrieval_engineer` agent and its `hacker_news_public_research` skill declare this capability. The public ContentCraft/AI Force gateway continues to pass an empty `allowedToolIds` list, so it cannot invoke the connector. Trusted internal callers must explicitly pass `hacker_news_search` and approve tool execution. No outbound request occurs during system construction or unless the approved tool is actually selected and invoked.
+The registry is available through a separate internal research-agent composition, which exposes one bounded `hacker_news_search` tool to a dedicated research specialist and its research skill. The public ContentCraft/AI Force gateway is unchanged and continues to use its existing empty tool registry. Trusted internal callers must explicitly use the research composition, pass `hacker_news_search` in `allowedToolIds`, and approve tool execution. No outbound request occurs during system construction or unless the approved tool is actually selected and invoked.
 
 The declarative-operation idea was reviewed alongside goodnight000/api-anything (MIT), but no runtime, learned site specification, cookie, credential, or captured request was copied.
