@@ -1409,3 +1409,6 @@ export default {
     }
   },
 };
+
+// Export the Durable Object declared in wrangler.toml.
+export { SecurityOrchestratorDO } from "./src/durable-objects/security-do.mjs";
