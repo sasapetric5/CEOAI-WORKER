@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "target": "CEOAI-WORKER",
   "updatedAt": "2026-11-04",
   "runtime": {
@@ -84,5 +84,26 @@
     "toolExecution": "requires explicit approval and caller allowlist",
     "httpRoute": false,
     "paidProvidersAdded": false
+  },
+  "applicationAgentGateway": {
+    "endpoint": "POST /v1/agents/run",
+    "authentication": "HMAC-SHA256 via existing verifyHmacSignature and SecurityOrchestratorDO nonce replay protection",
+    "applications": {
+      "CONTENTCRAFT-APP": {
+        "maxAgents": 2,
+        "maxModelCalls": 3
+      },
+      "AIFORCE-APP": {
+        "maxAgents": 3,
+        "maxModelCalls": 4
+      }
+    },
+    "rateLimit": "existing RATE_LIMITER binding, fail closed",
+    "maxBodyBytes": 8192,
+    "maxTaskCharacters": 2000,
+    "maxInputBytes": 4000,
+    "tools": "disabled; empty tool registry; no external side effects",
+    "providerPolicy": "explicit free-confirmation required for OpenRouter :free, Gemini free-only, Workers AI free and GLM Flash free",
+    "deployment": "not deployed; existing /api/chat unchanged"
   }
 }

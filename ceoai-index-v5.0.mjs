@@ -24,6 +24,9 @@ import { prepareConversation, appendReply, withSummary } from "./src/v5-modules/
 import { handleMemoryReset } from "./src/v5-modules/session.mjs";
 import { parseRetryAfterSeconds, providerFailureCooldown } from "./src/v5-modules/provider-policy.mjs";
 import { createProviderAgentRuntime } from "./src/agent/provider-agent-runtime.mjs";
+import { createToolRegistry } from "./src/agent/tool-registry.mjs";
+import { createAgentLoop } from "./src/agent/agent-loop.mjs";
+import { createBuiltinAgentSystem } from "./src/agent/agent-system.mjs";
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
 // Quota cooldowns differ by provider signal: monthly exhaustion must not be retried every few hours.
@@ -543,6 +546,22 @@ function quotaCooldownTTL(error) {
  * Reuses configured provider credentials, model IDs, ranking, cooldown and failover.
  * This helper does not create or expose an HTTP route.
  */
+function isAgentFreeProvider(candidate, env) {
+  if (candidate.provider === "openrouter") {
+    return env.OPENROUTER_FREE_CONFIRMED === "true" && /:free$/i.test(candidate.model);
+  }
+  if (candidate.provider === "gemini") {
+    return env.GEMINI_FREE_CONFIRMED === "true" && env.GEMINI_FREE_ONLY !== "false";
+  }
+  if (candidate.provider === "workers-ai") {
+    return env.WORKERS_AI_ENABLED === "true" && env.WORKERS_AI_FREE_CONFIRMED === "true";
+  }
+  if (candidate.provider === "glm-flash") {
+    return env.ZAI_GLM_FLASH_FREE_CONFIRMED === "true";
+  }
+  return false;
+}
+
 export async function runConfiguredProviderCompletion(env, messages, intent = CAPABILITY.reasoning) {
   if (!env || env.AI_ENABLED !== "true") return { ok: false, code: "AI_DISABLED" };
   if (!Array.isArray(messages) || messages.length < 1 || messages.length > 12) return { ok: false, code: "INVALID_MODEL_MESSAGES" };
@@ -552,7 +571,9 @@ export async function runConfiguredProviderCompletion(env, messages, intent = CA
     bytes += new TextEncoder().encode(message.role + message.content).byteLength;
     if (bytes > 24000) return { ok: false, code: "MODEL_CONTEXT_TOO_LARGE" };
   }
-  const pool = buildProviderPool(env);
+  const configuredPool = buildProviderPool(env);
+  const pool = configuredPool.filter(candidate => isAgentFreeProvider(candidate, env));
+  if (!pool.length) return { ok: false, code: configuredPool.length ? "NO_FREE_PROVIDER_CONFIRMED" : "NO_PROVIDER_CONFIGURED" };
   let candidates = env.ZAI_GLM_FLASH_ONLY === "true" ? pool.filter(p => p.provider === "glm-flash") : pool.slice();
   candidates = candidates.map((p, idx) => ({ p, idx, score: scoreProviderForIntent(p.provider, intent) }))
     .sort((a, b) => b.score - a.score || a.idx - b.idx).map(x => x.p);
@@ -1090,6 +1111,24 @@ export async function runCEOAIInternalAgentTask(env, { system, task, input = {},
   }
 }
 
+const APP_AGENT_POLICIES = Object.freeze({
+  "CONTENTCRAFT-APP": Object.freeze({ maxAgents: 2, maxModelCalls: 3 }),
+  "AIFORCE-APP": Object.freeze({ maxAgents: 3, maxModelCalls: 4 }),
+});
+
+function createRequestAgentSystem(maxAgents) {
+  // This app gateway intentionally has no external-action tools in this integration stage.
+  const toolRegistry = createToolRegistry({ tools: [], enabled: false });
+  return createBuiltinAgentSystem({
+    toolRegistry,
+    maxAgents,
+    maxToolCalls: 1,
+    agentLoopFactory: ({ toolRegistry, skillRegistry }) =>
+      createAgentLoop({ toolRegistry, skillRegistry, maxSteps: 2, maxToolCalls: 1 }),
+  });
+}
+
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -1114,6 +1153,74 @@ export default {
       return new Response("Server misconfiguration.", {
         status: 500, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
       });
+    }
+
+
+    if (url.pathname === "/v1/agents/run") {
+      if (request.method !== "POST") return json({ success: false, error: "Metod nije podržan.", code: "METHOD_NOT_ALLOWED" }, 405, { Allow: "POST" });
+      if (request.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
+        return json({ success: false, error: "Očekuje se JSON zahtev.", code: "INVALID_CONTENT_TYPE" }, 415);
+      }
+      let rawBody;
+      try { rawBody = await readBodyLimited(request, 8192); }
+      catch { return json({ success: false, error: "Neispravno ili preveliko telo zahteva.", code: "INVALID_BODY" }, 400); }
+      let auth;
+      try { auth = await verifyHmacSignature(request, new TextEncoder().encode(rawBody), env); }
+      catch { auth = { valid: false, status: 503 }; }
+      if (!auth.valid) {
+        return json({ success: false, error: auth.status === 503 ? "Autentifikacioni servis nije dostupan." : "Neovlašćen zahtev.", code: auth.status === 503 ? "AUTH_UNAVAILABLE" : "UNAUTHORIZED" }, auth.status || 401);
+      }
+      const policy = APP_AGENT_POLICIES[auth.appId];
+      if (!policy) return json({ success: false, error: "Aplikacija nema odobren pristup agent gateway-u.", code: "APP_NOT_ENABLED" }, 403);
+      if (env.AI_ENABLED !== "true") return json({ success: false, error: "AI je isključen.", code: "AI_DISABLED" }, 503);
+      if (!env.RATE_LIMITER || typeof env.RATE_LIMITER.limit !== "function") {
+        return json({ success: false, error: "Zaštita od preopterećenja nije dostupna.", code: "RATE_LIMITER_UNAVAILABLE" }, 503);
+      }
+      try {
+        const limited = await env.RATE_LIMITER.limit({ key: `agents:${auth.appId}` });
+        if (!limited?.success) return json({ success: false, error: "Dostignuto je ograničenje agentskih zahteva.", code: "RATE_LIMITED" }, 429, { "Retry-After": "60" });
+      } catch {
+        return json({ success: false, error: "Zaštita od preopterećenja nije dostupna.", code: "RATE_LIMITER_UNAVAILABLE" }, 503);
+      }
+      let body;
+      try { body = JSON.parse(rawBody); } catch { return json({ success: false, error: "Neispravan JSON.", code: "INVALID_JSON" }, 400); }
+      if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some(k => !["task", "input", "limit"].includes(k))) {
+        return json({ success: false, error: "Neispravna struktura zahteva.", code: "INVALID_REQUEST" }, 400);
+      }
+      const task = typeof body.task === "string" ? body.task.trim() : "";
+      const input = body.input === undefined ? {} : body.input;
+      const limit = body.limit === undefined ? policy.maxAgents : body.limit;
+      let inputBytes = Infinity;
+      try { inputBytes = new TextEncoder().encode(JSON.stringify(input)).byteLength; } catch {}
+      if (!task || task.length > 2000 || !input || typeof input !== "object" || Array.isArray(input) ||
+          inputBytes > 4000 || !Number.isSafeInteger(limit) || limit < 1 || limit > policy.maxAgents) {
+        return json({ success: false, error: "Zadatak, ulazni podaci ili broj agenata nisu validni.", code: "INVALID_AGENT_REQUEST" }, 400);
+      }
+      const system = createRequestAgentSystem(policy.maxAgents);
+      const result = await runCEOAIInternalAgentTask(env, {
+        system, task, input, limit, allowedToolIds: [], allowToolExecution: true,
+        maxToolCalls: 1, maxModelCalls: policy.maxModelCalls, synthesize: true,
+        intent: chooseIntent(task),
+      });
+      console.info("CEOAI_AGENT_APP", JSON.stringify({
+        appId: auth.appId,
+        success: result.ok === true,
+        agents: Array.isArray(result.agents) ? result.agents : [],
+        partial: result.partial === true,
+        modelCalls: result.modelUsage?.used ?? 0,
+        code: result.ok === true ? null : (typeof result.code === "string" ? result.code : "AGENT_FAILED"),
+      }));
+      if (!result.ok) {
+        const unavailable = ["AI_DISABLED", "NO_PROVIDER_CONFIGURED", "NO_FREE_PROVIDER_CONFIRMED", "PROVIDER_QUOTA_EXHAUSTED", "PROVIDER_COOLDOWN", "PROVIDER_COOLDOWN_STORAGE_UNAVAILABLE", "PROVIDERS_UNAVAILABLE"].includes(result.code);
+        return json({ success: false, error: unavailable ? "Trenutno nema dostupnog potvrđenog besplatnog AI provajdera." : "Agentski zadatak nije uspeo.", code: result.code || "AGENT_FAILED" }, unavailable ? 503 : 422);
+      }
+      return json({
+        success: true,
+        reply: result.output,
+        agents: result.agents,
+        partial: result.partial === true,
+        modelUsage: result.modelUsage,
+      }, 200);
     }
 
     if (url.pathname === "/v1/chat/completions") {

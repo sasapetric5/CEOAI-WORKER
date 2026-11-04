@@ -58,3 +58,14 @@ The internal `runCEOAIInternalAgentTask()` entry point connects the supervisor t
 The provider planner in `src/agent/provider-agent-planner.mjs` requests strict JSON decisions, validates tool IDs against the loop's approved tool list, treats skill text as untrusted reference material, and rejects malformed or oversized outputs. The runtime in `src/agent/provider-agent-runtime.mjs` creates a fresh planner per task and shares one model-call budget across specialist turns and optional synthesis.
 
 The integration is internal-only. No new HTTP route is registered and the existing `/api/chat` handler is not redirected. Calls require `AI_ENABLED=true`, the existing `KV_MEMORY` binding and explicit `allowToolExecution: true`. Tool IDs default to an empty allowlist. AI model-call limits and tool-call limits are separate and bounded.
+
+## HMAC application agent gateway
+The Worker exposes a separate `POST /v1/agents/run` route for `CONTENTCRAFT-APP` and `AIFORCE-APP`. It authenticates the exact request body and path with the existing HMAC verifier and mandatory SecurityOrchestratorDO nonce store. It also requires the existing RATE_LIMITER binding and fails closed if that binding is unavailable.
+
+Per-app bounds: ContentCraft may select at most two agents and use at most three model calls per task; AI Force may select at most three agents and use at most four model calls. Request body is limited to 8 KiB, task text to 2,000 characters and JSON input to 4 KiB. Only `task`, `input`, and `limit` are accepted.
+
+The gateway creates an empty, disabled tool registry. Therefore this first app integration is analysis/response only: no crawling, external requests, writes, publishing or other side effects. HMAC app identity does not itself grant tool capabilities.
+
+Agent provider routing applies a separate strict free-tier gate: OpenRouter requires an explicitly confirmed `:free` model; Gemini requires explicit free confirmation and free-only mode; Workers AI and GLM Flash require their own explicit free-confirmation flags. Configured credentials alone do not qualify a provider. If no provider passes this gate, the request returns a controlled unavailable response.
+
+This route is separate from `/v1/chat/completions` and `/api/chat`. No existing chat route behavior is changed. The new route is not production-deployed by this change.
