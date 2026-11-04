@@ -188,11 +188,11 @@ test("uncertain Browser Run start is not automatically retried", async () => {
   assert.equal(duplicate.calls[0], "ack");
 });
 
-test("malformed queue messages are acknowledged and never reach Browser Run", async () => {
+test("malformed queue messages are retried for eventual DLQ inspection and never reach Browser Run", async () => {
   let calls = 0;
   const { env, handler } = setup(() => ({ async startCrawl() { calls++; } }));
   const message = makeMessage({ version: 99, kind: "start", id, url: "https://docs.example.com/", pageLimit: 1000 });
   await handler({ messages: [message] }, env);
   assert.equal(calls, 0);
-  assert.equal(message.calls[0], "ack");
+  assert.deepEqual(message.calls[0], { retry: { delaySeconds: 60 } });
 });

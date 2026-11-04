@@ -35,3 +35,25 @@ class_name = "SecurityOrchestratorDO"
 [[migrations]]
 tag = "v1-security-orchestrator"
 new_sqlite_classes = ["SecurityOrchestratorDO"]
+
+# Existing shared Spider queue. Consumer is serialized against Browser Run quota.
+[[queues.producers]]
+binding = "SPIDER_QUEUE"
+queue = "ceoai-spider-jobs"
+
+[[queues.consumers]]
+queue = "ceoai-spider-jobs"
+max_batch_size = 1
+max_batch_timeout = 5
+max_retries = 5
+retry_delay = 60
+dead_letter_queue = "ceoai-spider-dlq"
+max_concurrency = 1
+
+[[durable_objects.bindings]]
+name = "SPIDER_LEDGER"
+class_name = "SpiderJobLedgerDO"
+
+[[migrations]]
+tag = "v2-spider-job-ledger"
+new_sqlite_classes = ["SpiderJobLedgerDO"]

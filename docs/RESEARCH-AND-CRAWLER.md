@@ -28,11 +28,8 @@ Cloudflare currently documents, for Workers Free, up to 5 Browser Run crawl jobs
 
 ## Still required before activation
 
-The repository's current `wrangler.toml` does not declare the `SPIDER_QUEUE` producer/consumer or the queue DLQ, and no queue handler is present in the Worker entrypoint. The account may have a dashboard queue, but the repository source-of-truth does not yet wire it. Do not enable the crawler route or deploy until:
-1. The exact existing queue and DLQ names/bindings are reconciled with Wrangler configuration.
-2. The account ID variable and the `SPIDER_BROWSER_RUN_TOKEN` permission (`Browser Run - Edit`) are verified.
-3. A durable, idempotent job-state transition is implemented for at-least-once queue delivery.
-4. Daily account-wide crawl quota (5 jobs on Workers Free) is enforced atomically.
-5. The full producer → queue → consumer → Browser Run → results path passes tests.
+The repository now declares the existing ceoai-spider-jobs producer/consumer, the existing ceoai-spider-dlq, and a separate SpiderJobLedgerDO binding. The HMAC-protected POST /v1/spider/crawl endpoint requires an idempotency requestId, and the Worker exports a Queue consumer handler.
 
-No new public research route is exposed by this change. `/api/chat` remains unchanged.
+The consumer uses one-message batches and max concurrency 1, enforces a five-start daily budget in an atomic Durable Object, records job transitions, stores bounded results in existing KV_MEMORY, and retries transient status/result failures. Messages that exhaust the configured five retries are routed to the existing DLQ. Ambiguous Browser Run start outcomes are marked start_unknown and are never automatically POSTed again, avoiding duplicate quota-consuming crawls.
+
+Before enabling in production, verify that the existing Cloudflare queue names match these declarations, that SPIDER_BROWSER_RUN_ACCOUNT_ID is set, and that SPIDER_BROWSER_RUN_TOKEN has only the required Browser Run permission. The queue and ledger changes are source-only until a separately approved deployment. /api/chat remains unchanged.

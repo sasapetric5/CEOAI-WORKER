@@ -27,6 +27,9 @@ import { createProviderAgentRuntime } from "./src/agent/provider-agent-runtime.m
 import { createToolRegistry } from "./src/agent/tool-registry.mjs";
 import { createAgentLoop } from "./src/agent/agent-loop.mjs";
 import { createBuiltinAgentSystem } from "./src/agent/agent-system.mjs";
+import { enqueueSpiderCrawl, createSpiderQueueHandler } from "./src/integrations/spider-queue.mjs";
+import { SpiderJobLedgerDO } from "./src/durable-objects/spider-job-ledger-do.mjs";
+const handleSpiderQueue = createSpiderQueueHandler();
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
 // Quota cooldowns differ by provider signal: monthly exhaustion must not be retried every few hours.
@@ -1156,6 +1159,26 @@ export default {
     }
 
 
+    if (url.pathname === "/v1/spider/crawl") {
+      if (request.method !== "POST") return json({ success: false, code: "METHOD_NOT_ALLOWED" }, 405, { Allow: "POST" });
+      if (request.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "application/json") return json({ success: false, code: "INVALID_CONTENT_TYPE" }, 415);
+      let rawBody;
+      try { rawBody = await readBodyLimited(request, 8192); } catch { return json({ success: false, code: "INVALID_BODY" }, 400); }
+      let auth;
+      try { auth = await verifyHmacSignature(request, new TextEncoder().encode(rawBody), env); } catch { auth = { valid: false, status: 503 }; }
+      if (!auth.valid) return json({ success: false, code: auth.status === 503 ? "AUTH_UNAVAILABLE" : "UNAUTHORIZED" }, auth.status || 401);
+      if (!APP_AGENT_POLICIES[auth.appId]) return json({ success: false, code: "APP_NOT_ENABLED" }, 403);
+      if (!env.SPIDER_BROWSER_RUN_ACCOUNT_ID || !env.SPIDER_BROWSER_RUN_TOKEN) return json({ success: false, code: "SPIDER_CONFIG_UNAVAILABLE" }, 503);
+      if (!env.RATE_LIMITER || typeof env.RATE_LIMITER.limit !== "function") return json({ success: false, code: "RATE_LIMITER_UNAVAILABLE" }, 503);
+      try { const limited = await env.RATE_LIMITER.limit({ key: "spider:" + auth.appId }); if (!limited?.success) return json({ success: false, code: "RATE_LIMITED" }, 429, { "Retry-After": "60" }); }
+      catch { return json({ success: false, code: "RATE_LIMITER_UNAVAILABLE" }, 503); }
+      let body;
+      try { body = JSON.parse(rawBody); } catch { return json({ success: false, code: "INVALID_JSON" }, 400); }
+      if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some(key => !["url", "pageLimit", "depth", "requestId"].includes(key)) || typeof body.requestId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.requestId)) return json({ success: false, code: "INVALID_SPIDER_REQUEST" }, 400);
+      const queued = await enqueueSpiderCrawl(env, { url: body.url, pageLimit: body.pageLimit === undefined ? 10 : body.pageLimit, depth: body.depth === undefined ? 1 : body.depth, jobId: body.requestId });
+      if (!queued.ok) return json({ success: false, code: queued.code }, queued.code === "SPIDER_QUEUE_UNAVAILABLE" ? 503 : 400);
+      return json({ success: true, jobId: queued.jobId, status: queued.status }, 202);
+    }
     if (url.pathname === "/v1/agents/run") {
       if (request.method !== "POST") return json({ success: false, error: "Metod nije podržan.", code: "METHOD_NOT_ALLOWED" }, 405, { Allow: "POST" });
       if (request.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
@@ -1616,7 +1639,9 @@ export default {
       return json({ success: false, error: "Interna greška pri obradi zahteva." }, 500, corsHeaders(origin));
     }
   },
+  async queue(batch, env) { await handleSpiderQueue(batch, env); },
 };
 
-// Export the Durable Object declared in wrangler.toml.
+// Export Durable Object classes declared in wrangler.toml.
 export { SecurityOrchestratorDO } from "./src/durable-objects/security-do.mjs";
+export { SpiderJobLedgerDO };

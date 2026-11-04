@@ -233,8 +233,8 @@ export function createSpiderQueueHandler({
     for (const message of batch.messages) {
       const validated = validateMessage(message?.body);
       if (!validated) {
-        message.ack();
-        console.warn("CEOAI_SPIDER", JSON.stringify({ event: "invalid_message_dropped" }));
+        message.retry({ delaySeconds: 60 });
+        console.warn("CEOAI_SPIDER", JSON.stringify({ event: "invalid_message_retry" }));
         continue;
       }
       try {
