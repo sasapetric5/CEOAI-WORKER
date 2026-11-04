@@ -1,4 +1,4 @@
-// CEOAI.dev — Worker V5.0 (multi-provider free-only pool, capability-aware orchestration, quota-aware failover, free search tools)
+// CEOAI.dev — Worker V5.0 (multi-provider orchestration, capability-aware routing, quota-aware failover, search tools)
 // Security-first reference implementation. No provider is called unless explicitly enabled.
 // Required binding: KV_MEMORY (Cloudflare KV). Optional binding: AI (Workers AI).
 // Cloudflare secret aliases: prefer current dashboard names; legacy names remain supported.
@@ -6,7 +6,7 @@
 // IMPORTANT: requests fail closed when RATE_LIMITER is missing unless REQUIRE_ATOMIC_RATE_LIMITER=false.
 // The opt-in KV fallback is non-atomic under concurrency and is for controlled testing only.
 // Provider activation uses owner-supplied credentials and explicit AI/provider enable switches. Quota and provider errors trigger cooldown and automatic failover.
-// Mistral uses documented free models only. Debug provider detail logging is off by default (DEBUG_PROVIDER_ERRORS=true).
+// Provider models are owner-configurable. Debug provider detail logging is off by default (DEBUG_PROVIDER_ERRORS=true).
 
 const SESSION_TTL = 60 * 60 * 24 * 30;
 const RATE_WINDOW_MS = 60 * 1000;
@@ -286,7 +286,7 @@ function chooseIntent(prompt) {
   return CAPABILITY.fast;
 }
 
-// Higher score = better fit for the detected intent. Scores are relative within the free pool.
+// Higher score = better fit for the detected intent. Scores are relative within the configured provider pool.
 const PROVIDER_CAPABILITIES = {
   "glm-flash":   { fast: 3, coding: 2, reasoning: 2, research: 1, complex: 2 },
   "gemini":      { fast: 3, coding: 2, reasoning: 3, research: 2, complex: 3 },
@@ -309,10 +309,6 @@ function validMistralModel(value) {
   const m = value.trim();
   // Accept the configured Mistral model; access and quota errors trigger provider failover.
   return m.length <= 120 && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(m);
-}
-
-function validFreeConfirmedFlag(env, name) {
-  return env[name] === "true";
 }
 
 async function withTimeoutFetch(url, options, timeoutMs = PROVIDER_TIMEOUT_MS) {
@@ -451,9 +447,9 @@ async function fetchUrlWithJina(url) {
   }
 }
 
-// --- Free search / data providers with automatic failover ---
+// --- Search / data providers with automatic failover ---
 // Order: Jina (URL) → Tavily → Google CSE → Exa. Each is skipped when key missing,
-// free gate fails, or provider is in quota cooldown.
+// provider is unavailable, or provider is in quota cooldown.
 
 async function isInCooldown(env, id) {
   try { return Boolean(await env.KV_MEMORY.get(`cooldown:${id}`)); } catch { return true; }
@@ -1188,14 +1184,14 @@ export default {
       const intent = chooseIntent(prompt);
 
       // Research enrichment with automatic search-provider failover (Jina → Tavily → Google CSE → Exa).
-      // When one free quota is exhausted, the next configured free source takes over.
+      // When one provider quota is exhausted, the next configured source takes over.
       let researchContext = "";
       let researchSource = null;
       if (intent === CAPABILITY.research) {
         const enriched = await enrichWithSearchFailover(env, prompt);
         if (enriched.text) {
           researchSource = enriched.source;
-          researchContext = `\n\n[ISTRAŽIVAČKI KONTEKST — izvor: ${enriched.source}, free/rate-limited]\n${enriched.text}`;
+          researchContext = `\n\n[ISTRAŽIVAČKI KONTEKST — izvor: ${enriched.source}, quota/rate-limited]\n${enriched.text}`;
         }
       }
       if (researchContext) {
@@ -1297,7 +1293,7 @@ export default {
       let quotaRetryAfter = QUOTA_COOLDOWN_TTL;
       let usedProviderId = null;
       // Sequential failover: on quota/rate-limit the provider is cooled down and the next
-      // ranked free candidate automatically takes over within the same request.
+      // next ranked configured candidate automatically takes over within the same request.
       const providerDeadline = Date.now() + 24000;
       for (const candidate of candidates) {
         const remainingMs = providerDeadline - Date.now();
