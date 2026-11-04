@@ -5,7 +5,7 @@
 // Required secrets when external AI is explicitly enabled: provider API keys.
 // IMPORTANT: requests fail closed when RATE_LIMITER is missing unless REQUIRE_ATOMIC_RATE_LIMITER=false.
 // The opt-in KV fallback is non-atomic under concurrency and is for controlled testing only.
-// Free-only policy: OpenRouter models must end with :free; xAI/NVIDIA/HF require *_FREE_CONFIRMED=true;
+// Provider activation uses owner-supplied credentials and explicit AI/provider enable switches. Quota and provider errors trigger cooldown and automatic failover.
 // Mistral uses documented free models only. Debug provider detail logging is off by default (DEBUG_PROVIDER_ERRORS=true).
 
 const SESSION_TTL = 60 * 60 * 24 * 30;
@@ -350,8 +350,7 @@ async function readProviderError(response, provider) {
 async function executeModel(provider, messages, timeoutMs = PROVIDER_TIMEOUT_MS) {
   let response;
   if (provider.provider === "workers-ai") {
-    if (!provider.enabled || !provider.env?.AI || provider.env.WORKERS_AI_ENABLED !== "true" ||
-        provider.env.WORKERS_AI_FREE_CONFIRMED !== "true") {
+    if (!provider.enabled || !provider.env?.AI || provider.env.WORKERS_AI_ENABLED !== "true") {
       throw new Error("Workers AI nije eksplicitno potvrđen kao besplatan");
     }
     let timeout;
@@ -489,7 +488,7 @@ function quotaCooldownTTL(error) {
 
 async function fetchSearchTavily(env, query) {
   if (typeof env.TAVILY_KEY !== "string" || !env.TAVILY_KEY.trim()) return null;
-  if (env.TAVILY_FREE_CONFIRMED !== "true") return null;
+
   if (await isInCooldown(env, "search-tavily")) return null;
   try {
     const response = await withTimeoutFetch("https://api.tavily.com/search", {
@@ -519,7 +518,7 @@ async function fetchSearchGoogleCse(env, query) {
   // Google Custom Search JSON API — free tier ~100 queries/day when enabled on the project.
   if (typeof env.GOOGLE_CSE_KEY !== "string" || !env.GOOGLE_CSE_KEY.trim()) return null;
   if (typeof env.GOOGLE_CSE_CX !== "string" || !env.GOOGLE_CSE_CX.trim()) return null;
-  if (env.GOOGLE_CSE_FREE_CONFIRMED !== "true") return null;
+
   if (await isInCooldown(env, "search-google-cse")) return null;
   try {
     const url = `https://www.googleapis.com/customsearch/v1?key=${encodeURIComponent(env.GOOGLE_CSE_KEY.trim())}`
@@ -547,7 +546,7 @@ async function fetchSearchGoogleCse(env, query) {
 
 async function fetchSearchExa(env, query) {
   if (typeof env.EXA_KEY !== "string" || !env.EXA_KEY.trim()) return null;
-  if (env.EXA_FREE_CONFIRMED !== "true") return null;
+
   if (await isInCooldown(env, "search-exa")) return null;
   try {
     const response = await withTimeoutFetch("https://api.exa.ai/search", {
@@ -573,13 +572,12 @@ async function fetchSearchExa(env, query) {
   }
 }
 
-// Try search providers in order; first successful free result wins. Quota-exhausted providers cool down
-// and the next one automatically takes over.
+// Try configured search providers in order; quota/provider errors cool down the failing source and trigger automatic failover.
 
 async function fetchSearchFirecrawl(env, query) {
-  // Firecrawl: site map / scrape within free credit. Requires explicit free confirmation.
+  // Firecrawl: site map / scrape using the owner-supplied key.
   if (typeof env.FIRECRAWL_KEY !== "string" || !env.FIRECRAWL_KEY.trim()) return null;
-  if (env.FIRECRAWL_FREE_CONFIRMED !== "true") return null;
+
   if (await isInCooldown(env, "search-firecrawl")) return null;
   // Prefer URL scrape when a URL is present; otherwise use search endpoint if available.
   const urlMatch = String(query).match(/https?:\/\/[^\s<>"']+/i);
@@ -717,8 +715,7 @@ async function fetchSearchSearxng(env, query) {
 async function fetchSearchBing(env, query) {
   // Microsoft's legacy Bing Search APIs were retired in 2025; require a configured compatible endpoint.
   const endpointValue = typeof env.BING_SEARCH_ENDPOINT === "string" ? env.BING_SEARCH_ENDPOINT.trim() : "";
-  if (!endpointValue || typeof env.BING_SEARCH_KEY !== "string" || !env.BING_SEARCH_KEY.trim() ||
-      env.BING_SEARCH_FREE_CONFIRMED !== "true") return null;
+  if (!endpointValue || typeof env.BING_SEARCH_KEY !== "string" || !env.BING_SEARCH_KEY.trim() ||) return null;
   let endpoint;
   try {
     endpoint = new URL(endpointValue);
@@ -752,8 +749,7 @@ async function fetchSearchConsole(env, query) {
   // Search Console is a site-owned analytics data source, not a general web search API.
   const siteUrl = typeof env.GSC_SITE_URL === "string" ? env.GSC_SITE_URL.trim() : "";
   const token = typeof env.GSC_ACCESS_TOKEN === "string" ? env.GSC_ACCESS_TOKEN.trim() : "";
-  if (!siteUrl || !token || env.GSC_ENABLED !== "true" ||
-      env.GSC_FREE_CONFIRMED !== "true") return null;
+  if (!siteUrl || !token || env.GSC_ENABLED !== "true" ||) return null;
   let parsedSite;
   try {
     parsedSite = new URL(siteUrl);
@@ -791,9 +787,8 @@ async function fetchSearchConsole(env, query) {
 }
 
 async function fetchSearchSerpApi(env, query) {
-  // SerpAPI has its own quota/billing rules; never call unless free use is explicitly confirmed.
-  if (typeof env.SERPAPI_KEY !== "string" || !env.SERPAPI_KEY.trim() ||
-      env.SERPAPI_FREE_CONFIRMED !== "true") return null;
+  // SerpAPI uses the owner-supplied key; quota/provider errors are handled by cooldown and failover.
+  if (typeof env.SERPAPI_KEY !== "string" || !env.SERPAPI_KEY.trim() ||) return null;
   if (await isInCooldown(env, "search-serpapi")) return null;
   try {
     const endpoint = new URL("https://serpapi.com/search.json");
@@ -941,9 +936,8 @@ async function readBodyLimited(request, maxBytes) {
 }
 
 async function compressHistory(env, oldSummary, oldMessages) {
-  // Defense in depth: compression must obey the same explicit AI opt-in contract.
-  if (env.AI_ENABLED !== "true" || env.EXTERNAL_AI_ENABLED !== "true" ||
-      !env.AI || env.WORKERS_AI_ENABLED !== "true" || env.WORKERS_AI_FREE_CONFIRMED !== "true") return null;
+  // Compression requires AI and Workers AI to be explicitly enabled.
+  if (env.AI_ENABLED !== "true" || !env.AI || env.WORKERS_AI_ENABLED !== "true") return null;
   const unboundedSource = [
     oldSummary ? `PRETHODNI SAŽETAK:\n${oldSummary}` : "",
     ...oldMessages.map(m => `${m.role.toUpperCase()}: ${m.content}`),
@@ -989,7 +983,7 @@ export default {
         method: request.method,
         originAllowed,
         aiEnabled: env.AI_ENABLED === "true",
-        externalAiEnabled: env.EXTERNAL_AI_ENABLED === "true",
+        externalAiEnabled: env.AI_ENABLED === "true",
       }));
     }
 
@@ -1136,12 +1130,9 @@ export default {
       return json({ success: false, error: "Zaštita od preopterećenja je privremeno nedostupna." }, 503, corsHeaders(origin));
     }
 
-    // Fail closed by default: external providers are never called unless BOTH flags are true.
-    if (env.AI_ENABLED !== "true" || env.EXTERNAL_AI_ENABLED !== "true") {
-      return json({
-        success: false,
-        error: "AI je isključen ili spoljne AI pozive vlasnik nije izričito omogućio. Nije poslat zahtev nijednom AI provajderu.",
-      }, 503, corsHeaders(origin));
+    // External AI is enabled by the owner-controlled AI_ENABLED switch; credentials select provider candidates.
+    if (env.AI_ENABLED !== "true") {
+      return json({ success: false, error: "AI je isključen. Nije poslat zahtev nijednom AI provajderu." }, 503, corsHeaders(origin));
     }
 
     try {
@@ -1166,7 +1157,7 @@ export default {
         .slice(-MAX_HISTORY_INPUT_MESSAGES)
         .map(m => ({ role: m.role, content: m.content.slice(0, MAX_REPLY_CHARS) }));
       const canCompressHistory = validatedHistory.length >= COMPRESSION_THRESHOLD - 1 &&
-        env.AI_ENABLED === "true" && env.EXTERNAL_AI_ENABLED === "true" &&
+        env.AI_ENABLED === "true" &&
         Boolean(env.AI) && env.WORKERS_AI_ENABLED === "true";
       const prepared = await prepareConversation({
         stored: validatedHistory,
@@ -1213,7 +1204,7 @@ export default {
 
       const configuredComplexModel = typeof env.OPENROUTER_COMPLEX_MODEL === "string"
         ? env.OPENROUTER_COMPLEX_MODEL.trim() : "";
-      if (configuredComplexModel && !(validFreeConfirmedFlag(env, "OPENROUTER_FREE_CONFIRMED") && typeof (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY) === "string" && (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY).trim()) && !warnedOpenRouterModelWithoutKey) {
+      if (configuredComplexModel && !(typeof (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY) === "string" && (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY).trim()) && !warnedOpenRouterModelWithoutKey) {
         console.warn("OPENROUTER_COMPLEX_MODEL is configured but OPENROUTER_KEY is missing; optional candidate disabled.");
         warnedOpenRouterModelWithoutKey = true;
       }
@@ -1232,34 +1223,33 @@ export default {
       const hfModel = typeof env.HF_MODEL === "string" && /^[A-Za-z0-9._\/-]{1,120}$/.test(env.HF_MODEL.trim())
         ? env.HF_MODEL.trim() : "Qwen/Qwen2.5-7B-Instruct";
 
-      // Free-only pool: potentially billable providers require explicit account-level free-quota confirmation.
-      // API keys alone never authorize a provider call; runtime quota errors still trigger cooldown and fallback.
+      // Configured owner-supplied credentials activate provider candidates. Runtime quota/provider errors trigger cooldown and fallback.
       const pool = [
-        // Cloudflare Workers AI is a shared-pool candidate only after explicit free-tier confirmation.
-        { id: "workers-ai-1", provider: "workers-ai", model: MODEL, key: "", enabled: Boolean(env.AI) && env.WORKERS_AI_ENABLED === "true" && env.WORKERS_AI_FREE_CONFIRMED === "true", env, tier: "fast" },
-        { id: "glm-flash-1", provider: "glm-flash", model: glmFlashModel, key: validFreeConfirmedFlag(env, "ZAI_GLM_FLASH_FREE_CONFIRMED") ? env.ZAI_GLM_FLASH_KEY_1 : "", tier: "fast" },
-        { id: "glm-flash-2", provider: "glm-flash", model: glmFlashModel, key: validFreeConfirmedFlag(env, "ZAI_GLM_FLASH_FREE_CONFIRMED") ? env.ZAI_GLM_FLASH_KEY_2 : "", tier: "fast" },
-        { id: "gemini-1", provider: "gemini", model: "gemini-1.5-flash", key: validFreeConfirmedFlag(env, "GEMINI_FREE_CONFIRMED") ? (env.GEMINI_API_KEY_PRIMARY || env.GEMINI_KEY_1) : "", tier: "fast" },
-        { id: "gemini-2", provider: "gemini", model: "gemini-1.5-flash", key: validFreeConfirmedFlag(env, "GEMINI_FREE_CONFIRMED") ? (env.GEMINI_API_KEY_SECONDARY || env.GEMINI_KEY_2) : "", tier: "fast" },
-        { id: "gemini-3", provider: "gemini", model: "gemini-1.5-flash", key: validFreeConfirmedFlag(env, "GEMINI_FREE_CONFIRMED") ? (env.GEMINI_API_KEY_TERTIARY || env.GEMINI_KEY_3) : "", tier: "fast" },
-        { id: "openrouter-1", provider: "openrouter", model: "meta-llama/llama-3-8b-instruct:free", key: validFreeConfirmedFlag(env, "OPENROUTER_FREE_CONFIRMED") ? (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY) : "", tier: "fast" },
-        ...(validFreeConfirmedFlag(env, "DEEPSEEK_FREE_CONFIRMED") && typeof (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY) === "string" && (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY).trim()
+        // Cloudflare Workers AI joins the pool when its binding and enable switch are present.
+        { id: "workers-ai-1", provider: "workers-ai", model: MODEL, key: "", enabled: Boolean(env.AI) && env.WORKERS_AI_ENABLED === "true", env, tier: "fast" },
+        { id: "glm-flash-1", provider: "glm-flash", model: glmFlashModel, key: env.ZAI_GLM_FLASH_KEY_1, tier: "fast" },
+        { id: "glm-flash-2", provider: "glm-flash", model: glmFlashModel, key: env.ZAI_GLM_FLASH_KEY_2, tier: "fast" },
+        { id: "gemini-1", provider: "gemini", model: "gemini-1.5-flash", key: (env.GEMINI_API_KEY_PRIMARY || env.GEMINI_KEY_1), tier: "fast" },
+        { id: "gemini-2", provider: "gemini", model: "gemini-1.5-flash", key: (env.GEMINI_API_KEY_SECONDARY || env.GEMINI_KEY_2), tier: "fast" },
+        { id: "gemini-3", provider: "gemini", model: "gemini-1.5-flash", key: (env.GEMINI_API_KEY_TERTIARY || env.GEMINI_KEY_3), tier: "fast" },
+        { id: "openrouter-1", provider: "openrouter", model: "meta-llama/llama-3-8b-instruct:free", key: (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY), tier: "fast" },
+        ...(typeof (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY) === "string" && (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY).trim()
           ? [{ id: "deepseek-1", provider: "deepseek", model: "deepseek-chat", key: (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY), tier: "complex" }]
           : []),
         ...(validOpenRouterFreeModel(configuredComplexModel) && typeof (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY) === "string" && (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY).trim()
           ? [{ id: "openrouter-complex-free", provider: "openrouter", model: configuredComplexModel, key: (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY), tier: "complex" }]
           : []),
-        ...(validFreeConfirmedFlag(env, "MISTRAL_FREE_CONFIRMED") && typeof (env.MISTRAL_API_KEY || env.MISTRAL_KEY) === "string" && (env.MISTRAL_API_KEY || env.MISTRAL_KEY).trim()
+        ...(typeof (env.MISTRAL_API_KEY || env.MISTRAL_KEY) === "string" && (env.MISTRAL_API_KEY || env.MISTRAL_KEY).trim()
           ? [{ id: "mistral-1", provider: "mistral", model: mistralModel, key: (env.MISTRAL_API_KEY || env.MISTRAL_KEY), tier: "complex" }]
           : []),
-        // xAI, NVIDIA, and Hugging Face also require their own explicit free-quota confirmation.
-        ...(validFreeConfirmedFlag(env, "XAI_FREE_CONFIRMED") && typeof env.XAI_KEY === "string" && env.XAI_KEY.trim()
+        // xAI, NVIDIA, and Hugging Face join the pool when their owner-supplied credentials are present.
+        ...(typeof env.XAI_KEY === "string" && env.XAI_KEY.trim()
           ? [{ id: "xai-1", provider: "xai", model: xaiModel, key: env.XAI_KEY, tier: "complex" }]
           : []),
-        ...(validFreeConfirmedFlag(env, "NVIDIA_FREE_CONFIRMED") && typeof env.NVIDIA_KEY === "string" && env.NVIDIA_KEY.trim()
+        ...(typeof env.NVIDIA_KEY === "string" && env.NVIDIA_KEY.trim()
           ? [{ id: "nvidia-1", provider: "nvidia", model: nvidiaModel, key: env.NVIDIA_KEY, tier: "complex" }]
           : []),
-        ...(validFreeConfirmedFlag(env, "HF_FREE_CONFIRMED") && typeof env.HF_TOKEN === "string" && env.HF_TOKEN.trim()
+        ...(typeof env.HF_TOKEN === "string" && env.HF_TOKEN.trim()
           ? [{ id: "hf-1", provider: "huggingface", model: hfModel, key: env.HF_TOKEN, tier: "fast" }]
           : []),
       ].filter(p => p.provider === "workers-ai" ? p.enabled : (typeof p.key === "string" && p.key.trim()));
