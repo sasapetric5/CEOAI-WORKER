@@ -1205,7 +1205,7 @@ export default {
         try {
           // Free-only discovery: no paid search APIs are called by the app gateway.
           // DuckDuckGo Instant Answer is a no-key, best-effort source; URL reading uses Jina Reader.
-          const urlMatch = task.match(/https?:\\/\\/[^\\s<>"']+/i);
+          const urlMatch = task.match(/https?:\/\/[^\s<>"']+/i);
           let enriched = { text: "", source: null };
           if (urlMatch && env.JINA_READER_ENABLED !== "false" &&
               !(await isInCooldown(env, "search-jina"))) {
