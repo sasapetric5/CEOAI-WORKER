@@ -849,20 +849,21 @@ assert.equal(workersAiResponse.status, 200);
 assert.equal((await workersAiResponse.json()).reply, "Workers AI odgovor iz testnog bindinga");
 assert.equal(workersAiCalls, 1);
 
-// V5-9e: Workers AI binding alone is not enough; explicit free-tier confirmation is mandatory.
+// V5-9e: Workers AI is enabled by its binding and enable switch; no free-confirmation flag is required.
 let unconfirmedWorkersAiCalls = 0;
 const unconfirmedWorkersAiEnv = makeEnv({
   AI_ENABLED: "true", EXTERNAL_AI_ENABLED: "true",
   WORKERS_AI_ENABLED: "true", WORKERS_AI_FREE_CONFIRMED: "false",
-  AI: { async run() { unconfirmedWorkersAiCalls += 1; return { response: "should never run" }; } },
+  AI: { async run() { unconfirmedWorkersAiCalls += 1; return { response: "Workers AI bez dodatne potvrde" }; } },
 });
 const { cookie: unconfirmedWorkersAiCookie } = await getSession(unconfirmedWorkersAiEnv);
 const unconfirmedWorkersAiResponse = await worker.fetch(
   apiRequest(unconfirmedWorkersAiCookie, JSON.stringify({ prompt: "Zdravo" })),
   unconfirmedWorkersAiEnv
 );
-assert.equal(unconfirmedWorkersAiResponse.status, 503);
-assert.equal(unconfirmedWorkersAiCalls, 0);
+assert.equal(unconfirmedWorkersAiResponse.status, 200);
+assert.equal((await unconfirmedWorkersAiResponse.json()).reply, "Workers AI bez dodatne potvrde");
+assert.equal(unconfirmedWorkersAiCalls, 1);
 
 // V5-10: search failover — Tavily quota → Google CSE takes over.
 const originalFetchSearch = globalThis.fetch;
@@ -1838,17 +1839,18 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
 }
 
 
-// Batch free-only gate regression: every provider with an unconfirmed quota stays disabled.
+// Batch activation regression: owner-supplied provider credentials are used even when legacy confirmation flags are false.
+// All providers are mocked to fail, proving that CEOAI attempts them and safely exhausts the failover pool.
 {
   const originalFetch = globalThis.fetch;
   let externalCalls = 0;
   let workersAiCalls = 0;
-  globalThis.fetch = async () => { externalCalls++; throw new Error("Unconfirmed provider must not be called"); };
+  globalThis.fetch = async () => { externalCalls++; throw new Error("Simulated provider outage"); };
   try {
     const env = makeEnv({
       AI_ENABLED: "true",
       EXTERNAL_AI_ENABLED: "true",
-      AI: { async run() { workersAiCalls++; return { response: "must not run" }; } },
+      AI: { async run() { workersAiCalls++; throw new Error("Simulated Workers AI outage"); } },
       WORKERS_AI_ENABLED: "true",
       WORKERS_AI_FREE_CONFIRMED: "false",
       GEMINI_FREE_CONFIRMED: "false",
@@ -1869,11 +1871,11 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
       HF_TOKEN: "test-unconfirmed-hf",
     });
     const { cookie } = await getSession(env);
-    const response = await worker.fetch(apiRequest(cookie, JSON.stringify({ prompt: "Provera besplatnih ograničenja" })), env);
+    const response = await worker.fetch(apiRequest(cookie, JSON.stringify({ prompt: "Provera automatskog prelaska provajdera" })), env);
     assert.equal(response.status, 503);
-    assert.match((await response.json()).error, /Nema konfigurisanog provajdera/);
-    assert.equal(externalCalls, 0, "no external provider may be called without free-quota confirmation");
-    assert.equal(workersAiCalls, 0, "Workers AI must remain disabled without its explicit free confirmation");
+    assert.match((await response.json()).error, /AI provajderi trenutno nisu dostupni/);
+    assert.ok(externalCalls > 0, "owner-supplied external provider keys must activate the pool");
+    assert.equal(workersAiCalls, 1, "enabled Workers AI binding must be attempted without free confirmation");
   } finally {
     globalThis.fetch = originalFetch;
   }
