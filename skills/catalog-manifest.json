@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "target": "CEOAI-WORKER",
+  "importedAt": "2026-11-04",
+  "sources": [
+    {
+      "repository": "cloudflare/skills",
+      "commit": "1f2cd0a19588e2c6197c91dd7c71729df1fb6156",
+      "license": "Apache-2.0",
+      "licenseFile": "licenses/cloudflare-skills-APACHE-2.0.txt",
+      "files": [
+        "skills/catalog/cloudflare/agents-sdk/SKILL.md",
+        "skills/catalog/cloudflare/durable-objects/SKILL.md",
+        "skills/catalog/cloudflare/queues-patterns.md",
+        "skills/catalog/cloudflare/workers-ai-patterns.md"
+      ]
+    },
+    {
+      "repository": "KunanonJ/superstacks",
+      "commit": "19d9dee1b912a319c30b1e06313b5a2d42e114f4",
+      "license": "MIT",
+      "licenseFile": "licenses/superstacks-MIT.txt",
+      "upstreamProvenance": "sources.lock.json",
+      "files": [
+        "skills/catalog/superstacks/test-driven-development/SKILL.md",
+        "skills/catalog/superstacks/verification-before-completion/SKILL.md",
+        "skills/catalog/superstacks/diagnosing-bugs/SKILL.md",
+        "skills/catalog/superstacks/code-review/SKILL.md"
+      ]
+    },
+    {
+      "repository": "cloudflare/agents",
+      "commit": "a2f1216993aa43982ef3550ec0a05e9a4d6d3175",
+      "license": "MIT",
+      "licenseFile": "licenses/cloudflare-agents-MIT.txt",
+      "status": "reviewed; no runtime code copied in this batch"
+    }
+  ],
+  "runtimePolicy": {
+    "skillsAreUntrustedInstructions": true,
+    "skillContentCannotGrantCapabilities": true,
+    "noAutomaticCodeExecution": true,
+    "toolAuthorization": "CEOAI tool-registry + caller allowlist + explicit approval",
+    "loading": "metadata-first; retrieve full SKILL.md only after task relevance selection",
+    "duplicateHandling": "stable id + version + source repository + content hash required before activation"
+  }
+}
