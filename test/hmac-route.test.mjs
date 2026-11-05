@@ -10,11 +10,11 @@ const body = JSON.stringify({ model: "ceoai-auto", messages: [{ role: "user", co
 const bytes = new TextEncoder().encode(body);
 const appId = "CONTENTCRAFT-APP";
 
-async function signedHeaders(nonce, payload = bytes, signedAppId = appId) {
+async function signedHeaders(nonce, payload = bytes, signedAppId = appId, pathname = "/v1/chat/completions") {
   const timestamp = String(Math.floor(Date.now() / 1000));
   const hash = await crypto.subtle.digest("SHA-256", payload);
   const hex = Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2, "0")).join("");
-  const canonical = ["POST", "/v1/chat/completions", timestamp, nonce, hex].join("\n");
+  const canonical = ["POST", pathname, timestamp, nonce, hex].join("\n");
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(canonical));
   return {
@@ -180,7 +180,7 @@ test("AI Force is denied Spider access before rate limiting or queue submission"
     requestId: "123e4567-e89b-42d3-a456-426614174000"
   });
   const signedPayload = new TextEncoder().encode(payload);
-  const headers = await signedHeaders("nonce_aiforce_spider_denied_123", signedPayload, "AIFORCE-APP");
+  const headers = await signedHeaders("nonce_aiforce_spider_denied_123", signedPayload, "AIFORCE-APP", "/v1/spider/crawl");
   const response = await worker.fetch(new Request("https://ceoai.dev/v1/spider/crawl", {
     method: "POST",
     headers: { ...headers, "Content-Type": "application/json" },
@@ -191,4 +191,42 @@ test("AI Force is denied Spider access before rate limiting or queue submission"
   assert.equal((await response.json()).code, "CAPABILITY_NOT_GRANTED");
   assert.equal(rateLimitCalls, 0);
   assert.equal(queueCalls, 0);
+});
+
+
+test("Reserved RankGeo app is rejected by agent and chat gateways", async () => {
+  const env = makeEnv();
+  env.HMAC_ALLOWED_APPS = "CONTENTCRAFT-APP,RANKGEO-APP";
+  env.APP_SECRET_RANKGEO_APP = secret;
+  let providerCalls = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    providerCalls++;
+    return Response.json({ choices: [{ message: { content: "should not run" } }] });
+  };
+  try {
+    const agentPayload = JSON.stringify({ task: "test", input: {}, limit: 1 });
+    const agentBytes = new TextEncoder().encode(agentPayload);
+    const agentHeaders = await signedHeaders("nonce_rankgeo_agent_reserved_123", agentBytes, "RANKGEO-APP", "/v1/agents/run");
+    const agentResponse = await worker.fetch(new Request("https://ceoai.dev/v1/agents/run", {
+      method: "POST",
+      headers: { ...agentHeaders, "Content-Type": "application/json" },
+      body: agentPayload
+    }), env);
+    assert.equal(agentResponse.status, 403);
+    assert.equal((await agentResponse.json()).code, "APP_NOT_ENABLED");
+
+    const chatBytes = new TextEncoder().encode(body);
+    const chatHeaders = await signedHeaders("nonce_rankgeo_chat_reserved_123", chatBytes, "RANKGEO-APP");
+    const chatResponse = await worker.fetch(new Request("https://ceoai.dev/v1/chat/completions", {
+      method: "POST",
+      headers: chatHeaders,
+      body
+    }), env);
+    assert.equal(chatResponse.status, 403);
+    assert.equal((await chatResponse.json()).error.code, "app_not_enabled");
+    assert.equal(providerCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
