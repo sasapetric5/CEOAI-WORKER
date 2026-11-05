@@ -1332,7 +1332,7 @@ export default {
           headers: request.headers,
           body: rawBody,
         });
-        return handleOpenAIChatCompletions(authenticatedRequest, env, { hmacAuthenticated: true, appId: auth.appId });
+        return handleOpenAIChatCompletions(authenticatedRequest, env, { hmacAuthenticated: true, appId: auth.appId, appPolicy: APP_AGENT_POLICIES[auth.appId] });
       }
       return handleOpenAIChatCompletions(request, env);
     }
