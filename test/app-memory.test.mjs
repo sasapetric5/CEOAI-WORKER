@@ -53,10 +53,10 @@ test("reset only deletes the bound app and session namespace", async () => {
   assert.equal((await aiForce.read(sessionA)).history[0].content, "two");
 });
 
-test("invalid session IDs and unregistered apps fail closed", () => {
+test("invalid session IDs and unregistered apps fail closed", async () => {
   const kv = memoryKV();
   const store = createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy });
-  assert.throws(() => store.read("../AIFORCE-APP"), /APP_MEMORY_INVALID_SESSION/);
+  await assert.rejects(store.read("../AIFORCE-APP"), /APP_MEMORY_INVALID_SESSION/);
   assert.throws(() => createAppMemoryStore({ kv, appId: "UNKNOWN-APP", appPolicy: enabledPolicy }), /APP_MEMORY_UNKNOWN_APP/);
 });
 
