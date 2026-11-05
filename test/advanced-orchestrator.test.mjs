@@ -72,3 +72,49 @@ test("26 records node completion through the audit hook", async () => {
   await runner.run(graph([node("a")]).graph,{grantedCapabilities:["general"]});
   assert.equal(events[0].type,"node_completed");
 });
+
+test("27 rejects an omitted wave and cannot report false completion", async () => {
+  let calls=0; const runner=createAdvancedOrchestrator({executeNode:async()=>{calls++;return 1;}});
+  const compiled=graph([node("a")]).graph;
+  const out=await runner.run({...compiled,waves:[]},{grantedCapabilities:["general"]});
+  assert.equal(out.code,"INVALID_COMPILED_GRAPH"); assert.equal(calls,0);
+});
+test("28 rejects a duplicated node across waves", async () => {
+  let calls=0; const runner=createAdvancedOrchestrator({executeNode:async()=>{calls++;return 1;}});
+  const compiled=graph([node("a"),node("b",["a"])]).graph;
+  const out=await runner.run({...compiled,waves:[["a"],["a","b"]]},{grantedCapabilities:["general"]});
+  assert.equal(out.code,"INVALID_COMPILED_GRAPH"); assert.equal(calls,0);
+});
+test("29 rejects a node omitted from all waves", async () => {
+  let calls=0; const runner=createAdvancedOrchestrator({executeNode:async()=>{calls++;return 1;}});
+  const compiled=graph([node("a"),node("b")]).graph;
+  const out=await runner.run({...compiled,waves:[["a"]]},{grantedCapabilities:["general"]});
+  assert.equal(out.code,"INVALID_COMPILED_GRAPH"); assert.equal(calls,0);
+});
+test("30 rejects reordered non-canonical waves", async () => {
+  let calls=0; const runner=createAdvancedOrchestrator({executeNode:async()=>{calls++;return 1;}});
+  const compiled=graph([node("a"),node("b",["a"])]).graph;
+  const out=await runner.run({...compiled,waves:[["b"],["a"]]},{grantedCapabilities:["general"]});
+  assert.equal(out.code,"INVALID_COMPILED_GRAPH"); assert.equal(calls,0);
+});
+test("31 rejects extra compiled graph fields", async () => {
+  const runner=createAdvancedOrchestrator({executeNode:async()=>1});
+  const out=await runner.run({...graph([node("a")]).graph,admin:true},{grantedCapabilities:["general"]});
+  assert.equal(out.code,"INVALID_COMPILED_GRAPH");
+});
+test("32 rejects restored results whose dependencies are missing", async () => {
+  let calls=0; const runner=createAdvancedOrchestrator({executeNode:async()=>{calls++;return 1;}});
+  const out=await runner.run(graph([node("a"),node("b",["a"])]).graph,{grantedCapabilities:["general"],priorResults:{b:2}});
+  assert.equal(out.code,"INVALID_PRIOR_RESULT_DEPENDENCIES"); assert.equal(calls,0);
+});
+test("33 accepts a canonical compiled graph with normalized null input", async () => {
+  const runner=createAdvancedOrchestrator({executeNode:async()=>({ok:true})});
+  const out=await runner.run(graph([node("a")]).graph,{grantedCapabilities:["general"]});
+  assert.equal(out.status,"completed");
+});
+test("34 rejects duplicate wave membership before any execution", async () => {
+  let calls=0; const runner=createAdvancedOrchestrator({executeNode:async()=>{calls++;return 1;}});
+  const compiled=graph([node("a"),node("b")]).graph;
+  const out=await runner.run({...compiled,waves:[["a","b"],["b"]]},{grantedCapabilities:["general"]});
+  assert.equal(out.code,"INVALID_COMPILED_GRAPH"); assert.equal(calls,0);
+});
