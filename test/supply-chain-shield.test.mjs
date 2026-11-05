@@ -53,3 +53,37 @@ test("malformed candidates fail closed", () => {
   assert.equal(assessSkillIntake(null).code, "INVALID_SKILL_CANDIDATE");
   assert.equal(assessAgentIntake({}).code, "INVALID_AGENT_ID");
 });
+
+import { createHash } from "node:crypto";
+import { verifySkillIntake } from "../src/agent/supply-chain-shield.mjs";
+const contentHash = value => createHash("sha256").update(value).digest("hex");
+
+test("SHA-256 intake gate verifies content and remains review-only", async () => {
+  const candidate = skill();
+  candidate.contentSha256 = contentHash(candidate.content);
+  const result = await verifySkillIntake(candidate);
+  assert.equal(result.ok, true);
+  assert.equal(result.contentTrust, "sha256_verified");
+  assert.equal(result.status, "REVIEW_REQUIRED");
+  assert.equal(result.executable, false);
+  assert.deepEqual(result.capabilities, []);
+});
+
+test("SHA-256 intake gate rejects modified content and missing hashes", async () => {
+  const candidate = skill();
+  candidate.contentSha256 = contentHash(candidate.content);
+  candidate.content += " injected";
+  assert.equal((await verifySkillIntake(candidate)).code, "CONTENT_HASH_MISMATCH");
+  assert.equal((await verifySkillIntake(skill())).code, "INVALID_CONTENT_SHA256");
+});
+
+test("strict path validation rejects encoded traversal, backslashes and ambiguous separators", () => {
+  for (const path of ["skills/%2e%2e/evil.md", "skills\\\\evil.md", "skills//evil.md", "skills/./evil.md"]) {
+    assert.equal(assessSkillIntake(skill({source:{...skill().source,path}})).code, "INVALID_SKILL_PROVENANCE", path);
+  }
+});
+
+test("intake policy types are validated and agent skill IDs must be unique", () => {
+  assert.equal(assessSkillIntake(skill(), {approvedLicenses:"MIT"}).code, "INVALID_INTAKE_POLICY");
+  assert.equal(assessAgentIntake(agent({skillIds:["safe_skill","safe_skill"]}), {approvedSkillIds:["safe_skill"]}).code, "AGENT_SKILL_NOT_APPROVED");
+});
