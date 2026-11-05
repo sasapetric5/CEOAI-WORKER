@@ -1110,9 +1110,11 @@ export async function runCEOAIInternalAgentTask(env, { system, task, input = {},
 }
 
 const APP_AGENT_POLICIES = Object.freeze({
-  // Shared capabilities are available to integrated apps; per-app quotas and job namespaces isolate usage and data.
-  "CONTENTCRAFT-APP": Object.freeze({ maxAgents: 2, maxModelCalls: 3, spider: true }),
-  "AIFORCE-APP": Object.freeze({ maxAgents: 3, maxModelCalls: 4, spider: false }),
+  // Each application has an explicit lifecycle state and isolated capability/quota profile.
+  "CONTENTCRAFT-APP": Object.freeze({ enabled: true, maxAgents: 2, maxModelCalls: 3, spider: true }),
+  "AIFORCE-APP": Object.freeze({ enabled: true, maxAgents: 3, maxModelCalls: 4, spider: false }),
+  // Reserved integration slot only. No HMAC allowlist entry, capabilities, quota, or runtime access.
+  "RANKGEO-APP": Object.freeze({ enabled: false, maxAgents: 0, maxModelCalls: 0, spider: false }),
 });
 
 function createRequestAgentSystem(maxAgents) {
@@ -1164,7 +1166,7 @@ export default {
       try { auth = await verifyHmacSignature(request, new TextEncoder().encode(rawBody), env); } catch { auth = { valid: false, status: 503 }; }
       if (!auth.valid) return json({ success: false, code: auth.status === 503 ? "AUTH_UNAVAILABLE" : "UNAUTHORIZED" }, auth.status || 401);
       const spiderPolicy = APP_AGENT_POLICIES[auth.appId];
-      if (!spiderPolicy?.spider) return json({ success: false, code: "CAPABILITY_NOT_GRANTED" }, 403);
+      if (spiderPolicy?.enabled !== true || spiderPolicy.spider !== true) return json({ success: false, code: "CAPABILITY_NOT_GRANTED" }, 403);
       if (!env.SPIDER_BROWSER_RUN_ACCOUNT_ID || !env.SPIDER_BROWSER_RUN_TOKEN) return json({ success: false, code: "SPIDER_CONFIG_UNAVAILABLE" }, 503);
       if (!env.RATE_LIMITER || typeof env.RATE_LIMITER.limit !== "function") return json({ success: false, code: "RATE_LIMITER_UNAVAILABLE" }, 503);
       try { const limited = await env.RATE_LIMITER.limit({ key: "spider:" + auth.appId }); if (!limited?.success) return json({ success: false, code: "RATE_LIMITED" }, 429, { "Retry-After": "60" }); }
@@ -1191,7 +1193,7 @@ export default {
         return json({ success: false, error: auth.status === 503 ? "Autentifikacioni servis nije dostupan." : "Neovlašćen zahtev.", code: auth.status === 503 ? "AUTH_UNAVAILABLE" : "UNAUTHORIZED" }, auth.status || 401);
       }
       const policy = APP_AGENT_POLICIES[auth.appId];
-      if (!policy) return json({ success: false, error: "Aplikacija nema odobren pristup agent gateway-u.", code: "APP_NOT_ENABLED" }, 403);
+      if (policy?.enabled !== true) return json({ success: false, error: "Aplikacija nema aktivan pristup agent gateway-u.", code: "APP_NOT_ENABLED" }, 403);
       if (env.AI_ENABLED !== "true") return json({ success: false, error: "AI je isključen.", code: "AI_DISABLED" }, 503);
       if (!env.RATE_LIMITER || typeof env.RATE_LIMITER.limit !== "function") {
         return json({ success: false, error: "Zaštita od preopterećenja nije dostupna.", code: "RATE_LIMITER_UNAVAILABLE" }, 503);
@@ -1315,6 +1317,15 @@ export default {
               code: auth.status === 503 ? "authentication_unavailable" : "unauthorized"
             }
           }, auth.status);
+        }
+        if (APP_AGENT_POLICIES[auth.appId]?.enabled !== true) {
+          return json({
+            error: {
+              message: "Application is not enabled for the CEOAI gateway.",
+              type: "authentication_error",
+              code: "app_not_enabled"
+            }
+          }, 403);
         }
         const authenticatedRequest = new Request(request.url, {
           method: request.method,
