@@ -193,18 +193,20 @@ test("agent gateway rejects non-JSON content type before authentication or model
  }finally{mock.restore();}
 });
 
-test("Spider capability is denied to AI Force even with valid HMAC and configured runner",async()=>{
+test("shared Spider capability is available to AI Force with isolated app identity",async()=>{
+ let sends=0;
  const env=environment({
   APP_SECRET_AIFORCE_APP:secret,
   SPIDER_BROWSER_RUN_ACCOUNT_ID:"test-account",
   SPIDER_BROWSER_RUN_TOKEN:"test-runner-token",
-  SPIDER_QUEUE:{async send(){throw new Error("must not enqueue");}}
+  SPIDER_QUEUE:{async send(message){sends++;assert.equal(message.appId,"AIFORCE-APP");assert.equal(message.id,"123e4567-e89b-42d3-a456-426614174000");}}
  });
  const response=await worker.fetch(await signedRequest({
   url:"https://example.com",requestId:"123e4567-e89b-42d3-a456-426614174000"
  },{id:"AIFORCE-APP",path:"/v1/spider/crawl"}),env);
- assert.equal(response.status,403);
- assert.equal((await response.json()).code,"CAPABILITY_NOT_GRANTED");
+ const payload=await response.json();
+ assert.equal(response.status,202,JSON.stringify(payload));
+ assert.equal(sends,1);
 });
 test("Spider capability remains available to authorized ContentCraft policy",async()=>{
  let sends=0;
