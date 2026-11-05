@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const manifest = JSON.parse(await readFile(new URL("../upstream/registry.json", import.meta.url), "utf8"));
+const manifest = JSON.parse(await readFile(new URL("./upstream/registry.json", import.meta.url), "utf8"));
 const statuses = new Set(manifest.policy.statuses);
 
 test("upstream registry has a supported schema and conservative reuse policy", () => {
