@@ -52,6 +52,7 @@ function makeEnv() {
       },
     },
     OPENROUTER_KEY: "test-provider-key",
+    RATE_LIMITER: { async limit() { return { success: true }; } },
   };
 }
 
