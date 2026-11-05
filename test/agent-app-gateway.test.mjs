@@ -222,3 +222,56 @@ test("Spider capability remains available to authorized ContentCraft policy",asy
  assert.equal(response.status,202,JSON.stringify(payload));
  assert.equal(sends,1);
 });
+
+
+// HMAC-authenticated OpenAI-compatible gateway: application-level isolation.
+test("model gateway applies a distinct rate-limit bucket for each authenticated app",async()=>{
+ const old=globalThis.fetch;const keys=[];
+ globalThis.fetch=async()=>Response.json({choices:[{message:{content:"gateway-ok"}}]});
+ try{
+  const env=environment({
+   APP_SECRET_AIFORCE_APP:secret,
+   AI_ENABLED:"true",EXTERNAL_AI_ENABLED:"true",
+   OPENROUTER_FREE_CONFIRMED:"true",OPENROUTER_KEY:"test-openrouter-key",
+   RATE_LIMITER:{async limit({key}){keys.push(key);return {success:true};}}
+  });
+  for(const id of ["CONTENTCRAFT-APP","AIFORCE-APP"]){
+   const response=await worker.fetch(await signedRequest({messages:[{role:"user",content:"hello"}]},{id,path:"/v1/chat/completions"}),env);
+   assert.equal(response.status,200);
+  }
+  assert.deepEqual(keys,["gateway:CONTENTCRAFT-APP","gateway:AIFORCE-APP"]);
+ }finally{globalThis.fetch=old;}
+});
+
+test("model gateway fails closed when an authenticated app exceeds its own rate limit",async()=>{
+ const old=globalThis.fetch;let calls=0;
+ globalThis.fetch=async()=>{calls++;throw new Error("provider must not be called");};
+ try{
+  const env=environment({
+   AI_ENABLED:"true",EXTERNAL_AI_ENABLED:"true",
+   OPENROUTER_FREE_CONFIRMED:"true",OPENROUTER_KEY:"test-openrouter-key",
+   RATE_LIMITER:{async limit({key}){assert.equal(key,"gateway:CONTENTCRAFT-APP");return {success:false};}}
+  });
+  const response=await worker.fetch(await signedRequest({messages:[{role:"user",content:"hello"}]},{path:"/v1/chat/completions"}),env);
+  assert.equal(response.status,429);
+  assert.equal((await response.json()).error.code,"rate_limited");
+  assert.equal(response.headers.get("retry-after"),"60");
+  assert.equal(calls,0);
+ }finally{globalThis.fetch=old;}
+});
+
+test("model gateway fails closed when the authenticated app rate limiter is unavailable",async()=>{
+ const old=globalThis.fetch;let calls=0;
+ globalThis.fetch=async()=>{calls++;throw new Error("provider must not be called");};
+ try{
+  const env=environment({
+   AI_ENABLED:"true",EXTERNAL_AI_ENABLED:"true",
+   OPENROUTER_FREE_CONFIRMED:"true",OPENROUTER_KEY:"test-openrouter-key",
+   RATE_LIMITER:null
+  });
+  const response=await worker.fetch(await signedRequest({messages:[{role:"user",content:"hello"}]},{path:"/v1/chat/completions"}),env);
+  assert.equal(response.status,503);
+  assert.equal((await response.json()).error.code,"rate_limiter_unavailable");
+  assert.equal(calls,0);
+ }finally{globalThis.fetch=old;}
+});
