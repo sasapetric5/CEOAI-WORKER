@@ -80,3 +80,20 @@ test("manual agent selection chooses only a task-relevant assigned skill", async
  const unrelated=await supervisor.prepare({task:"unrelated gardening topic",agentIds:["security_agent"]});
  assert.equal(unrelated.code,"NO_RELEVANT_AGENT");
 });
+
+test("supervisor rejects getter-backed input without executing it or invoking the planner",async()=>{
+ let getterCalls=0,plannerCalls=0;
+ const skill={id:"safe_skill",version:"1.0.0",description:"Safe bounded test skill",allowedToolIds:[]};
+ const agent={id:"safe_agent",role:"Safe test agent",description:"Bounded test agent",skillId:"safe_skill",allowedToolIds:[],score:1,matchedTerms:[]};
+ const supervisor=createMultiAgentSupervisor({
+  agentRegistry:{search:()=>[agent],get:()=>agent},
+  skillRegistry:{get:()=>skill,search:()=>[{id:"safe_skill",score:1,matchedTerms:[]}]},
+  agentLoop:{run:async()=>({ok:true,output:"unexpected"})}
+ });
+ const input={};
+ Object.defineProperty(input,"secret",{enumerable:true,get(){getterCalls++;return "should-not-run";}});
+ const result=await supervisor.run({task:"safe test task",input,allowToolExecution:true,planAgent:async()=>{plannerCalls++;return {type:"final",output:"unexpected"};}});
+ assert.equal(result.code,"INPUT_TOO_LARGE_OR_INVALID");
+ assert.equal(getterCalls,0);
+ assert.equal(plannerCalls,0);
+});
