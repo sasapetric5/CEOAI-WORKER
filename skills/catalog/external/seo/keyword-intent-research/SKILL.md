@@ -34,3 +34,7 @@ Return a keyword cluster table with phrase, intent, audience need, proposed page
 
 ## Provenance
 Original CEOAI-authored workflow. No upstream code, copied skill text, package, or runtime dependency.
+
+
+## Research transport
+Use the existing guarded Spider for public read-only research; do not introduce a second crawler.
