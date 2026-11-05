@@ -1,7 +1,7 @@
 // Supply Chain Shield: validate third-party skill/agent metadata before catalog admission.
 // Candidate content is never executed and candidate metadata never grants capabilities.
 const ID = /^[a-z][a-z0-9_]{0,47}$/;
-const VERSION = /^(0|[1-9]\d*)\\.(0|[1-9]\d*)\\.(0|[1-9]\d*)$/;
+const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const SHA1 = /^[a-f0-9]{40}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
 const LICENSES = new Set(["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC"]);
