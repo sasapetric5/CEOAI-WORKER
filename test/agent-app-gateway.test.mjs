@@ -128,3 +128,24 @@ test("agent gateway allows only POST",async()=>{
  const response=await worker.fetch(new Request("https://ceoai.test/v1/agents/run",{method:"GET"}),environment());
  assert.equal(response.status,405);assert.equal(response.headers.get("allow"),"POST");
 });
+
+test("mixed configured providers never call any provider without explicit free confirmation",async()=>{
+ const old=globalThis.fetch;let calls=0;
+ globalThis.fetch=async()=>{calls++;throw new Error("unconfirmed provider must never be called");};
+ try{
+  const env={
+   AI_ENABLED:"true",KV_MEMORY:{async get(){return null;},async put(){}},
+   ZAI_GLM_FLASH_KEY_1:"test-glm-key",
+   GEMINI_API_KEY_PRIMARY:"test-gemini-key",
+   OPENROUTER_KEY:"test-openrouter-key",
+   DEEPSEEK_API_KEY:"test-deepseek-key",
+   MISTRAL_API_KEY:"test-mistral-key",
+   XAI_API_KEY:"test-xai-key",
+   NVIDIA_API_KEY:"test-nvidia-key",
+   HF_TOKEN:"test-hf-token",
+  };
+  const result=await runConfiguredProviderCompletion(env,[{role:"user",content:"bounded test"}],"reasoning");
+  assert.deepEqual(result,{ok:false,code:"NO_FREE_PROVIDER_CONFIRMED"});
+  assert.equal(calls,0);
+ }finally{globalThis.fetch=old;}
+});
