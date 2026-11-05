@@ -157,26 +157,42 @@ test("daily account quota is atomic and duplicate job claims do not consume a se
   assert.equal(sixth.count, 5);
 });
 
-test("daily per-application Spider quotas are independent and enforce RankGeo limit", async () => {
+test("daily Spider quotas are isolated and enforced independently for all three apps", async () => {
   const ns = makeLedgerNamespace();
   const date = "2026-11-05";
   const claim = (appId, jobId, limit) => ns.get("quota:app:" + appId + ":" + date).fetch(new Request("https://ledger.test/quota/claim", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ appId, date, id: jobId, limit, now: now() })
   })).then(response => response.json());
-  const rankGeoIds = [
-    "123e4567-e89b-42d3-a456-426614174010",
-    "123e4567-e89b-42d3-a456-426614174011",
-    "123e4567-e89b-42d3-a456-426614174012"
+  const cases = [
+    { appId: "CONTENTCRAFT-APP", limit: 3, ids: [
+      "123e4567-e89b-42d3-a456-426614174010",
+      "123e4567-e89b-42d3-a456-426614174011",
+      "123e4567-e89b-42d3-a456-426614174012",
+      "123e4567-e89b-42d3-a456-426614174013"
+    ]},
+    { appId: "AIFORCE-APP", limit: 2, ids: [
+      "223e4567-e89b-42d3-a456-426614174010",
+      "223e4567-e89b-42d3-a456-426614174011",
+      "223e4567-e89b-42d3-a456-426614174012"
+    ]},
+    { appId: "RANKGEO-APP", limit: 2, ids: [
+      "323e4567-e89b-42d3-a456-426614174010",
+      "323e4567-e89b-42d3-a456-426614174011",
+      "323e4567-e89b-42d3-a456-426614174012"
+    ]}
   ];
-  assert.equal((await claim("RANKGEO-APP", rankGeoIds[0], 2)).allowed, true);
-  assert.equal((await claim("CONTENTCRAFT-APP", rankGeoIds[0], 3)).allowed, true);
-  assert.equal((await claim("AIFORCE-APP", rankGeoIds[0], 2)).allowed, true);
-  assert.equal((await claim("RANKGEO-APP", rankGeoIds[1], 2)).allowed, true);
-  const blocked = await claim("RANKGEO-APP", rankGeoIds[2], 2);
-  assert.equal(blocked.allowed, false);
-  assert.equal(blocked.count, 2);
-  assert.equal((await claim("CONTENTCRAFT-APP", rankGeoIds[2], 3)).allowed, true);
+  for (const entry of cases) {
+    for (let i = 0; i < entry.limit; i++) {
+      const result = await claim(entry.appId, entry.ids[i], entry.limit);
+      assert.equal(result.allowed, true, entry.appId + " slot " + i);
+    }
+    const blocked = await claim(entry.appId, entry.ids[entry.limit], entry.limit);
+    assert.equal(blocked.allowed, false, entry.appId + " must enforce its own limit");
+    assert.equal(blocked.count, entry.limit, entry.appId + " quota count");
+  }
+  // A blocked app must not consume another app's independent quota.
+  assert.equal((await claim("AIFORCE-APP", "423e4567-e89b-42d3-a456-426614174010", 2)).allowed, true);
 });
 
 test("producer validates and publishes a bounded HTTPS job", async () => {
