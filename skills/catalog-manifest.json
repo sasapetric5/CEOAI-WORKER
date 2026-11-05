@@ -116,5 +116,24 @@
       "allowedToolIds": [],
       "scope": "owner-controlled-or-explicitly-authorized-assets-only"
     }
-  ]
+  ],
+  "apiKeyLifecycleManager": {
+    "catalog": "src/credentials/provider-catalog.mjs",
+    "lifecycle": "src/credentials/provider-key-lifecycle.mjs",
+    "vault": "src/credentials/encrypted-credential-vault.mjs",
+    "documentation": "docs/API-KEYS-HARVESTER.md",
+    "providers": [
+      "nvidia_build",
+      "bytez"
+    ],
+    "scope": "owner-controlled-provider-accounts-only",
+    "storage": "AES-256-GCM-encrypted-secret-records-and-separate-allowlisted-metadata",
+    "masterKeyBindingRequired": "CREDENTIALS_ENCRYPTION_KEY",
+    "autoSignup": false,
+    "portalSessionAutomation": false,
+    "automaticPayments": false,
+    "bytezAutoReload": false,
+    "bytezAutoScale": false,
+    "productionEnabled": false
+  }
 }
