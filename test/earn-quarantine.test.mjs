@@ -43,7 +43,7 @@ test("bounty skill forbids claims, payout, secrets, and unapproved testing", asy
 test("freelance deliverables are draft/research only and reject paid dependencies", async () => {
   const a = await read("cashclaw/competitor-research/SKILL.md");
   const b = await read("cashclaw/content-delivery/SKILL.md");
-  assert.match(a, /No paid data providers or paid SEO tools/);
+  assert.match(a, /Do not use paid data providers or paid SEO tools/);
   assert.match(a, /No outreach, email, messaging/);
   assert.match(b, /Drafts only/);
   assert.match(b, /Do not guarantee rankings, engagement, leads, conversions, or revenue/);
