@@ -43,25 +43,26 @@ test("agent loop receives loaded skill content as untrusted context",async()=>{
 });
 test("KV catalog writes immutable docs and index last, then loads by SHA-256",async()=>{
  const values=new Map(),writes=[],kv={async put(k,v){writes.push(k);values.set(k,v);},async get(k){return values.get(k)??null;}};
- const pub=await publishSkillCatalogToKV({kv,skills:[BUILTIN_SKILLS[0],BUILTIN_SKILLS[1]],toolRegistry:tools});
+ const approvedSkillIds=[BUILTIN_SKILLS[0].id,BUILTIN_SKILLS[1].id];
+ const pub=await publishSkillCatalogToKV({kv,skills:[BUILTIN_SKILLS[0],BUILTIN_SKILLS[1]],toolRegistry:tools,approvedSkillIds});
  assert.equal(pub.skillCount,2);assert.equal(writes.at(-1),"skills:v1:index");
- const r=await createKVSkillRegistry({kv,toolRegistry:tools});assert.equal(r.size,2);
+ const r=await createKVSkillRegistry({kv,toolRegistry:tools,approvedSkillIds});assert.equal(r.size,2);
  assert.match((await r.load("cloudflare_durable_objects")).content,/persist before updating/i);
 });
 test("KV rejects tampered content and catalog capability escalation",async()=>{
  const values=new Map(),kv={async put(k,v){values.set(k,v);},async get(k){return values.get(k)??null;}};
- await publishSkillCatalogToKV({kv,skills:[BUILTIN_SKILLS[0]],toolRegistry:tools});
+ await publishSkillCatalogToKV({kv,skills:[BUILTIN_SKILLS[0]],toolRegistry:tools,approvedSkillIds:[BUILTIN_SKILLS[0].id]});
  let idx=JSON.parse(values.get("skills:v1:index"));const item=idx.skills[0];
  item.allowedToolIds=["approved_lookup"];values.set("skills:v1:index",JSON.stringify(idx));
- const safe=await createKVSkillRegistry({kv,toolRegistry:tools});assert.equal(safe.allows(item.id,"approved_lookup"),false);
+ const safe=await createKVSkillRegistry({kv,toolRegistry:tools,approvedSkillIds:[item.id]});assert.equal(safe.allows(item.id,"approved_lookup"),false);
  const key=`skills:v1:doc:${item.id}:${item.version}:${item.contentSha256}`;
  values.set(key,"tampered");await assert.rejects(()=>safe.load(item.id),/SKILL_CONTENT_HASH_MISMATCH/);
- const approved=await createKVSkillRegistry({kv,toolRegistry:tools,capabilityPolicy:{[item.id]:["approved_lookup"]}});
+ const approved=await createKVSkillRegistry({kv,toolRegistry:tools,approvedSkillIds:[item.id],capabilityPolicy:{[item.id]:["approved_lookup"]},categoryBySkillId:{[item.id]:"test"},categoryCapabilityPolicy:{test:["approved_lookup"]}});
  assert.equal(approved.allows(item.id,"approved_lookup"),true);
 });
 test("KV skill system creates registry before agent loop",async()=>{
  const values=new Map(),kv={async put(k,v){values.set(k,v);},async get(k){return values.get(k)??null;}};
- await publishSkillCatalogToKV({kv,skills:[BUILTIN_SKILLS[0]],toolRegistry:tools});
+ await publishSkillCatalogToKV({kv,skills:[BUILTIN_SKILLS[0]],toolRegistry:tools,approvedSkillIds:[BUILTIN_SKILLS[0].id]});
  const system=await createKVSkillSystem({kv,toolRegistry:tools,agentLoopFactory:({skillRegistry})=>createAgentLoop({toolRegistry:tools,skillRegistry})});
  assert.ok(system.agentLoop);assert.equal((await system.supervisor.prepare({task:"Cloudflare Agents SDK and MCP tools"})).ok,true);
 });
