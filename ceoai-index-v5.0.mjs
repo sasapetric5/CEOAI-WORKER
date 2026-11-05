@@ -1116,9 +1116,8 @@ const APP_AGENT_POLICIES = Object.freeze({
     allowedAgentIds: Object.freeze(["quality_engineer", "knowledge_retrieval_engineer", "security_reviewer"]),
   }),
   "AIFORCE-APP": Object.freeze({
-    // AI Force is deliberately not granted Spider access; its other app-scoped
-    // capabilities and isolated memory remain enabled.
-    enabled: true, maxAgents: 3, maxModelCalls: 4, spider: false, memory: true,
+    // AI Force has its own app-scoped Spider permission, quota, and audit trail.
+    enabled: true, maxAgents: 3, maxModelCalls: 4, spider: true, memory: true,
     allowedAgentIds: Object.freeze(["cloudflare_platform_engineer", "quality_engineer", "knowledge_retrieval_engineer"]),
   }),
   "RANKGEO-APP": Object.freeze({
