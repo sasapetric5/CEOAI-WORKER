@@ -309,9 +309,9 @@ test("agent gateway persists and reloads conversation memory only within each au
   const env=environment({APP_SECRET_AIFORCE_APP:secret,APP_SECRET_RANKGEO_APP:secret});
   const conversationId="123e4567-e89b-42d3-a456-426614174099";
   const send=async(id,nonce,task)=>worker.fetch(await signedRequest({task,conversation_id:conversationId},{id,nonce}),env);
-  assert.equal((await send("CONTENTCRAFT-APP","agent_mem_cc_000000000001","contentcraft private task")).status,200);
-  assert.equal((await send("AIFORCE-APP","agent_mem_af_000000000001","aiforce private task")).status,200);
-  assert.equal((await send("CONTENTCRAFT-APP","agent_mem_cc_000000000002","contentcraft follow-up")).status,200);
+  assert.equal((await send("CONTENTCRAFT-APP","agent_mem_cc_000000000001","regression testing and verification contentcraft private task")).status,200);
+  assert.equal((await send("AIFORCE-APP","agent_mem_af_000000000001","Cloudflare Workers platform architecture aiforce private task")).status,200);
+  assert.equal((await send("CONTENTCRAFT-APP","agent_mem_cc_000000000002","regression testing and verification contentcraft follow-up")).status,200);
   const payloadText=providerPayloads.map(p=>JSON.stringify(p.messages));
   assert.equal(payloadText.some(v=>v.includes("contentcraft private task")),true);
   assert.equal(payloadText.some(v=>v.includes("aiforce private task")),true);
@@ -328,7 +328,7 @@ test("agent gateway validates conversation UUID and keeps requests stateless whe
   const invalid=await worker.fetch(await signedRequest({task:"invalid session",conversation_id:"../other-app"}),env);
   assert.equal(invalid.status,400);
   assert.equal((await invalid.json()).code,"INVALID_AGENT_REQUEST");
-  const stateless=await worker.fetch(await signedRequest({task:"no persistent session"}),env);
+  const stateless=await worker.fetch(await signedRequest({task:"regression testing and verification without persistent session"}),env);
   assert.equal(stateless.status,200);
  }finally{mock.restore();}
 });
