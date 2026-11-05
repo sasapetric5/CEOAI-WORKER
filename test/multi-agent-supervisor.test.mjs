@@ -97,3 +97,19 @@ test("supervisor rejects getter-backed input without executing it or invoking th
  assert.equal(getterCalls,0);
  assert.equal(plannerCalls,0);
 });
+
+test("supervisor accepts ordinary array values in sanitized input", async () => {
+ const skill={id:"array_skill",version:"1.0.0",description:"Array fixture",allowedToolIds:[]};
+ const agent={id:"array_agent",role:"Array test agent",description:"Accepts bounded arrays",skillId:"array_skill",allowedToolIds:[],score:1,matchedTerms:[]};
+ const supervisor=createMultiAgentSupervisor({
+  agentRegistry:{search:()=>[agent],get:()=>agent},
+  skillRegistry:{get:()=>skill,search:()=>[{id:"array_skill",score:1,matchedTerms:[]}]},
+  agentLoop:{run:async({input})=>({ok:Array.isArray(input.input.items),output:"array accepted",steps:1,toolCalls:0})}
+ });
+ const result=await supervisor.run({
+  task:"array input test",input:{items:["one","two",3]},allowToolExecution:true,
+  planAgent:async()=>({type:"final",output:"unused"})
+ });
+ assert.equal(result.ok,true);
+ assert.equal(result.results[0].ok,true);
+});
