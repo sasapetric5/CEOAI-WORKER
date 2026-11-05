@@ -162,16 +162,16 @@ test("HMAC app identity comes from the signed header, never a client JSON appId"
 });
 
 
-test("AI Force is denied Spider access before rate limiting or queue submission", async () => {
+test("AI Force can enqueue Spider jobs under its explicit app-scoped grant", async () => {
   const env = makeEnv();
   env.HMAC_ALLOWED_APPS = "CONTENTCRAFT-APP,AIFORCE-APP";
   env.APP_SECRET_AIFORCE_APP = secret;
   let rateLimitCalls = 0;
-  let queueCalls = 0;
-  env.RATE_LIMITER = { async limit() { rateLimitCalls++; return { success: true }; } };
+  const queued = [];
+  env.RATE_LIMITER = { async limit(input) { rateLimitCalls++; assert.equal(input.key, "spider:AIFORCE-APP"); return { success: true }; } };
   env.SPIDER_BROWSER_RUN_ACCOUNT_ID = "test-account";
   env.SPIDER_BROWSER_RUN_TOKEN = "test-token";
-  env.SPIDER_QUEUE = { async send() { queueCalls++; } };
+  env.SPIDER_QUEUE = { async send(message) { queued.push(message); } };
 
   const payload = JSON.stringify({
     url: "https://example.com",
@@ -180,19 +180,20 @@ test("AI Force is denied Spider access before rate limiting or queue submission"
     requestId: "123e4567-e89b-42d3-a456-426614174000"
   });
   const signedPayload = new TextEncoder().encode(payload);
-  const headers = await signedHeaders("nonce_aiforce_spider_denied_123", signedPayload, "AIFORCE-APP", "/v1/spider/crawl");
+  const headers = await signedHeaders("nonce_aiforce_spider_granted_123", signedPayload, "AIFORCE-APP", "/v1/spider/crawl");
   const response = await worker.fetch(new Request("https://ceoai.dev/v1/spider/crawl", {
     method: "POST",
     headers: { ...headers, "Content-Type": "application/json" },
     body: payload
   }), env);
 
-  assert.equal(response.status, 403);
-  assert.equal((await response.json()).code, "CAPABILITY_NOT_GRANTED");
-  assert.equal(rateLimitCalls, 0);
-  assert.equal(queueCalls, 0);
+  assert.equal(response.status, 202);
+  assert.equal((await response.json()).status, "queued");
+  assert.equal(rateLimitCalls, 1);
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0].appId, "AIFORCE-APP");
+  assert.equal(queued[0].id, "123e4567-e89b-42d3-a456-426614174000");
 });
-
 
 test("Reserved RankGeo app is rejected by agent and chat gateways", async () => {
   const env = makeEnv();
