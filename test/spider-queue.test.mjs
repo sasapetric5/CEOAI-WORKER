@@ -191,8 +191,18 @@ test("daily Spider quotas are isolated and enforced independently for all three 
     assert.equal(blocked.allowed, false, entry.appId + " must enforce its own limit");
     assert.equal(blocked.count, entry.limit, entry.appId + " quota count");
   }
-  // A blocked app must not consume another app's independent quota.
-  assert.equal((await claim("AIFORCE-APP", "423e4567-e89b-42d3-a456-426614174010", 2)).allowed, true);
+  // The same job ID can be claimed independently in each app namespace.
+  const isolatedNs = makeLedgerNamespace();
+  const sharedId = "423e4567-e89b-42d3-a456-426614174010";
+  for (const appId of ["CONTENTCRAFT-APP", "AIFORCE-APP", "RANKGEO-APP"]) {
+    const response = await isolatedNs.get("quota:app:" + appId + ":2026-11-06").fetch(new Request("https://ledger.test/quota/claim", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ appId, date: "2026-11-06", id: sharedId, limit: 2, now: now() })
+    }));
+    const result = await response.json();
+    assert.equal(result.allowed, true, appId + " must have an independent quota namespace");
+    assert.equal(result.count, 1);
+  }
 });
 
 test("producer validates and publishes a bounded HTTPS job", async () => {
