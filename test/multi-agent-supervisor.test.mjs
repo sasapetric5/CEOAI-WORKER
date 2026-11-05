@@ -113,3 +113,46 @@ test("supervisor accepts ordinary array values in sanitized input", async () => 
  assert.equal(result.ok,true);
  assert.equal(result.results[0].ok,true);
 });
+
+
+test("supervisor returns a detached sanitized synthesis snapshot", async () => {
+ const skill={id:"synthesis_skill",version:"1.0.0",description:"Synthesis fixture",allowedToolIds:[]};
+ const agent={id:"synthesis_agent",role:"Synthesis agent",description:"Bounded synthesis test",skillId:"synthesis_skill",allowedToolIds:[],score:1,matchedTerms:[]};
+ const supervisor=createMultiAgentSupervisor({
+  agentRegistry:{search:()=>[agent],get:()=>agent},
+  skillRegistry:{get:()=>skill,search:()=>[{id:"synthesis_skill",score:1,matchedTerms:[]}]},
+  agentLoop:{run:async()=>({ok:true,output:{answer:"verified"},steps:1,toolCalls:0})}
+ });
+ const original={answer:"combined"};
+ const result=await supervisor.run({
+  task:"synthesis boundary test",allowToolExecution:true,
+  planAgent:async()=>({type:"final",output:"unused"}),
+  synthesize:async()=>original
+ });
+ assert.equal(result.ok,true);
+ assert.deepEqual(result.output,{answer:"combined"});
+ assert.notEqual(result.output,original);
+ original.answer="mutated after return";
+ assert.equal(result.output.answer,"combined");
+});
+
+test("supervisor rejects accessor-backed synthesis output without invoking its getter", async () => {
+ let getterCalls=0;
+ const skill={id:"synthesis_safe",version:"1.0.0",description:"Synthesis fixture",allowedToolIds:[]};
+ const agent={id:"synthesis_safe_agent",role:"Synthesis agent",description:"Bounded synthesis test",skillId:"synthesis_safe",allowedToolIds:[],score:1,matchedTerms:[]};
+ const supervisor=createMultiAgentSupervisor({
+  agentRegistry:{search:()=>[agent],get:()=>agent},
+  skillRegistry:{get:()=>skill,search:()=>[{id:"synthesis_safe",score:1,matchedTerms:[]}]},
+  agentLoop:{run:async()=>({ok:true,output:"ok",steps:1,toolCalls:0})}
+ });
+ const unsafe={};
+ Object.defineProperty(unsafe,"secret",{enumerable:true,get(){getterCalls++;return "nope";}});
+ const result=await supervisor.run({
+  task:"synthesis getter boundary",allowToolExecution:true,
+  planAgent:async()=>({type:"final",output:"unused"}),
+  synthesize:async()=>unsafe
+ });
+ assert.equal(result.ok,false);
+ assert.equal(result.code,"INVALID_SYNTHESIS_OUTPUT");
+ assert.equal(getterCalls,0);
+});
