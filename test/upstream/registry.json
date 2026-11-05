@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "policy": {
+    "onlyPinnedCommits": true,
+    "onlyCountExecutedPass": true,
+    "requireLicenseReview": true,
+    "noPaidApis": true,
+    "noSecrets": true,
+    "adaptBehaviorNotRuntimeDependencies": true,
+    "statuses": [
+      "candidate",
+      "license_verified",
+      "compatibility_reviewed",
+      "adapted",
+      "executed_pass",
+      "executed_fail",
+      "quarantined"
+    ]
+  },
+  "sources": [
+    {
+      "id": "langgraph-pregel-interrupts",
+      "project": "LangGraph",
+      "repository": "langchain-ai/langgraph",
+      "commit": "60cbb4af560d71fc5b9cd81dbb5ed46b5525d09b",
+      "license": "MIT",
+      "licenseVerified": true,
+      "path": "libs/langgraph/tests/test_pregel_async.py",
+      "behavior": [
+        "checkpoint_resume",
+        "interrupts",
+        "async_execution"
+      ],
+      "runtime": "python",
+      "adaptation": "Port behavioral assertions to Node.js; do not import Python runtime.",
+      "status": "license_verified",
+      "executionEvidence": null
+    },
+    {
+      "id": "openai-agents-handoff",
+      "project": "OpenAI Agents SDK",
+      "repository": "openai/openai-agents-python",
+      "commit": "814de8b1cfdaf6c70212dca9ca23563dd0b789ac",
+      "license": "MIT",
+      "licenseVerified": true,
+      "path": "tests/mcp/test_runner_calls_mcp.py",
+      "behavior": [
+        "handoff",
+        "tool_name_collision",
+        "runner_lifecycle"
+      ],
+      "runtime": "python",
+      "adaptation": "Port deterministic handoff and tool-routing cases; no model/API calls.",
+      "status": "license_verified",
+      "executionEvidence": null
+    },
+    {
+      "id": "cloudflare-fiber-recovery",
+      "project": "Cloudflare Agents",
+      "repository": "cloudflare/agents",
+      "commit": "331e4aebd22988b74e5d285762fc81071be98117",
+      "license": "MIT",
+      "licenseVerified": true,
+      "path": "packages/agents/src/e2e-tests/fiber-eviction.test.ts",
+      "behavior": [
+        "durable_object_eviction",
+        "checkpoint_recovery",
+        "restart_recovery"
+      ],
+      "runtime": "workers_vitest",
+      "adaptation": "Translate recovery invariants to CEOAI WorkflowTaskDO and verify with Workers runtime tests.",
+      "status": "license_verified",
+      "executionEvidence": null
+    },
+    {
+      "id": "crewai-delegation",
+      "project": "CrewAI",
+      "repository": "crewAIInc/crewAI",
+      "commit": "61c12969c13919f847fbf5ca32ba03345d162bb2",
+      "license": "MIT",
+      "licenseVerified": true,
+      "path": null,
+      "behavior": [
+        "agent_delegation",
+        "shared_context",
+        "sequential_coordination"
+      ],
+      "runtime": "python",
+      "adaptation": "Find and pin exact upstream test file before adapting; do not count this record as a test.",
+      "status": "candidate",
+      "executionEvidence": null
+    },
+    {
+      "id": "dify-workflow",
+      "project": "Dify",
+      "repository": "langgenius/dify",
+      "commit": "e994c3ffe9482797df8546a921142868db4dc6ac",
+      "license": "Modified Apache-2.0 with additional commercial/multi-tenant conditions",
+      "licenseVerified": true,
+      "path": "api/tests/unit_tests/controllers/console/explore/test_workflow.py",
+      "behavior": [
+        "workflow_execution",
+        "streaming",
+        "workflow_validation"
+      ],
+      "runtime": "python",
+      "adaptation": "Quarantined: do not copy code or tests into CEOAI until license restrictions are reviewed; independently implement generic workflow behavior if appropriate.",
+      "status": "quarantined",
+      "executionEvidence": null
+    }
+  ]
+}
