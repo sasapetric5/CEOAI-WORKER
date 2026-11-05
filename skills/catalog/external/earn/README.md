@@ -1,7 +1,7 @@
 # EARN and freelance service skills — intake pack
 
 - State: QUARANTINED / NOT RUNTIME-ACTIVE
-- Skill documents: 95
+- Skill documents: 100
 - Runtime seed additions: 0
 - Tool grants: 0
 - Discovery policy: WORLDWIDE by default for ordinary EARN, bounty, open-source, freelance, affiliate, and remote-work opportunities.
@@ -119,3 +119,9 @@ No CashClaw npm package, Stripe integration, HYRVE marketplace, paid SEO tools, 
 
 ## Deferred
 CashClaw Guard, invoicing, lead generation, email outreach, social publishing, WhatsApp, and landing-page automation were excluded because their workflows require paid services, Stripe, contact-data processing, or external side effects. AIBTC bounty-scanner was excluded because it requires wallet/signing skills and on-chain claim submission; its upstream repository license was not verified in this audit.
+
+- freelance-ai-dataset-quality-audit-planner — scopes annotation quality, sampling, leakage, and dataset documentation audits.
+- freelance-conversion-experiment-brief-builder — creates measurable, evidence-based conversion experiment briefs.
+- open-source-sponsor-readiness-audit — reviews transparent sponsorship and maintainer-funding readiness.
+- freelance-email-deliverability-audit-planner — scopes read-only SPF, DKIM, DMARC, and deliverability reviews.
+- freelance-backup-restore-readiness-review — assesses backup coverage, recovery objectives, and restore-test evidence.
