@@ -81,5 +81,7 @@ test("invalid approval status and unknown approval IDs are rejected",async()=>{
  index.skills[0].approvalStatus="trusted";
  kv.data.set("skills:v1:index",JSON.stringify(index));
  await assert.rejects(()=>createKVSkillRegistry({kv,toolRegistry}),/SKILL_INDEX_INVALID_APPROVAL_STATUS/);
+ index.skills[0].approvalStatus="quarantined";
+ kv.data.set("skills:v1:index",JSON.stringify(index));
  await assert.rejects(()=>createKVSkillRegistry({kv,toolRegistry,approvedSkillIds:["missing_skill"]}),/INVALID_APPROVED_SKILL_IDS/);
 });
