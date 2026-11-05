@@ -42,6 +42,24 @@ test("RankGeo receives an enabled but isolated memory namespace", async () => {
   assert.equal([...kv.data.keys()].every(key => key.startsWith("app-memory:v1:RANKGEO-APP:")), true);
 });
 
+test("all three applications remain isolated when they reuse the same conversation UUID", async () => {
+  const kv = memoryKV();
+  const appIds = ["CONTENTCRAFT-APP", "AIFORCE-APP", "RANKGEO-APP"];
+  const stores = appIds.map(appId => createAppMemoryStore({ kv, appId, appPolicy: enabledPolicy }));
+  for (let i = 0; i < stores.length; i++) {
+    await stores[i].write(sessionA, { history: [{ role: "user", content: appIds[i] + "-private" }] });
+  }
+  for (let i = 0; i < stores.length; i++) {
+    const own = await stores[i].read(sessionA);
+    assert.equal(own.history[0].content, appIds[i] + "-private");
+    for (let j = 0; j < stores.length; j++) {
+      if (j !== i) assert.notEqual(own.history[0].content, appIds[j] + "-private");
+    }
+  }
+  assert.equal([...kv.data.keys()].length, 6);
+  assert.equal([...kv.data.keys()].every(key => appIds.some(appId => key.startsWith("app-memory:v1:" + appId + ":"))), true);
+});
+
 test("reset only deletes the bound app and session namespace", async () => {
   const kv = memoryKV();
   const contentCraft = createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy });
