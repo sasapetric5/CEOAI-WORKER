@@ -47,7 +47,7 @@ test("parallel daily quota claims never exceed the atomic five-job limit", async
   const call = makeLedger(storage);
   const date = "2026-11-05";
   const results = await Promise.all(Array.from({ length: 40 }, (_, i) =>
-    call("/quota/claim", { date, id: uuid(i + 1), limit: 5, now: 1_798_000_000_000 })
+    call("/quota/claim", { appId: "GLOBAL", date, id: uuid(i + 1), limit: 5, now: 1_798_000_000_000 })
   ));
   assert.equal(results.filter(x => x.body.allowed).length, 5);
   assert.equal(results.filter(x => x.body.allowed === false).length, 35);
