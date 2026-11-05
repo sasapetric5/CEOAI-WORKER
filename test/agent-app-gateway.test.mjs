@@ -347,3 +347,29 @@ test("agent gateway fails closed when app memory storage is unavailable",async()
   assert.equal(mock.calls,0);
  }finally{mock.restore();}
 });
+
+test("failed AI completion never writes partial or failed output to app memory",async()=>{
+ const old=globalThis.fetch;const memory=new Map();let providerCalls=0;
+ globalThis.fetch=async()=>{
+  providerCalls++;
+  throw new Error("simulated provider outage");
+ };
+ try{
+  const env=environment({
+   KV_MEMORY:{
+    async get(key){return memory.get(key)??null;},
+    async put(key,value){memory.set(key,value);},
+    async delete(key){memory.delete(key);}
+   }
+  });
+  const response=await worker.fetch(await signedRequest({
+   task:"regression testing and verification for failed completion",
+   conversation_id:"123e4567-e89b-42d3-a456-426614174097"
+  }),env);
+  assert.equal(response.status,503);
+  const payload=await response.json();
+  assert.equal(payload.success,false);
+  assert.equal(memory.size,0);
+  assert.ok(providerCalls>0);
+ }finally{globalThis.fetch=old;}
+});
