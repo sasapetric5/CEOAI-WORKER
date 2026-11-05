@@ -159,3 +159,122 @@ test("application memory expires according to its configured KV TTL", async () =
   now += 60_001;
   assert.deepEqual(await store.read(sessionA), { history: [], summary: "" });
 });
+
+
+// Consolidated edge-case batch: storage corruption, input validation and bounded values.
+test("corrupt stored history fails closed without exposing raw storage content", async () => {
+  const kv = memoryKV();
+  const store = createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy });
+  const historyKey = "app-memory:v1:CONTENTCRAFT-APP:" + sessionA + ":history";
+  const summaryKey = "app-memory:v1:CONTENTCRAFT-APP:" + sessionA + ":summary";
+  await kv.put(historyKey, "{not-json", { expirationTtl: 60 });
+  await kv.put(summaryKey, "safe-summary", { expirationTtl: 60 });
+  assert.deepEqual(await store.read(sessionA), { history: [], summary: "safe-summary" });
+});
+
+test("non-array stored history is ignored", async () => {
+  const kv = memoryKV();
+  const store = createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy });
+  await kv.put("app-memory:v1:CONTENTCRAFT-APP:" + sessionA + ":history", JSON.stringify({ role: "user", content: "not-an-array" }), { expirationTtl: 60 });
+  assert.deepEqual((await store.read(sessionA)).history, []);
+});
+
+test("stored history filters malformed records and unsupported roles", async () => {
+  const kv = memoryKV();
+  const store = createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy });
+  const key = "app-memory:v1:CONTENTCRAFT-APP:" + sessionA + ":history";
+  await kv.put(key, JSON.stringify([
+    null,
+    { role: "system", content: "must-not-load" },
+    { role: "user", content: 42 },
+    { role: "assistant", content: "valid-answer" }
+  ]), { expirationTtl: 60 });
+  assert.deepEqual((await store.read(sessionA)).history, [{ role: "assistant", content: "valid-answer" }]);
+});
+
+test("write truncates individual message content to the documented read bound", async () => {
+  const kv = memoryKV();
+  const store = createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy });
+  await store.write(sessionA, { history: [{ role: "user", content: "x".repeat(9000) }] });
+  assert.equal((await store.read(sessionA)).history[0].content.length, 8000);
+});
+
+test("write truncates summary to the documented read bound", async () => {
+  const kv = memoryKV();
+  const store = createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy });
+  await store.write(sessionA, { summary: "s".repeat(5000) });
+  assert.equal((await store.read(sessionA)).summary.length, 4000);
+});
+
+test("write rejects non-array history before touching storage", async () => {
+  const kv = memoryKV();
+  const store = createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy });
+  await assert.rejects(store.write(sessionA, { history: "not-an-array" }), /APP_MEMORY_INVALID_VALUE/);
+  assert.equal(kv.data.size, 0);
+});
+
+test("write rejects non-string summaries before touching storage", async () => {
+  const kv = memoryKV();
+  const store = createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy });
+  await assert.rejects(store.write(sessionA, { summary: { private: true } }), /APP_MEMORY_INVALID_VALUE/);
+  assert.equal(kv.data.size, 0);
+});
+
+test("oversized summary is rejected atomically without writing history or summary", async () => {
+  const kv = memoryKV();
+  const store = createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy });
+  await assert.rejects(
+    store.write(sessionA, { history: [{ role: "user", content: "valid" }], summary: "s".repeat(25000) }),
+    /APP_MEMORY_VALUE_TOO_LARGE/
+  );
+  assert.equal(kv.data.size, 0);
+});
+
+test("invalid history records are discarded before the accepted payload is measured", async () => {
+  const kv = memoryKV();
+  const store = createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy });
+  await store.write(sessionA, { history: [
+    { role: "system", content: "x".repeat(30000) },
+    { role: "user", content: "accepted" }
+  ] });
+  assert.deepEqual((await store.read(sessionA)).history, [{ role: "user", content: "accepted" }]);
+});
+
+test("the maximum supported thirty-day TTL is accepted and applied to both records", async () => {
+  const ttls = [];
+  const kv = {
+    async get() { return null; },
+    async put(_key, _value, options) { ttls.push(options.expirationTtl); },
+    async delete() {}
+  };
+  const store = createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy, ttlSeconds: 60 * 60 * 24 * 30 });
+  await store.write(sessionA, { history: [{ role: "user", content: "ttl-boundary" }] });
+  assert.deepEqual(ttls, [60 * 60 * 24 * 30, 60 * 60 * 24 * 30]);
+});
+
+test("TTL above the thirty-day ceiling is rejected", async () => {
+  const kv = memoryKV();
+  assert.throws(
+    () => createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy, ttlSeconds: 60 * 60 * 24 * 30 + 1 }),
+    /APP_MEMORY_INVALID_TTL/
+  );
+  assert.equal(kv.data.size, 0);
+});
+
+test("app memory store is immutable and remains bound to its authenticated app", async () => {
+  const kv = memoryKV();
+  const store = createAppMemoryStore({ kv, appId: "AIFORCE-APP", appPolicy: enabledPolicy });
+  assert.equal(Object.isFrozen(store), true);
+  assert.equal(Reflect.set(store, "appId", "CONTENTCRAFT-APP"), false);
+  await store.write(sessionA, { history: [{ role: "user", content: "bound-to-aiforce" }] });
+  assert.equal([...kv.data.keys()].every(key => key.startsWith("app-memory:v1:AIFORCE-APP:")), true);
+});
+
+test("reset is idempotent for an already empty app session", async () => {
+  const kv = memoryKV();
+  const store = createAppMemoryStore({ kv, appId: "RANKGEO-APP", appPolicy: enabledPolicy });
+  assert.deepEqual(await store.reset(sessionA), { success: true });
+  assert.deepEqual(await store.reset(sessionA), { success: true });
+  assert.deepEqual(await store.read(sessionA), { history: [], summary: "" });
+  assert.equal(kv.data.size, 0);
+});
