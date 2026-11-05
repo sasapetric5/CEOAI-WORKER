@@ -51,6 +51,9 @@ export function createCloudflareCheckpointStore(namespace) {
     async completeEffect(id, ownerToken, fencingToken, effectKey, payloadHash, result) {
       return (await request(id, "/effect/complete", { ownerToken, fencingToken, effectKey, payloadHash, result })).effect;
     },
+    async getEffect(id, ownerToken, fencingToken, effectKey) {
+      return (await request(id, "/effect/get", { ownerToken, fencingToken, effectKey })).effect;
+    },
     async get(id) { return (await request(id, "/get")).state; },
     async put(id, state, lease) {
       if (!lease || typeof lease.ownerToken !== "string" || !Number.isSafeInteger(lease.fencingToken)) {
