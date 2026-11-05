@@ -8,6 +8,19 @@ Imported: 2026-11-05
 ## Included
 - research/find-and-verify-affiliate-program — discover leads through OpenAffiliate and verify each commercial term on the brand's primary source.
 - research/commission-calculator — transparent scenario calculations; estimates only, never promised earnings.
+- analytics/seo-audit — content/on-page SEO audit and prioritized fixes.
+- analytics/internal-linking-optimizer — internal link map and suggested changes (no site edits).
+- analytics/performance-report — KPI calculations from user-provided data.
+- blog/keyword-cluster-architect — keyword/topic clustering and content roadmap.
+- blog/content-decay-detector — content freshness review from supplied metrics.
+- content/content-research-brief — source-backed research brief.
+- research/niche-opportunity-finder — niche scoring and opportunity analysis.
+- research/content-angle-ranker — compare content angles and formats.
+- research/purple-cow-audit — product differentiation and recommendation quality review.
+- meta/compliance-checker — disclosure/platform-policy checklist; not legal advice.
+- automation/content-repurposer — transform supplied content into drafts only.
+
+Supporting Markdown references are mirrored under `shared/references/`; OpenAffiliate API notes are mirrored under `skills/research/affiliate-program-search/references/`.
 
 ## Safety and runtime boundaries
 - Source documents are quarantined reference material, not enabled runtime skills.
