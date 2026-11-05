@@ -1,7 +1,7 @@
 # EARN and freelance service skills — intake pack
 
 - State: QUARANTINED / NOT RUNTIME-ACTIVE
-- Skill documents: 39
+- Skill documents: 47
 - Runtime seed additions: 0
 - Tool grants: 0
 - Discovery policy: WORLDWIDE by default for ordinary EARN, bounty, open-source, freelance, affiliate, and remote-work opportunities.
@@ -47,6 +47,14 @@
 - api-contract-test-designer — designs synthetic API contract and compatibility tests.
 - business-process-automation-planner — designs measurable, human-reviewed business automation.
 - open-source-good-first-issue-qualifier — qualifies beginner-friendly public issues and distinguishes paid from unpaid work.
+- ai-agent-evaluation-service-planner — plans reproducible AI-agent evaluations and client reporting.
+- ai-agent-knowledge-base-audit — audits client knowledge bases for coverage, freshness, and traceability.
+- website-performance-audit-service — structures evidence-backed website performance audits.
+- technical-seo-implementation-qa — checks technical SEO changes against acceptance and regression criteria.
+- ecommerce-catalog-data-cleanup-planner — scopes safe product-catalog cleanup and import validation.
+- no-code-automation-migration-planner — plans no-code workflow migrations with portability and rollback checks.
+- open-source-bounty-due-diligence — checks bounty sponsor, eligibility, acceptance, and payout evidence.
+- freelance-service-acceptance-criteria-builder — turns project briefs into measurable deliverable acceptance checks.
 
 ## Free-only and permission limits
 No CashClaw npm package, Stripe integration, HYRVE marketplace, paid SEO tools, paid APIs, scripts, or third-party runtime is imported. No account credentials, cookies, secrets, or wallet material are used. All skills are research/draft-only and grant no tools. No applications, claims, issue comments, PRs, outreach, emails, posting, publishing, invoices, transfers, signing, or payouts are permitted. Use existing CEOAI Spider only for guarded public read-only research; do not create a second crawler.
