@@ -379,3 +379,47 @@ test("HMAC chat rejects malformed conversation_id before provider or memory acce
     globalThis.fetch = originalFetch;
   }
 });
+
+test("Spider result endpoint enforces signed app identity and hides foreign results", async () => {
+  const env = makeEnv();
+  const jobId = "123e4567-e89b-42d3-a456-426614174021";
+  const ownerApp = "CONTENTCRAFT-APP";
+  const resultKey = "spider:result:" + ownerApp + ":" + jobId;
+  const resultDocument = { appId: ownerApp, jobId, records: [{ url: "https://docs.example.com/" }] };
+  env.KV_MEMORY.get = async key => key === resultKey ? JSON.stringify(resultDocument) : null;
+  env.SPIDER_LEDGER = {
+    idFromName(name) { return name; },
+    get(name) {
+      return { async fetch(_url, init) {
+        const input = JSON.parse(init.body);
+        const scopedApp = name.split(":")[1];
+        if (input.appId !== scopedApp || scopedApp !== ownerApp || input.id !== jobId) {
+          return Response.json({ ok: true, state: null });
+        }
+        return Response.json({ ok: true, state: {
+          appId: ownerApp, id: jobId, status: "completed", resultKey
+        }});
+      }};
+    }
+  };
+  env.HMAC_ALLOWED_APPS = "CONTENTCRAFT-APP,AIFORCE-APP";
+  env.APP_SECRET_AIFORCE_APP = secret;
+
+  const payload = JSON.stringify({ jobId });
+  const signed = new TextEncoder().encode(payload);
+  const ownerHeaders = await signedHeaders("nonce_spider_result_owner_1234", signed, ownerApp, "/v1/spider/result");
+  const ownerResponse = await worker.fetch(new Request("https://ceoai.dev/v1/spider/result", {
+    method: "POST", headers: ownerHeaders, body: payload
+  }), env);
+  assert.equal(ownerResponse.status, 200);
+  assert.equal((await ownerResponse.json()).result.appId, ownerApp);
+
+  const foreignHeaders = await signedHeaders("nonce_spider_result_foreign_123", signed, "AIFORCE-APP", "/v1/spider/result");
+  const foreignResponse = await worker.fetch(new Request("https://ceoai.dev/v1/spider/result", {
+    method: "POST", headers: foreignHeaders, body: payload
+  }), env);
+  assert.equal(foreignResponse.status, 404);
+  assert.equal((await foreignResponse.json()).code, "SPIDER_JOB_NOT_FOUND");
+  assert.deepEqual(env.__rateLimitKeys, ["spider-results:CONTENTCRAFT-APP", "spider-results:AIFORCE-APP"]);
+});
+
