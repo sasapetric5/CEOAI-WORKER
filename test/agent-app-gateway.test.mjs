@@ -295,3 +295,55 @@ test("each application receives only its own specialist-agent allowlist",async()
   assert.equal(mock.calls,6);
  }finally{mock.restore();}
 });
+
+
+test("agent gateway persists and reloads conversation memory only within each authenticated app",async()=>{
+ const old=globalThis.fetch;const providerPayloads=[];
+ globalThis.fetch=async(url,options)=>{
+  const payload=JSON.parse(options.body);providerPayloads.push(payload);
+  const synthesis=payload.messages[0].content.includes("završni koordinator");
+  const content=synthesis?JSON.stringify({output:"Odgovor "+providerPayloads.length}):JSON.stringify({type:"final",output:"Analiza "+providerPayloads.length});
+  return Response.json({choices:[{message:{content}}]});
+ };
+ try{
+  const env=environment({APP_SECRET_AIFORCE_APP:secret,APP_SECRET_RANKGEO_APP:secret});
+  const conversationId="123e4567-e89b-42d3-a456-426614174099";
+  const send=async(id,nonce,task)=>worker.fetch(await signedRequest({task,conversation_id:conversationId},{id,nonce}),env);
+  assert.equal((await send("CONTENTCRAFT-APP","agent_mem_cc_000000000001","contentcraft private task")).status,200);
+  assert.equal((await send("AIFORCE-APP","agent_mem_af_000000000001","aiforce private task")).status,200);
+  assert.equal((await send("CONTENTCRAFT-APP","agent_mem_cc_000000000002","contentcraft follow-up")).status,200);
+  const payloadText=providerPayloads.map(p=>JSON.stringify(p.messages));
+  assert.equal(payloadText.some(v=>v.includes("contentcraft private task")),true);
+  assert.equal(payloadText.some(v=>v.includes("aiforce private task")),true);
+  const thirdCallText=JSON.stringify(providerPayloads.slice(-2));
+  assert.equal(thirdCallText.includes("contentcraft private task"),true);
+  assert.equal(thirdCallText.includes("aiforce private task"),false);
+ }finally{globalThis.fetch=old;}
+});
+
+test("agent gateway validates conversation UUID and keeps requests stateless when omitted",async()=>{
+ const mock=mockFreeModel();
+ try{
+  const env=environment();
+  const invalid=await worker.fetch(await signedRequest({task:"invalid session",conversation_id:"../other-app"}),env);
+  assert.equal(invalid.status,400);
+  assert.equal((await invalid.json()).code,"INVALID_AGENT_REQUEST");
+  const stateless=await worker.fetch(await signedRequest({task:"no persistent session"}),env);
+  assert.equal(stateless.status,200);
+  assert.equal([...((await env.KV_MEMORY.get("unused"))===null?[]:[])].length,0);
+ }finally{mock.restore();}
+});
+
+test("agent gateway fails closed when app memory storage is unavailable",async()=>{
+ const mock=mockFreeModel();
+ try{
+  const env=environment({KV_MEMORY:null});
+  const response=await worker.fetch(await signedRequest({
+   task:"must not run without isolated memory",
+   conversation_id:"123e4567-e89b-42d3-a456-426614174098"
+  }),env);
+  assert.equal(response.status,503);
+  assert.equal((await response.json()).code,"APP_MEMORY_UNAVAILABLE");
+  assert.equal(mock.calls,0);
+ }finally{mock.restore();}
+});
