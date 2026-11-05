@@ -165,7 +165,7 @@ test("HMAC app identity comes from the signed header, never a client JSON appId"
 });
 
 
-test("AI Force is denied Spider access before quota checks or queue submission", async () => {
+test("AI Force can enqueue Spider jobs under its own app-scoped permission and quota", async () => {
   const env = makeEnv();
   env.HMAC_ALLOWED_APPS = "CONTENTCRAFT-APP,AIFORCE-APP";
   env.APP_SECRET_AIFORCE_APP = secret;
@@ -183,17 +183,19 @@ test("AI Force is denied Spider access before quota checks or queue submission",
     requestId: "123e4567-e89b-42d3-a456-426614174000"
   });
   const signedPayload = new TextEncoder().encode(payload);
-  const headers = await signedHeaders("nonce_aiforce_spider_denied_123", signedPayload, "AIFORCE-APP", "/v1/spider/crawl");
+  const headers = await signedHeaders("nonce_aiforce_spider_allowed_123", signedPayload, "AIFORCE-APP", "/v1/spider/crawl");
   const response = await worker.fetch(new Request("https://ceoai.dev/v1/spider/crawl", {
     method: "POST",
     headers: { ...headers, "Content-Type": "application/json" },
     body: payload
   }), env);
 
-  assert.equal(response.status, 403);
-  assert.equal((await response.json()).code, "CAPABILITY_NOT_GRANTED");
-  assert.deepEqual(rateLimitKeys, []);
-  assert.deepEqual(queued, []);
+  assert.equal(response.status, 202);
+  assert.equal((await response.json()).status, "queued");
+  assert.deepEqual(rateLimitKeys, ["spider:AIFORCE-APP"]);
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0].appId, "AIFORCE-APP");
+  assert.equal(queued[0].id, "123e4567-e89b-42d3-a456-426614174000");
 });
 
 test("ContentCraft and AI Force have independent HMAC identities and no shared conversation memory", async () => {
