@@ -53,13 +53,13 @@ export function createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoo
    results.push({agentId:agent.id,role:agent.role,skillId:agent.skillId,ok:result?.ok===true,...(result?.ok===true?{output:result.output,steps:result.steps,toolCalls:result.toolCalls}:{code:typeof result?.code==="string"?result.code:"AGENT_FAILED",steps:result?.steps??0,toolCalls:result?.toolCalls??0})});
   }
   const successful=results.filter(r=>r.ok);
-  if(!successful.length)return {ok:false,code:"ALL_AGENTS_FAILED",agents:prepared.agents.map(a=>a.id),results,budgetUsed:results.reduce((n,r)=>n+(r.toolCalls||0),0)};
+  if(!successful.length)return {ok:false,code:"ALL_AGENTS_FAILED",agents:prepared.agents.map(a=>a.id),results,budgetUsed:results.reduce((n,r)=>Math.max(n,r.budgetUsed||0),0)};
   let output=successful.map(r=>({agentId:r.agentId,role:r.role,skillId:r.skillId,output:r.output}));
   if(synthesize){
    try{const synthesized=await synthesize({task,results:output,failedAgents:results.filter(r=>!r.ok).map(r=>({agentId:r.agentId,code:r.code}))});if(safeJson(synthesized)===null)return {ok:false,code:"INVALID_SYNTHESIS_OUTPUT",agents:prepared.agents.map(a=>a.id),results};output=synthesized;}
    catch{return {ok:false,code:"SYNTHESIS_FAILED",agents:prepared.agents.map(a=>a.id),results};}
   }
-  return {ok:true,output,agents:prepared.agents.map(a=>a.id),results,budgetUsed:results.reduce((n,r)=>n+(r.toolCalls||0),0),partial:results.some(r=>!r.ok)};
+  return {ok:true,output,agents:prepared.agents.map(a=>a.id),results,budgetUsed:results.reduce((n,r)=>Math.max(n,r.budgetUsed||0),0),partial:results.some(r=>!r.ok)};
  }
  return Object.freeze({prepare,run});
 }
