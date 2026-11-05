@@ -59,6 +59,8 @@ Errors use `success: false` and a stable `code`. Relevant access failures:
 
 - App identity comes only from the verified signed `X-App-Id` header, never from JSON input.
 - Rate-limit namespaces and Spider job namespaces must include the authenticated appId.
-- Memory/session data must not be shared across app identities.
+- The current HMAC chat gateway is stateless: it does not read or write browser-panel `session:` or `memory:` keys. ContentCraft and AI Force therefore cannot read or modify the CEOAI browser-panel conversation memory through this gateway.
+- Any future persistent app memory must use an app-scoped namespace derived from the verified HMAC `appId` (for example `app-memory:<appId>:<opaque-session-id>`), validate ownership on every read/write/reset, and include cross-app denial tests before activation.
+- The browser control panel continues to use its own cookie-bound `session:` and `memory:` keys; `/api/reset` applies only to that browser session.
 - Spider requires a separate explicit per-app grant; ContentCraft and AI Force are currently granted independently. Each app has its own rate-limit namespace and daily quota.
 - RankGeo activation requires a future reviewed change to registry state, quotas, capabilities, HMAC allowlist/secrets, and integration tests. This document alone grants no access.
