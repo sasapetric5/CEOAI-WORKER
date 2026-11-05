@@ -29,6 +29,7 @@ async function signedHeaders(nonce, payload = bytes) {
 function makeEnv() {
   const used = new Set();
   const data = new Map();
+  const writes = [];
   return {
     AI_ENABLED: "true",
     EXTERNAL_AI_ENABLED: "true",
@@ -37,7 +38,7 @@ function makeEnv() {
     APP_SECRET_CONTENTCRAFT_APP: secret,
     KV_MEMORY: {
       async get(k) { return data.get(k) ?? null; },
-      async put(k, v) { data.set(k, v); },
+      async put(k, v) { writes.push(k); data.set(k, v); },
     },
     SECURITY_DO: {
       idFromName(name) { return name; },
@@ -53,6 +54,7 @@ function makeEnv() {
     },
     OPENROUTER_KEY: "test-provider-key",
     RATE_LIMITER: { async limit() { return { success: true }; } },
+    __memoryWrites: writes,
   };
 }
 
@@ -112,6 +114,23 @@ test("HMAC chat gateway rejects oversized bodies before buffering or provider ca
     }), makeEnv());
     assert.equal(response.status, 413);
     assert.equal(providerCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+
+test("HMAC app chat remains stateless and never writes browser UI session memory", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ choices: [{ message: { content: "stateless app reply" } }] });
+  try {
+    const env = makeEnv();
+    const headers = await signedHeaders("nonce_stateless_app_123456");
+    const response = await worker.fetch(new Request("https://ceoai.dev/v1/chat/completions", {
+      method: "POST", headers, body,
+    }), env);
+    assert.equal(response.status, 200);
+    assert.deepEqual(env.__memoryWrites.filter(key => key.startsWith("memory:") || key.startsWith("session:")), []);
   } finally {
     globalThis.fetch = originalFetch;
   }
