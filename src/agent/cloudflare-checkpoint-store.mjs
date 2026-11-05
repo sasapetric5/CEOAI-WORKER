@@ -28,7 +28,11 @@ export function createCloudflareCheckpointStore(namespace) {
     return "{" + (await Promise.all(keys.map(async key => JSON.stringify(key) + ":" + await canonical(value[key])))).join(",") + "}";
   }
   async function digest(value) {
-    const encoded = new TextEncoder().encode(await canonical(value));
+    let serialized;
+    try { serialized = JSON.stringify(value); } catch { throw new TypeError("INVALID_EFFECT_PAYLOAD"); }
+    if (typeof serialized !== "string") throw new TypeError("INVALID_EFFECT_PAYLOAD");
+    const normalized = JSON.parse(serialized);
+    const encoded = new TextEncoder().encode(await canonical(normalized));
     const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", encoded));
     return [...hash].map(byte => byte.toString(16).padStart(2, "0")).join("");
   }
