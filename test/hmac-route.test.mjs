@@ -427,6 +427,19 @@ test("HMAC chat rejects malformed conversation_id before provider or memory acce
   }
 });
 
+test("Spider result endpoint requires POST, JSON, app quota and an allowed capability", async () => {
+  const env = makeEnv();
+  const payload = JSON.stringify({ jobId: "123e4567-e89b-42d3-a456-426614174021" });
+  const headers = await signedHeaders("nonce_spider_result_policy_12345", new TextEncoder().encode(payload), appId, "/v1/spider/result");
+  const get = await worker.fetch(new Request("https://ceoai.dev/v1/spider/result", { method: "GET", headers }), env);
+  assert.equal(get.status, 405);
+  const noTypeHeaders = { ...headers };
+  delete noTypeHeaders["Content-Type"];
+  const noType = await worker.fetch(new Request("https://ceoai.dev/v1/spider/result", { method: "POST", headers: noTypeHeaders, body: payload }), env);
+  assert.equal(noType.status, 415);
+  assert.deepEqual(env.__rateLimitKeys, []);
+});
+
 test("Spider result endpoint enforces signed app identity and hides foreign results", async () => {
   const env = makeEnv();
   const jobId = "123e4567-e89b-42d3-a456-426614174021";
