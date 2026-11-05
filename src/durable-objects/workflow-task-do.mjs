@@ -2,6 +2,9 @@
 // One Durable Object instance is selected per task ID. Writes use revision CAS.
 const TASK_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/;
 const MAX_BYTES = 24_576;
+const MIN_LEASE_MS = 5_000;
+const MAX_LEASE_MS = 60_000;
+const OWNER_TOKEN = /^[A-Za-z0-9_-]{32,128}$/;
 const plain = value => value !== null && typeof value === "object" && !Array.isArray(value) &&
   (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
 const json = (body, status = 200) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
@@ -19,10 +22,66 @@ export class WorkflowTaskDO {
       body = JSON.parse(raw);
     } catch { return json({ ok: false, code: "INVALID_JSON" }, 400); }
     if (!plain(body) || typeof body.id !== "string" || !TASK_ID.test(body.id) ||
-        Object.keys(body).some(key => !["id", "state", "expectedRevision"].includes(key))) {
+        Object.keys(body).some(key => !["id", "state", "expectedRevision", "ownerToken", "fencingToken", "leaseMs"].includes(key))) {
       return json({ ok: false, code: "INVALID_REQUEST" }, 400);
     }
     try {
+      if (path === "/lease/acquire") {
+        if (Object.keys(body).some(key => !["id", "ownerToken", "leaseMs"].includes(key)) ||
+            Object.keys(body).length !== 3 || typeof body.ownerToken !== "string" || !OWNER_TOKEN.test(body.ownerToken) ||
+            !Number.isSafeInteger(body.leaseMs) || body.leaseMs < MIN_LEASE_MS || body.leaseMs > MAX_LEASE_MS) {
+          return json({ ok: false, code: "INVALID_LEASE_REQUEST" }, 400);
+        }
+        const now = Date.now();
+        const result = await this.ctx.storage.transaction(async txn => {
+          const current = await txn.get("lease");
+          if (current && current.expiresAt > now) return { ok: false, code: "TASK_LEASE_HELD", expiresAt: current.expiresAt };
+          const previous = await txn.get("fencingToken") || 0;
+          if (!Number.isSafeInteger(previous) || previous < 0 || previous >= Number.MAX_SAFE_INTEGER) {
+            return { ok: false, code: "FENCING_TOKEN_EXHAUSTED" };
+          }
+          const fencingToken = previous + 1;
+          const lease = { ownerToken: body.ownerToken, fencingToken, acquiredAt: now, expiresAt: now + body.leaseMs };
+          await txn.put("fencingToken", fencingToken);
+          await txn.put("lease", lease);
+          return { ok: true, lease };
+        });
+        return json(result, result.ok ? 200 : result.code === "TASK_LEASE_HELD" ? 409 : 503);
+      }
+      if (path === "/lease/renew") {
+        if (Object.keys(body).some(key => !["id", "ownerToken", "fencingToken", "leaseMs"].includes(key)) ||
+            Object.keys(body).length !== 4 || typeof body.ownerToken !== "string" || !OWNER_TOKEN.test(body.ownerToken) ||
+            !Number.isSafeInteger(body.fencingToken) || body.fencingToken < 1 ||
+            !Number.isSafeInteger(body.leaseMs) || body.leaseMs < MIN_LEASE_MS || body.leaseMs > MAX_LEASE_MS) {
+          return json({ ok: false, code: "INVALID_LEASE_REQUEST" }, 400);
+        }
+        const now = Date.now();
+        const result = await this.ctx.storage.transaction(async txn => {
+          const current = await txn.get("lease");
+          if (!current || current.expiresAt <= now || current.ownerToken !== body.ownerToken ||
+              current.fencingToken !== body.fencingToken) return { ok: false, code: "LEASE_NOT_OWNED" };
+          const lease = { ...current, expiresAt: now + body.leaseMs };
+          await txn.put("lease", lease);
+          return { ok: true, lease };
+        });
+        return json(result, result.ok ? 200 : 409);
+      }
+      if (path === "/lease/release") {
+        if (Object.keys(body).some(key => !["id", "ownerToken", "fencingToken"].includes(key)) ||
+            Object.keys(body).length !== 3 || typeof body.ownerToken !== "string" || !OWNER_TOKEN.test(body.ownerToken) ||
+            !Number.isSafeInteger(body.fencingToken) || body.fencingToken < 1) {
+          return json({ ok: false, code: "INVALID_LEASE_REQUEST" }, 400);
+        }
+        const result = await this.ctx.storage.transaction(async txn => {
+          const current = await txn.get("lease");
+          if (!current || current.ownerToken !== body.ownerToken || current.fencingToken !== body.fencingToken) {
+            return { ok: false, code: "LEASE_NOT_OWNED" };
+          }
+          await txn.delete("lease");
+          return { ok: true };
+        });
+        return json(result, result.ok ? 200 : 409);
+      }
       if (path === "/get") {
         if (Object.keys(body).length !== 1) return json({ ok: false, code: "INVALID_REQUEST" }, 400);
         const state = await this.ctx.storage.get("checkpoint");
