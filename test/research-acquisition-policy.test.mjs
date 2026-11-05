@@ -69,3 +69,41 @@ test("sensitive URL query parameters are removed before remote reading", () => {
     "https://docs.example.com/guide?topic=queues"
   );
 });
+
+
+test("research URL normalization rejects alternate loopback and non-public address forms", () => {
+  for (const value of [
+    "http://127.0.0.1/admin",
+    "http://2130706433/admin",
+    "http://0x7f000001/admin",
+    "http://[::1]/admin",
+    "http://[::ffff:127.0.0.1]/admin",
+    "http://0.0.0.0/admin",
+    "http://metadata.google.internal/latest",
+    "http://service.local/private",
+    "file:///etc/passwd",
+    "ftp://example.com/file",
+  ]) {
+    assert.equal(normalizeResearchUrl(value), null, value);
+  }
+});
+
+test("research URL normalization strips multiple credential-like query parameters", () => {
+  assert.equal(
+    normalizeResearchUrl("https://docs.example.com/path?topic=queues&api_key=a&X-Amz-Signature=b&session_id=c&password=d"),
+    "https://docs.example.com/path?topic=queues"
+  );
+});
+
+test("research planning never forwards a supplied URL or its query credentials into free search text", () => {
+  const plan = planResearchAcquisition({
+    task: "Research this page https://docs.example.com/guide?api_key=private&topic=queues",
+    jinaAvailable: false,
+    freeSearchAvailable: true,
+  });
+  assert.equal(plan.strategy, "duckduckgo_search");
+  assert.equal(plan.query.includes("api_key"), false);
+  assert.equal(plan.query.includes("private"), false);
+  assert.equal(plan.query.includes("docs.example.com"), false);
+  assert.equal(plan.query.includes("topic=queues"), false);
+});
