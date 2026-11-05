@@ -22,6 +22,16 @@ export function createCloudflareCheckpointStore(namespace) {
     return result;
   }
   return Object.freeze({
+    async acquireLease(id, ownerToken, leaseMs = 30_000) {
+      return (await request(id, "/lease/acquire", { ownerToken, leaseMs })).lease;
+    },
+    async renewLease(id, ownerToken, fencingToken, leaseMs = 30_000) {
+      return (await request(id, "/lease/renew", { ownerToken, fencingToken, leaseMs })).lease;
+    },
+    async releaseLease(id, ownerToken, fencingToken) {
+      await request(id, "/lease/release", { ownerToken, fencingToken });
+      return true;
+    },
     async get(id) { return (await request(id, "/get")).state; },
     async put(id, state) {
       await request(id, "/put", { state, expectedRevision: state.revision - 1 });
