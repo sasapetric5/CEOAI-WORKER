@@ -10,7 +10,7 @@ const body = JSON.stringify({ model: "ceoai-auto", messages: [{ role: "user", co
 const bytes = new TextEncoder().encode(body);
 const appId = "CONTENTCRAFT-APP";
 
-async function signedHeaders(nonce, payload = bytes) {
+async function signedHeaders(nonce, payload = bytes, signedAppId = appId) {
   const timestamp = String(Math.floor(Date.now() / 1000));
   const hash = await crypto.subtle.digest("SHA-256", payload);
   const hex = Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2, "0")).join("");
@@ -19,7 +19,7 @@ async function signedHeaders(nonce, payload = bytes) {
   const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(canonical));
   return {
     "Content-Type": "application/json",
-    "X-App-Id": appId,
+    "X-App-Id": signedAppId,
     "X-Timestamp": timestamp,
     "X-Nonce": nonce,
     "X-Signature": Buffer.from(signature).toString("base64"),
@@ -159,4 +159,36 @@ test("HMAC app identity comes from the signed header, never a client JSON appId"
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+
+test("AI Force is denied Spider access before rate limiting or queue submission", async () => {
+  const env = makeEnv();
+  env.HMAC_ALLOWED_APPS = "CONTENTCRAFT-APP,AIFORCE-APP";
+  env.APP_SECRET_AIFORCE_APP = secret;
+  let rateLimitCalls = 0;
+  let queueCalls = 0;
+  env.RATE_LIMITER = { async limit() { rateLimitCalls++; return { success: true }; } };
+  env.SPIDER_BROWSER_RUN_ACCOUNT_ID = "test-account";
+  env.SPIDER_BROWSER_RUN_TOKEN = "test-token";
+  env.SPIDER_QUEUE = { async send() { queueCalls++; } };
+
+  const payload = JSON.stringify({
+    url: "https://example.com",
+    pageLimit: 1,
+    depth: 1,
+    requestId: "123e4567-e89b-42d3-a456-426614174000"
+  });
+  const signedPayload = new TextEncoder().encode(payload);
+  const headers = await signedHeaders("nonce_aiforce_spider_denied_123", signedPayload, "AIFORCE-APP");
+  const response = await worker.fetch(new Request("https://ceoai.dev/v1/spider/crawl", {
+    method: "POST",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: payload
+  }), env);
+
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).code, "CAPABILITY_NOT_GRANTED");
+  assert.equal(rateLimitCalls, 0);
+  assert.equal(queueCalls, 0);
 });
