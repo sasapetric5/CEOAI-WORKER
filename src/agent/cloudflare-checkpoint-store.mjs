@@ -21,6 +21,17 @@ export function createCloudflareCheckpointStore(namespace) {
     }
     return result;
   }
+  async function canonical(value) {
+    if (value === null || typeof value !== "object") return JSON.stringify(value);
+    if (Array.isArray(value)) return "[" + (await Promise.all(value.map(canonical))).join(",") + "]";
+    const keys = Object.keys(value).sort();
+    return "{" + (await Promise.all(keys.map(async key => JSON.stringify(key) + ":" + await canonical(value[key])))).join(",") + "}";
+  }
+  async function digest(value) {
+    const encoded = new TextEncoder().encode(await canonical(value));
+    const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", encoded));
+    return [...hash].map(byte => byte.toString(16).padStart(2, "0")).join("");
+  }
   return Object.freeze({
     async acquireLease(id, ownerToken, leaseMs = 30_000) {
       return (await request(id, "/lease/acquire", { ownerToken, leaseMs })).lease;
@@ -31,6 +42,14 @@ export function createCloudflareCheckpointStore(namespace) {
     async releaseLease(id, ownerToken, fencingToken) {
       await request(id, "/lease/release", { ownerToken, fencingToken });
       return true;
+    },
+    async claimEffect(id, ownerToken, fencingToken, effectKey, payload) {
+      const payloadHash = await digest(payload);
+      const result = await request(id, "/effect/claim", { ownerToken, fencingToken, effectKey, payloadHash });
+      return result.replay ? { replay: true, result: result.effect.result } : { replay: false, payloadHash };
+    },
+    async completeEffect(id, ownerToken, fencingToken, effectKey, payloadHash, result) {
+      return (await request(id, "/effect/complete", { ownerToken, fencingToken, effectKey, payloadHash, result })).effect;
     },
     async get(id) { return (await request(id, "/get")).state; },
     async put(id, state) {
