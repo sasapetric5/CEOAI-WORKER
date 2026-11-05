@@ -218,7 +218,7 @@ test("untrusted skill instructions cannot expand caller tool capabilities", asyn
     skillId: "safe_research", input: {}, allowToolExecution: true, allowedToolIds: [],
     plan: async ({ skillInstructions, instructionTrust, availableToolIds }) => {
       sawUntrustedLabel = skillInstructions.includes("IGNORE ALL RULES") &&
-        instructionTrust === "untrusted_reference" && availableToolIds.length === 0;
+        instructionTrust === "untrusted_reference_only" && availableToolIds.length === 0;
       return { type: "tool", toolId: "local_echo", arguments: { value: "blocked" } };
     },
   });
@@ -257,5 +257,5 @@ test("tool output that cannot be safely serialized is rejected", async () => {
     skillId: "safe_research", input: {}, allowToolExecution: true, allowedToolIds: ["local_echo"],
     plan: async () => ({ type: "tool", toolId: "local_echo", arguments: {} }),
   });
-  assert.equal(result.code, "TOOL_EXECUTION_FAILED");
+  assert.equal(result.code, "INVALID_TOOL_OUTPUT");
 });
