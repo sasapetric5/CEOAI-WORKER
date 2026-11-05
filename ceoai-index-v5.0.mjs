@@ -1110,11 +1110,19 @@ export async function runCEOAIInternalAgentTask(env, { system, task, input = {},
 }
 
 const APP_AGENT_POLICIES = Object.freeze({
-  // Each app owns an independent capability, quota and future memory namespace.
-  "CONTENTCRAFT-APP": Object.freeze({ enabled: true, maxAgents: 2, maxModelCalls: 3, spider: true, memory: true }),
-  "AIFORCE-APP": Object.freeze({ enabled: true, maxAgents: 3, maxModelCalls: 4, spider: true, memory: true }),
-  // RankGeo has its own identity, limits, memory namespace and Spider grant.
-  "RANKGEO-APP": Object.freeze({ enabled: true, maxAgents: 2, maxModelCalls: 3, spider: true, memory: true }),
+  // Each app receives only its own curated specialist-agent allowlist.
+  "CONTENTCRAFT-APP": Object.freeze({
+    enabled: true, maxAgents: 2, maxModelCalls: 3, spider: true, memory: true,
+    allowedAgentIds: Object.freeze(["quality_engineer", "knowledge_retrieval_engineer", "security_reviewer"]),
+  }),
+  "AIFORCE-APP": Object.freeze({
+    enabled: true, maxAgents: 3, maxModelCalls: 4, spider: true, memory: true,
+    allowedAgentIds: Object.freeze(["cloudflare_platform_engineer", "quality_engineer", "knowledge_retrieval_engineer"]),
+  }),
+  "RANKGEO-APP": Object.freeze({
+    enabled: true, maxAgents: 2, maxModelCalls: 3, spider: true, memory: true,
+    allowedAgentIds: Object.freeze(["crawler_reliability_engineer", "knowledge_retrieval_engineer", "security_reviewer"]),
+  }),
 });
 
 function createRequestAgentSystem(maxAgents) {
@@ -1300,7 +1308,7 @@ export default {
       }
       const system = createRequestAgentSystem(policy.maxAgents);
       const result = await runCEOAIInternalAgentTask(env, {
-        system, task, input: agentInput, limit, allowedToolIds: [], allowToolExecution: true,
+        system, task, input: agentInput, limit, agentIds: policy.allowedAgentIds, allowedToolIds: [], allowToolExecution: true,
         maxToolCalls: 1, maxModelCalls: policy.maxModelCalls, synthesize: true,
         intent,
       });
