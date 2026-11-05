@@ -1,7 +1,7 @@
 // Supply Chain Shield: validate third-party skill/agent metadata before any catalog admission.
 // This module never executes candidate content and never grants capabilities.
 const ID = /^[a-z][a-z0-9_]{0,47}$/;
-const VERSION = /^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$/;
+const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const SHA = /^[a-f0-9]{40}$/;
 const LICENSES = new Set(["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC"]);
 const plain = value => value !== null && typeof value === "object" && !Array.isArray(value) &&
@@ -15,10 +15,10 @@ export function assessSkillIntake(candidate, { approvedLicenses = [...LICENSES],
   if (typeof candidate.description !== "string" || !candidate.description.trim() || candidate.description.length > 240) return fail("INVALID_SKILL_DESCRIPTION");
   if (Array.isArray(candidate.allowedToolIds) && candidate.allowedToolIds.length) return fail("SKILL_CANNOT_GRANT_CAPABILITIES");
   if (candidate.allowedToolIds !== undefined && !Array.isArray(candidate.allowedToolIds)) return fail("INVALID_SKILL_CAPABILITIES");
-  if (typeof candidate.content !== "string" || !candidate.content.trim() || candidate.content.includes("\\0") ||
+  if (typeof candidate.content !== "string" || !candidate.content.trim() || candidate.content.includes("\0") ||
       new TextEncoder().encode(candidate.content).byteLength > 24 * 1024) return fail("INVALID_SKILL_CONTENT");
   const source = candidate.source;
-  if (!plain(source) || typeof source.repository !== "string" || !/^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$/.test(source.repository) ||
+  if (!plain(source) || typeof source.repository !== "string" || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(source.repository) ||
       typeof source.path !== "string" || !source.path || source.path.startsWith("/") || source.path.split("/").includes("..") ||
       typeof source.commit !== "string" || !SHA.test(source.commit) ||
       typeof source.blobSha !== "string" || !SHA.test(source.blobSha)) return fail("INVALID_SKILL_PROVENANCE");
