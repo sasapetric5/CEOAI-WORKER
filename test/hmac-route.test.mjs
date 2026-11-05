@@ -224,6 +224,53 @@ test("ContentCraft and AI Force have independent HMAC identities and no shared c
   }
 });
 
+test("three application HMAC secrets are independent and cannot impersonate one another", async () => {
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  globalThis.fetch = async () => {
+    providerCalls++;
+    return Response.json({ choices: [{ message: { content: "identity verified" } }] });
+  };
+  try {
+    const env = makeEnv();
+    const aiSecret = "aiforce-separate-test-secret-at-least-32-bytes";
+    const rankSecret = "rankgeo-separate-test-secret-at-least-32-bytes";
+    env.HMAC_ALLOWED_APPS = "CONTENTCRAFT-APP,AIFORCE-APP,RANKGEO-APP";
+    env.APP_SECRET_AIFORCE_APP = aiSecret;
+    env.APP_SECRET_RANKGEO_APP = rankSecret;
+    const payload = new TextEncoder().encode(body);
+    const validCases = [
+      ["CONTENTCRAFT-APP", secret, "nonce_hmac_cc_identity_123456"],
+      ["AIFORCE-APP", aiSecret, "nonce_hmac_ai_identity_123456"],
+      ["RANKGEO-APP", rankSecret, "nonce_hmac_rg_identity_123456"],
+    ];
+    for (const [id, signingSecret, nonce] of validCases) {
+      const headers = await signedHeaders(nonce, payload, id, "/v1/chat/completions", signingSecret);
+      const response = await worker.fetch(new Request("https://ceoai.dev/v1/chat/completions", {
+        method: "POST", headers, body
+      }), env);
+      assert.equal(response.status, 200, id + " should authenticate with its own key");
+    }
+    const forgedHeaders = await signedHeaders(
+      "nonce_hmac_rg_forged_123456",
+      payload,
+      "RANKGEO-APP",
+      "/v1/chat/completions",
+      secret
+    );
+    const forged = await worker.fetch(new Request("https://ceoai.dev/v1/chat/completions", {
+      method: "POST", headers: forgedHeaders, body
+    }), env);
+    assert.equal(forged.status, 401);
+    assert.equal(providerCalls, 3);
+    assert.deepEqual(env.__rateLimitKeys, [
+      "gateway:CONTENTCRAFT-APP", "gateway:AIFORCE-APP", "gateway:RANKGEO-APP"
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("RankGeo has an independent HMAC identity and enabled chat memory", async () => {
   const originalFetch = globalThis.fetch;
   const rankGeoSecret = "rankgeo-independent-secret-at-least-32-bytes";
