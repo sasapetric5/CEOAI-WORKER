@@ -7,7 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "check": "node --check ceoai-index-v5.0.mjs && node --check src/v5-modules/pii-shield.mjs && node --check src/v5-modules/hmac-auth.mjs && node --check src/durable-objects/security-do.mjs",
+    "check": "node --check ceoai-index-v5.0.mjs && node --check src/v5-modules/pii-shield.mjs && node --check src/v5-modules/hmac-auth.mjs && node --check src/v5-modules/app-memory.mjs && node --check src/openai-compat.mjs && node --check src/durable-objects/security-do.mjs",
     "test": "node test-ceoai-v5.0.mjs && node --test test/*.test.mjs",
     "check:secrets": "node scripts/check-no-secrets.mjs",
     "verify": "npm run check:secrets && npm run check && npm test"
