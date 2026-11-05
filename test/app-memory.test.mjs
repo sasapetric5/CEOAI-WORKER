@@ -89,3 +89,31 @@ test("history is bounded and accepts only user and assistant messages", async ()
   assert.equal(result.history.length, 16);
   assert.equal(result.history[0].content, "4");
 });
+
+
+test("app memory refuses policies that do not explicitly enable memory", async () => {
+  const kv = memoryKV();
+  assert.throws(
+    () => createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: { enabled: true, memory: false } }),
+    /APP_MEMORY_NOT_CONFIGURED/
+  );
+  assert.throws(
+    () => createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: { enabled: true } }),
+    /APP_MEMORY_NOT_CONFIGURED/
+  );
+  assert.equal(kv.data.size, 0);
+});
+
+test("app memory enforces TTL and serialized byte limits", async () => {
+  const kv = memoryKV();
+  assert.throws(
+    () => createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy, ttlSeconds: 30 }),
+    /APP_MEMORY_INVALID_TTL/
+  );
+  const store = createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy });
+  await assert.rejects(
+    store.write(sessionA, { history: [{ role: "user", content: "x".repeat(25000) }] }),
+    /APP_MEMORY_VALUE_TOO_LARGE/
+  );
+  assert.equal(kv.data.size, 0);
+});
