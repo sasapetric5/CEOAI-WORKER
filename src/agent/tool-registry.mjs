@@ -81,8 +81,12 @@ export function createToolRegistry({ tools = [], enabled = false, limits = {} } 
       const t = definitions.get(id);
       if (!t) return error("TOOL_NOT_FOUND");
       if (!plain(context) || !plain(state)) return error("INVALID_EXECUTION_CONTEXT");
-      if (context.allowToolExecution !== true) return error("EXECUTION_NOT_APPROVED");
-      if (context.allowedToolIds !== undefined && (!Array.isArray(context.allowedToolIds) || !context.allowedToolIds.includes(id))) return error("TOOL_CAPABILITY_DENIED");
+      const approval = Object.getOwnPropertyDescriptor(context, "allowToolExecution");
+      const grants = Object.getOwnPropertyDescriptor(context, "allowedToolIds");
+      if (!approval || !Object.hasOwn(approval, "value") || approval.value !== true) return error("EXECUTION_NOT_APPROVED");
+      // Missing, inherited, accessor-backed, or malformed grants must never mean unrestricted access.
+      if (!grants || !Object.hasOwn(grants, "value") || !Array.isArray(grants.value) || grants.value.length > 32 ||
+          grants.value.some(toolId => typeof toolId !== "string") || !grants.value.includes(id)) return error("TOOL_CAPABILITY_DENIED");
       const checked = registry.validate(id, input);
       if (!checked.ok) return checked;
       const session = toolSessionState.get(context.session);
