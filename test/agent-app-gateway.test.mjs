@@ -311,6 +311,9 @@ test("agent gateway persists and reloads conversation memory only within each au
   const send=async(id,nonce,task)=>worker.fetch(await signedRequest({task,conversation_id:conversationId},{id,nonce}),env);
   assert.equal((await send("CONTENTCRAFT-APP","agent_mem_cc_000000000001","regression testing and verification contentcraft private task")).status,200);
   assert.equal((await send("AIFORCE-APP","agent_mem_af_000000000001","Cloudflare Workers platform architecture aiforce private task")).status,200);
+  const aiForceTurn = JSON.stringify(providerPayloads.slice(-2));
+  assert.equal(aiForceTurn.includes("aiforce private task"), true);
+  assert.equal(aiForceTurn.includes("contentcraft private task"), false);
   assert.equal((await send("CONTENTCRAFT-APP","agent_mem_cc_000000000002","regression testing and verification contentcraft follow-up")).status,200);
   const payloadText=providerPayloads.map(p=>JSON.stringify(p.messages));
   assert.equal(payloadText.some(v=>v.includes("contentcraft private task")),true);
@@ -397,4 +400,44 @@ test("agent gateway rejects caller-supplied appId and never lets request JSON se
   assert.equal(mock.calls,0);
   assert.equal(memory.size,0);
  }finally{mock.restore();}
+});
+
+
+test("gateway keeps ContentCraft, AI Force and RankGeo memory isolated across follow-up turns",async()=>{
+ const old=globalThis.fetch;const payloads=[];
+ globalThis.fetch=async(url,options)=>{
+  const payload=JSON.parse(options.body);payloads.push(payload);
+  const synthesis=payload.messages[0].content.includes("završni koordinator");
+  const content=synthesis?JSON.stringify({output:"Integracioni odgovor "+payloads.length}):JSON.stringify({type:"final",output:"Integraciona analiza "+payloads.length});
+  return Response.json({choices:[{message:{content}}]});
+ };
+ try{
+  const env=environment({APP_SECRET_AIFORCE_APP:secret,APP_SECRET_RANKGEO_APP:secret});
+  const conversationId="123e4567-e89b-42d3-a456-426614174095";
+  const apps=[
+   {id:"CONTENTCRAFT-APP",tag:"cc",task:"regression testing and verification"},
+   {id:"AIFORCE-APP",tag:"af",task:"Cloudflare Workers platform architecture"},
+   {id:"RANKGEO-APP",tag:"rg",task:"crawler reliability and indexing"}
+  ];
+  for(const app of apps){
+   const response=await worker.fetch(await signedRequest({
+    task:app.task+" "+app.tag+" private marker",
+    conversation_id:conversationId
+   },{id:app.id,nonce:"agent_three_app_"+app.tag+"_first_0001"}),env);
+   assert.equal(response.status,200,app.id);
+  }
+  for(const app of apps){
+   const start=payloads.length;
+   const response=await worker.fetch(await signedRequest({
+    task:app.task+" "+app.tag+" follow-up",
+    conversation_id:conversationId
+   },{id:app.id,nonce:"agent_three_app_"+app.tag+"_next_00001"}),env);
+   assert.equal(response.status,200,app.id);
+   const ownTurn=JSON.stringify(payloads.slice(start));
+   assert.equal(ownTurn.includes(app.tag+" private marker"),true,app.id+" must reload its own memory");
+   for(const other of apps.filter(item=>item.id!==app.id)){
+    assert.equal(ownTurn.includes(other.tag+" private marker"),false,app.id+" must not read "+other.id);
+   }
+  }
+ }finally{globalThis.fetch=old;}
 });
