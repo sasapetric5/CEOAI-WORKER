@@ -91,3 +91,16 @@ test("skill-like metadata cannot replace the code-owned execution allowlist", as
   assert.equal(result.code, "TOOL_NOT_FOUND");
   assert.equal(calls(), 0);
 });
+
+test("accessor-backed session tokens are rejected without invoking getters", async () => {
+  const { registry, calls } = fixture();
+  let getterCalls = 0;
+  const supplied = { allowToolExecution: true, allowedToolIds: ["safe_lookup"] };
+  Object.defineProperty(supplied, "session", {
+    enumerable: true, get() { getterCalls++; return createToolSession(); },
+  });
+  const result = await registry.execute("safe_lookup", {}, supplied);
+  assert.equal(result.code, "INVALID_TOOL_SESSION");
+  assert.equal(getterCalls, 0);
+  assert.equal(calls(), 0);
+});
