@@ -22,7 +22,7 @@ export function createCapabilityRegistry({grants=[],audit=null,now=()=>Date.now(
   if(typeof appId!=="string"||!APP.test(appId)||typeof capabilityId!=="string"||!ID.test(capabilityId))throw new TypeError("INVALID_CAPABILITY_ID");
   if(!Array.isArray(operations)||!operations.length||operations.length>16||operations.some(x=>typeof x!=="string"||!OP.test(x))||new Set(operations).size!==operations.length)throw new TypeError("INVALID_CAPABILITY_OPERATIONS");
   if(!Array.isArray(resourceScopes)||resourceScopes.length>32||resourceScopes.some(x=>typeof x!=="string"||!x.trim()||x.length>256)||new Set(resourceScopes).size!==resourceScopes.length)throw new TypeError("INVALID_CAPABILITY_SCOPES");
-  if(!Number.isSafeInteger(maxCalls)||maxCalls<1||maxCalls>10000||!Number.isSafeInteger(expiresAt)||expiresAt<0||typeof approvalRequired!=="boolean")throw new TypeError("INVALID_CAPABILITY_LIMITS");
+  if(!Number.isSafeInteger(maxCalls)||maxCalls<1||maxCalls>10000||!Number.isSafeInteger(expiresAt)||expiresAt<0||(expiresAt!==0&&expiresAt-now()>MAX_TTL)||typeof approvalRequired!=="boolean")throw new TypeError("INVALID_CAPABILITY_LIMITS");
   const key=[subjectType,subjectId,appId,capabilityId].join(":");
   if(entries.has(key))throw new TypeError("DUPLICATE_CAPABILITY_GRANT");
   entries.set(key,Object.freeze({subjectType,subjectId,appId,capabilityId,operations:Object.freeze([...operations]),resourceScopes:Object.freeze([...resourceScopes]),maxCalls,expiresAt,approvalRequired}));
@@ -35,7 +35,7 @@ export function createCapabilityRegistry({grants=[],audit=null,now=()=>Date.now(
   return grant;
  }
  function resolve({appId,callerId,agentId,skillId,toolId,operation="execute",resource="",approval=null}={}){
-  if(typeof appId!=="string"||!APP.test(appId)||typeof callerId!=="string"||!ID.test(callerId)||
+  if(typeof appId!=="string"||!APP.test(appId)||typeof callerId!=="string"||!PRINCIPAL.test(callerId)||
    typeof agentId!=="string"||!ID.test(agentId)||typeof skillId!=="string"||!ID.test(skillId)||
    typeof toolId!=="string"||!ID.test(toolId)||typeof operation!=="string"||!OP.test(operation)||
    typeof resource!=="string"||resource.length>512)return {ok:false,code:"INVALID_CAPABILITY_REQUEST"};
