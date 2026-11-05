@@ -10,9 +10,9 @@ const body = JSON.stringify({ model: "ceoai-auto", messages: [{ role: "user", co
 const bytes = new TextEncoder().encode(body);
 const appId = "CONTENTCRAFT-APP";
 
-async function signedHeaders(nonce) {
+async function signedHeaders(nonce, payload = bytes) {
   const timestamp = String(Math.floor(Date.now() / 1000));
-  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  const hash = await crypto.subtle.digest("SHA-256", payload);
   const hex = Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2, "0")).join("");
   const canonical = ["POST", "/v1/chat/completions", timestamp, nonce, hex].join("\n");
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
@@ -88,6 +88,29 @@ test("Worker gateway rejects replayed HMAC nonce before provider call", async ()
     const second = await worker.fetch(makeRequest(), env);
     assert.equal(second.status, 401);
     assert.equal(providerCalls, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("HMAC chat gateway rejects oversized bodies before buffering or provider calls", async () => {
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  globalThis.fetch = async () => {
+    providerCalls++;
+    return Response.json({ choices: [{ message: { content: "should not run" } }] });
+  };
+  try {
+    const oversized = "x".repeat(16001);
+    const payload = new TextEncoder().encode(oversized);
+    const headers = await signedHeaders("nonce_chat_oversized_123456", payload);
+    const response = await worker.fetch(new Request("https://ceoai.dev/v1/chat/completions", {
+      method: "POST",
+      headers,
+      body: oversized,
+    }), makeEnv());
+    assert.equal(response.status, 413);
+    assert.equal(providerCalls, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }
