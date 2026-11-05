@@ -1178,6 +1178,39 @@ export default {
       if (!queued.ok) return json({ success: false, code: queued.code }, queued.code === "SPIDER_QUEUE_UNAVAILABLE" ? 503 : 400);
       return json({ success: true, jobId: queued.jobId, status: queued.status }, 202);
     }
+    if (url.pathname === "/v1/spider/result") {
+      if (request.method !== "POST") return json({ success: false, code: "METHOD_NOT_ALLOWED" }, 405, { Allow: "POST" });
+      if (request.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "application/json") return json({ success: false, code: "INVALID_CONTENT_TYPE" }, 415);
+      let rawBody;
+      try { rawBody = await readBodyLimited(request, 4096); } catch { return json({ success: false, code: "INVALID_BODY" }, 400); }
+      let auth;
+      try { auth = await verifyHmacSignature(request, new TextEncoder().encode(rawBody), env); } catch { auth = { valid: false, status: 503 }; }
+      if (!auth.valid) return json({ success: false, code: auth.status === 503 ? "AUTH_UNAVAILABLE" : "UNAUTHORIZED" }, auth.status || 401);
+      const spiderPolicy = APP_AGENT_POLICIES[auth.appId];
+      if (spiderPolicy?.enabled !== true || spiderPolicy.spider !== true) return json({ success: false, code: "CAPABILITY_NOT_GRANTED" }, 403);
+      if (!env.RATE_LIMITER || typeof env.RATE_LIMITER.limit !== "function") return json({ success: false, code: "RATE_LIMITER_UNAVAILABLE" }, 503);
+      try {
+        const limited = await env.RATE_LIMITER.limit({ key: "spider-results:" + auth.appId });
+        if (!limited?.success) return json({ success: false, code: "RATE_LIMITED" }, 429, { "Retry-After": "60" });
+      } catch { return json({ success: false, code: "RATE_LIMITER_UNAVAILABLE" }, 503); }
+      let body;
+      try { body = JSON.parse(rawBody); } catch { return json({ success: false, code: "INVALID_JSON" }, 400); }
+      if (!body || typeof body !== "object" || Array.isArray(body) ||
+          Object.keys(body).some(key => key !== "jobId") ||
+          typeof body.jobId !== "string" ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.jobId)) {
+        return json({ success: false, code: "INVALID_SPIDER_REQUEST" }, 400);
+      }
+      const result = await readSpiderResult(env, { appId: auth.appId, jobId: body.jobId });
+      if (!result.ok) {
+        const status = result.code === "SPIDER_JOB_NOT_FOUND" ? 404 :
+          result.code === "SPIDER_RESULT_NOT_READY" ? 409 :
+          result.code === "SPIDER_RESULT_EXPIRED" ? 410 :
+          result.code === "SPIDER_RESULT_UNAVAILABLE" || result.code === "SPIDER_LEDGER_UNAVAILABLE" ? 503 : 400;
+        return json({ success: false, code: result.code }, status);
+      }
+      return json({ success: true, result: result.result });
+    }
     if (url.pathname === "/v1/agents/run") {
       if (request.method !== "POST") return json({ success: false, error: "Metod nije podržan.", code: "METHOD_NOT_ALLOWED" }, 405, { Allow: "POST" });
       if (request.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
