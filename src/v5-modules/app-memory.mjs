@@ -54,15 +54,21 @@ export function createAppMemoryStore({ kv, appId, appPolicy, ttlSeconds = DEFAUL
     },
     async write(sessionId, { history = [], summary = "" } = {}) {
       if (!Array.isArray(history) || typeof summary !== "string") throw new TypeError("APP_MEMORY_INVALID_VALUE");
-      const safeHistory = history.filter(item =>
+      // Measure accepted input before truncation so oversized payloads are rejected,
+      // not silently made smaller and persisted.
+      const acceptedHistory = history.filter(item =>
         item && (item.role === "user" || item.role === "assistant") &&
         typeof item.content === "string"
-      ).slice(-16).map(item => ({ role: item.role, content: item.content.slice(0, 8000) }));
-      const historyValue = JSON.stringify(safeHistory);
-      const safeSummary = summary.slice(0, 4000);
-      if (new TextEncoder().encode(historyValue).byteLength + new TextEncoder().encode(safeSummary).byteLength > MAX_VALUE_BYTES) {
+      ).map(item => ({ role: item.role, content: item.content }));
+      const inputHistoryValue = JSON.stringify(acceptedHistory);
+      const inputSummaryValue = summary;
+      const encoder = new TextEncoder();
+      if (encoder.encode(inputHistoryValue).byteLength + encoder.encode(inputSummaryValue).byteLength > MAX_VALUE_BYTES) {
         throw new RangeError("APP_MEMORY_VALUE_TOO_LARGE");
       }
+      const safeHistory = acceptedHistory.slice(-16).map(item => ({ role: item.role, content: item.content.slice(0, 8000) }));
+      const historyValue = JSON.stringify(safeHistory);
+      const safeSummary = summary.slice(0, 4000);
       await Promise.all([
         kv.put(keyFor(sessionId, "history"), historyValue, { expirationTtl: ttlSeconds }),
         kv.put(keyFor(sessionId, "summary"), safeSummary, { expirationTtl: ttlSeconds }),
