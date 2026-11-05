@@ -48,3 +48,21 @@ test("bounds diagnostic text and safely handles missing values", () => {
   assert.equal(redactSensitiveText(null), "");
   assert.equal(redactSensitiveText(undefined), "");
 });
+
+
+test("redacts configured secrets in full conversation-sized content without truncating safe text", () => {
+  const key = "provider_live_secret_987654321";
+  const content = "Useful conversation context. ".repeat(60) + "OPENROUTER_API_KEY=" + key + " " + "More safe context. ".repeat(20);
+  const output = redactSensitiveText(content, { OPENROUTER_API_KEY: key }, 2000);
+  assert.equal(output.includes(key), false);
+  assert.ok(output.length > 1200);
+  assert.ok(output.includes("More safe context."));
+});
+
+test("redacts secrets embedded in JSON-like request content", () => {
+  const content = '{"apiKey":"private_key_123456","access_token":"private_token_123456","topic":"safe"}';
+  const output = redactSensitiveText(content, {}, 2000);
+  assert.equal(output.includes("private_key_123456"), false);
+  assert.equal(output.includes("private_token_123456"), false);
+  assert.ok(output.includes("safe"));
+});
