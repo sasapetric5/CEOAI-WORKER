@@ -29,7 +29,8 @@ Scope brief, intent catalogue, knowledge-source register, escalation map, test s
 - Do not connect channels, deploy bots, or access customer conversations.
 - Never request passwords, API keys, tokens, or private customer exports.
 - Do not claim the bot is accurate or compliant without evidence.
-- No paid services assumed; no runtime activation or tool grants.
+- No paid services assumed.
+- No runtime activation or tool grants.
 
 ## Provenance
 CEOAI-authored workflow. Scoping and planning only.
