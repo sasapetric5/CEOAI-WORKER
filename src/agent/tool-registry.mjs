@@ -63,6 +63,15 @@ export function createToolRegistry({ tools = [], enabled = false, limits = {} } 
       const t = definitions.get(id);
       if (!t) return error("TOOL_NOT_FOUND");
       if (!plain(input)) return error("INVALID_ARGUMENTS");
+      const inputKeys = Reflect.ownKeys(input);
+      if (inputKeys.some((key) => typeof key !== "string")) return error("UNKNOWN_ARGUMENT");
+      const safeInput = Object.create(null);
+      for (const key of inputKeys) {
+        const descriptor = Object.getOwnPropertyDescriptor(input, key);
+        if (!descriptor || !Object.hasOwn(descriptor, "value")) return error("INVALID_ARGUMENTS");
+        safeInput[key] = descriptor.value;
+      }
+      input = safeInput;
       const props = t.inputSchema.properties;
       if (Object.keys(input).some((k) => !Object.hasOwn(props, k) || RESERVED.has(k))) return error("UNKNOWN_ARGUMENT");
       for (const k of t.inputSchema.required || []) if (!Object.hasOwn(input, k)) return error("MISSING_ARGUMENT");
