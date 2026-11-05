@@ -112,3 +112,75 @@ test("25 rejects lease renewal with a missing fencing token", async () => {
   })}));
   assert.equal(r.status,400);
 });
+
+test("26 checkpoint writes require an active lease", async () => {
+  const {instance}=makeDO();
+  const response=await instance.fetch(new Request("https://x/put",{method:"POST",body:JSON.stringify({
+    id:"task_26",expectedRevision:-1,state:state("task_26",0),ownerToken:OWNER_A,fencingToken:1
+  })}));
+  assert.equal(response.status,409); assert.equal((await response.json()).code,"STALE_EXECUTOR");
+});
+test("27 an expired executor cannot write after lease takeover", async () => {
+  const {namespace,data}=makeDO(); const store=createCloudflareCheckpointStore(namespace);
+  const first=await store.acquireLease("task_27",OWNER_A,5000);
+  data.set("lease",{...data.get("lease"),expiresAt:Date.now()-1});
+  const second=await store.acquireLease("task_27",OWNER_B,5000);
+  await assert.rejects(()=>store.put("task_27",state("task_27",0),{ownerToken:OWNER_A,fencingToken:first.fencingToken}),/STALE_EXECUTOR/);
+  await store.put("task_27",state("task_27",0),{ownerToken:OWNER_B,fencingToken:second.fencingToken});
+});
+test("28 completed idempotency effects replay their stored result", async () => {
+  const {namespace}=makeDO(); const store=createCloudflareCheckpointStore(namespace);
+  const lease=await store.acquireLease("task_28",OWNER_A,5000);
+  const claim=await store.claimEffect("task_28",OWNER_A,lease.fencingToken,"step:alpha",{amount:7});
+  assert.equal(claim.replay,false);
+  await store.completeEffect("task_28",OWNER_A,lease.fencingToken,"step:alpha",claim.payloadHash,{receipt:"ok"});
+  const replay=await store.claimEffect("task_28",OWNER_A,lease.fencingToken,"step:alpha",{amount:7});
+  assert.equal(replay.replay,true); assert.deepEqual(replay.result,{receipt:"ok"});
+});
+test("29 idempotency keys cannot be reused with a different payload", async () => {
+  const {namespace}=makeDO(); const store=createCloudflareCheckpointStore(namespace);
+  const lease=await store.acquireLease("task_29",OWNER_A,5000);
+  await store.claimEffect("task_29",OWNER_A,lease.fencingToken,"step:alpha",{amount:7});
+  await assert.rejects(()=>store.claimEffect("task_29",OWNER_A,lease.fencingToken,"step:alpha",{amount:8}),/IDEMPOTENCY_KEY_CONFLICT/);
+});
+test("30 an interrupted started effect is never silently executed twice", async () => {
+  const {namespace}=makeDO(); const store=createCloudflareCheckpointStore(namespace);
+  const lease=await store.acquireLease("task_30",OWNER_A,5000);
+  await store.claimEffect("task_30",OWNER_A,lease.fencingToken,"step:alpha",{send:true});
+  await assert.rejects(()=>store.claimEffect("task_30",OWNER_A,lease.fencingToken,"step:alpha",{send:true}),/EFFECT_OUTCOME_UNKNOWN/);
+});
+test("31 stale fencing tokens cannot claim effects", async () => {
+  const {namespace,data}=makeDO(); const store=createCloudflareCheckpointStore(namespace);
+  const first=await store.acquireLease("task_31",OWNER_A,5000);
+  data.set("lease",{...data.get("lease"),expiresAt:Date.now()-1});
+  const second=await store.acquireLease("task_31",OWNER_B,5000);
+  await assert.rejects(()=>store.claimEffect("task_31",OWNER_A,first.fencingToken,"step:alpha",{x:1}),/STALE_EXECUTOR/);
+  assert.ok(second.fencingToken>first.fencingToken);
+});
+test("32 simultaneous lease acquisition has exactly one winner", async () => {
+  const {namespace}=makeDO(); const store=createCloudflareCheckpointStore(namespace);
+  const outcomes=await Promise.allSettled([
+    store.acquireLease("task_32",OWNER_A,5000),
+    store.acquireLease("task_32",OWNER_B,5000),
+  ]);
+  assert.equal(outcomes.filter(item=>item.status==="fulfilled").length,1);
+  assert.equal(outcomes.filter(item=>item.status==="rejected").length,1);
+});
+test("33 simultaneous idempotency claims allow one executor", async () => {
+  const {namespace}=makeDO(); const store=createCloudflareCheckpointStore(namespace);
+  const lease=await store.acquireLease("task_33",OWNER_A,5000);
+  const outcomes=await Promise.allSettled([
+    store.claimEffect("task_33",OWNER_A,lease.fencingToken,"step:once",{x:1}),
+    store.claimEffect("task_33",OWNER_A,lease.fencingToken,"step:once",{x:1}),
+  ]);
+  assert.equal(outcomes.filter(item=>item.status==="fulfilled").length,1);
+  assert.equal(outcomes.filter(item=>item.status==="rejected").length,1);
+});
+test("34 stale fencing token cannot complete a claimed effect", async () => {
+  const {namespace,data}=makeDO(); const store=createCloudflareCheckpointStore(namespace);
+  const first=await store.acquireLease("task_34",OWNER_A,5000);
+  const claim=await store.claimEffect("task_34",OWNER_A,first.fencingToken,"step:once",{x:1});
+  data.set("lease",{...data.get("lease"),expiresAt:Date.now()-1});
+  await store.acquireLease("task_34",OWNER_B,5000);
+  await assert.rejects(()=>store.completeEffect("task_34",OWNER_A,first.fencingToken,"step:once",claim.payloadHash,{ok:true}),/STALE_EXECUTOR/);
+});
