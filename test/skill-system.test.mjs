@@ -121,7 +121,7 @@ test("Secret Guardian is a defensive-only skill with no tools or credential harv
  assert.deepEqual(metadata.allowedToolIds,[]);
  const loaded=await r.load("secret_guardian_scan");
  assert.match(loaded.content,/explicitly authorized/i);
- assert.match(loaded.content,/Never verify a discovered credential/i);
+ assert.match(loaded.content,/Do not verify a discovered credential/i);
  assert.match(loaded.content,/Cloudflare Secrets/i);
  assert.equal(r.allows("secret_guardian_scan","approved_lookup"),false);
  assert.equal(r.search("defensive secret scanning credential leak gitleaks")[0].id,"secret_guardian_scan");
