@@ -90,3 +90,18 @@ test("23 rejects a stale fencing token after lease replacement", async () => {
   await assert.rejects(()=>store.renewLease("lease_23",OWNER_A,first.fencingToken,5000),/LEASE_NOT_OWNED/);
   assert.ok(second.fencingToken>first.fencingToken);
 });
+
+test("24 lease fields cannot weaken checkpoint envelope validation", async () => {
+  const {instance}=makeDO();
+  const r=await instance.fetch(new Request("https://x/put",{method:"POST",body:JSON.stringify({
+    id:"task_24",expectedRevision:-1,state:state("task_24",0),ownerToken:OWNER_A
+  })}));
+  assert.equal(r.status,400);
+});
+test("25 rejects lease renewal with a missing fencing token", async () => {
+  const {instance}=makeDO();
+  const r=await instance.fetch(new Request("https://x/lease/renew",{method:"POST",body:JSON.stringify({
+    id:"task_25",ownerToken:OWNER_A,leaseMs:5000
+  })}));
+  assert.equal(r.status,400);
+});
