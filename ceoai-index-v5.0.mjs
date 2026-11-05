@@ -1753,3 +1753,5 @@ export default {
 // Export Durable Object classes declared in wrangler.toml.
 export { SecurityOrchestratorDO } from "./src/durable-objects/security-do.mjs";
 export { SpiderJobLedgerDO };
+
+export { WorkflowTaskDO } from "./src/durable-objects/workflow-task-do.mjs";
