@@ -8,6 +8,14 @@ const plain=v=>v!==null&&typeof v==="object"&&!Array.isArray(v)&&(Object.getProt
 const norm=v=>v.normalize("NFKD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
 const tokens=v=>norm(v).match(/[\p{L}\p{N}][\p{L}\p{N}_-]{1,}/gu)||[];
 function clone(e,content=false){const x={id:e.id,version:e.version,description:e.description,allowedToolIds:[...e.allowedToolIds]};if(e.tags.length)x.tags=[...e.tags];if(e.keywords.length)x.keywords=[...e.keywords];if(e.source)x.source={...e.source};if(e.contentSha256)x.contentSha256=e.contentSha256;if(content&&e.content!==null)x.content=e.content;return x;}
+async function sha256(value){
+ const subtle=globalThis.crypto?.subtle;
+ if(!subtle||typeof subtle.digest!=="function")throw new Error("SKILL_HASH_UNAVAILABLE");
+ let digest;
+ try{digest=await subtle.digest("SHA-256",new TextEncoder().encode(value));}
+ catch{throw new Error("SKILL_HASH_UNAVAILABLE");}
+ return [...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,"0")).join("");
+}
 function sourceOf(s,id){if(s==null)return null;if(!plain(s)||Object.keys(s).some(k=>!SOURCE.has(k)))throw new TypeError("INVALID_SKILL_SOURCE:"+id);const x={};for(const [k,v] of Object.entries(s)){if(typeof v!=="string"||!v.trim()||v.length>512)throw new TypeError("INVALID_SKILL_SOURCE:"+id);x[k]=v.trim();}if(!x.repository||!x.path||!x.license||!x.commit||!x.blobSha)throw new TypeError("INCOMPLETE_SKILL_SOURCE:"+id);return Object.freeze(x);}
 export function createSkillRegistry({skills=[],toolRegistry,loadContent=null}={}){
  if(!toolRegistry||typeof toolRegistry.get!=="function")throw new TypeError("TOOL_REGISTRY_REQUIRED");
@@ -34,7 +42,18 @@ export function createSkillRegistry({skills=[],toolRegistry,loadContent=null}={}
  return Object.freeze({
   list(){return [...entries.values()].map(e=>clone(e));},
   get(id){const e=entries.get(id);return e?clone(e):null;},
-  load(id){const e=entries.get(id);if(!e)return null;if(e.content!==null)return clone(e,true);if(!loadContent)return null;return Promise.resolve().then(()=>loadContent(clone(e))).then(content=>{if(content==null)return null;if(typeof content!=="string"||content.includes("\0")||new TextEncoder().encode(content).byteLength>MAX)throw new TypeError("INVALID_LOADED_SKILL_CONTENT:"+id);return {...clone(e),content};});},
+  load(id){
+   const e=entries.get(id);if(!e)return null;
+   const finish=async content=>{
+    if(content==null)return null;
+    if(typeof content!=="string"||content.includes("\0")||new TextEncoder().encode(content).byteLength>MAX)throw new TypeError("INVALID_LOADED_SKILL_CONTENT:"+id);
+    if(e.contentSha256&&await sha256(content)!==e.contentSha256)throw new Error("SKILL_CONTENT_HASH_MISMATCH:"+id);
+    return {...clone(e),content};
+   };
+   if(e.content!==null)return e.contentSha256?finish(e.content):clone(e,true);
+   if(!loadContent)return null;
+   return Promise.resolve().then(()=>loadContent(clone(e))).then(finish);
+  },
   search(query,{limit=5,requiredTags=[]}={}){if(typeof query!=="string"||!query.trim()||query.length>500)return [];if(!Number.isSafeInteger(limit)||limit<1||limit>20)throw new TypeError("INVALID_SKILL_SEARCH_LIMIT");if(!Array.isArray(requiredTags)||requiredTags.some(t=>typeof t!=="string"||!TAG.test(t)))throw new TypeError("INVALID_SKILL_SEARCH_TAGS");const terms=[...new Set(tokens(query).filter(t=>!STOP.has(t)))];if(!terms.length)return [];const q=norm(query).trim(),required=new Set(requiredTags),out=[];for(const e of entries.values()){if(required.size&&![...required].every(t=>e.tags.includes(t)))continue;const matched=terms.filter(t=>indexes.get(e.id).has(t));if(!matched.length)continue;const tagTerms=new Set(tokens(e.tags.join(" "))),idTerms=new Set(tokens(e.id.replaceAll("_"," ")));let score=0;for(const t of matched)score+=tagTerms.has(t)?4:idTerms.has(t)?3:2;if(q.length>=4&&norm(e.description).includes(q))score+=3;out.push({...clone(e),score,matchedTerms:matched});}return out.sort((a,b)=>b.score-a.score||a.id.localeCompare(b.id)).slice(0,limit);},
   allows(skillId,toolId){const e=entries.get(skillId);return Boolean(e&&e.allowedToolIds.includes(toolId)&&toolRegistry.get(toolId));},
   get size(){return entries.size;}

@@ -26,7 +26,7 @@ export async function publishSkillCatalogToKV({ kv, skills, toolRegistry, indexK
   const registry = createSkillRegistry({ skills, toolRegistry });
   const metadata = [];
   for (const skill of registry.list()) {
-    const loaded = registry.load(skill.id);
+    const loaded = await registry.load(skill.id);
     if (!loaded || typeof loaded.content !== "string") throw new TypeError("SKILL_CONTENT_REQUIRED:" + skill.id);
     const contentSha256 = await sha256(loaded.content);
     const key = documentKey(skill.id, skill.version, contentSha256, documentPrefix);

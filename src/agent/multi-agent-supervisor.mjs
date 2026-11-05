@@ -5,7 +5,7 @@ const plain=v=>v!==null&&typeof v==="object"&&!Array.isArray(v)&&(Object.getProt
 const safeJson=value=>{try{const json=JSON.stringify(value);return typeof json==="string"&&new TextEncoder().encode(json).byteLength<=MAX_CONTEXT_BYTES?json:null;}catch{return null;}};
 export function createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoop,maxAgents=3,maxToolCalls=4}={}){
  if(!agentRegistry||typeof agentRegistry.search!=="function"||typeof agentRegistry.get!=="function")throw new TypeError("AGENT_REGISTRY_REQUIRED");
- if(!skillRegistry||typeof skillRegistry.get!=="function")throw new TypeError("SKILL_REGISTRY_REQUIRED");
+ if(!skillRegistry||typeof skillRegistry.get!=="function"||typeof skillRegistry.search!=="function")throw new TypeError("SKILL_REGISTRY_REQUIRED");
  if(!agentLoop||typeof agentLoop.run!=="function")throw new TypeError("AGENT_LOOP_REQUIRED");
  if(!Number.isSafeInteger(maxAgents)||maxAgents<1||maxAgents>5)throw new TypeError("INVALID_AGENT_LIMIT");
  if(!Number.isSafeInteger(maxToolCalls)||maxToolCalls<1||maxToolCalls>8)throw new TypeError("INVALID_SHARED_BUDGET");
@@ -15,9 +15,13 @@ export function createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoo
   let selected;
   if(agentIds!==undefined){
    if(!Array.isArray(agentIds)||!agentIds.length||agentIds.length>limit||agentIds.some(id=>typeof id!=="string")||new Set(agentIds).size!==agentIds.length)return {ok:false,code:"INVALID_AGENT_SELECTION",agents:[]};
-   selected=agentIds.map(id=>agentRegistry.get(id)).filter(Boolean);
-   if(selected.length!==agentIds.length)return {ok:false,code:"AGENT_NOT_FOUND",agents:[]};
-   selected=selected.map(a=>({...a,skillId:a.skillIds.find(id=>skillRegistry.get(id))}));
+   selected=agentIds.map(id=>agentRegistry.get(id));
+   if(selected.some(a=>!a))return {ok:false,code:"AGENT_NOT_FOUND",agents:[]};
+   const relevantSkills=skillRegistry.search(task.trim().slice(0,500),{limit:20});
+   selected=selected.map(a=>{
+    const match=relevantSkills.filter(s=>a.skillIds.includes(s.id)).sort((x,y)=>(y.score??0)-(x.score??0)||x.id.localeCompare(y.id))[0];
+    return match?{...a,skillId:match.id,score:match.score,matchedTerms:match.matchedTerms??[]}:null;
+   }).filter(Boolean);
   }else selected=agentRegistry.search(task,{limit});
   selected=selected.filter(a=>a.skillId&&skillRegistry.get(a.skillId));
   if(!selected.length)return {ok:false,code:"NO_RELEVANT_AGENT",agents:[]};

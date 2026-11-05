@@ -26,14 +26,14 @@ export function createAgentRegistry({agents=[],skillRegistry,toolRegistry}={}){
    if(typeof task!=="string"||!task.trim()||task.length>4000)return [];
    if(!Number.isSafeInteger(limit)||limit<1||limit>5)throw new TypeError("INVALID_AGENT_SEARCH_LIMIT");
    const terms=[...new Set(words(task).filter(w=>!STOP.has(w)))];if(!terms.length)return [];
-   const skillMatches=skillRegistry.search(task,{limit:20});
+   const skillMatches=skillRegistry.search(task.trim().slice(0,500),{limit:20});
    const ranked=[];
    for(const a of entries.values()){
     const matched=terms.filter(term=>a.keywords.some(k=>words(k).includes(term))||words(a.role+" "+a.description).includes(term));
     const skillMatch=skillMatches.filter(s=>a.skillIds.includes(s.id)).sort((x,y)=>y.score-x.score||x.id.localeCompare(y.id))[0];
-    if(!matched.length&&!skillMatch)continue;
-    const score=matched.length*3+(skillMatch?.score??0);
-    ranked.push({...copy(a),score,matchedTerms:matched,skillId:skillMatch?.id??a.skillIds[0]});
+    if(!skillMatch)continue;
+    const score=matched.length*3+(skillMatch.score??0);
+    ranked.push({...copy(a),score,matchedTerms:matched,skillId:skillMatch.id});
    }
    return ranked.sort((a,b)=>b.score-a.score||a.id.localeCompare(b.id)).slice(0,limit);
   },

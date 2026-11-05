@@ -1,4 +1,5 @@
 import test from "node:test";
+import {createHash} from "node:crypto";
 import assert from "node:assert/strict";
 import {createSkillRegistry} from "../src/agent/skill-registry.mjs";
 import {BUILTIN_SKILLS,createBuiltinSkillRegistry} from "../src/agent/builtin-skills.mjs";
@@ -63,4 +64,52 @@ test("KV skill system creates registry before agent loop",async()=>{
  await publishSkillCatalogToKV({kv,skills:[BUILTIN_SKILLS[0]],toolRegistry:tools});
  const system=await createKVSkillSystem({kv,toolRegistry:tools,agentLoopFactory:({skillRegistry})=>createAgentLoop({toolRegistry:tools,skillRegistry})});
  assert.ok(system.agentLoop);assert.equal((await system.supervisor.prepare({task:"Cloudflare Agents SDK and MCP tools"})).ok,true);
+});
+
+test("registry verifies declared SHA-256 for inline and lazy-loaded content", async () => {
+ const content = "trusted bytes are checked before skill use";
+ const hash = createHash("sha256").update(content).digest("hex");
+ const inline = createSkillRegistry({toolRegistry:tools,skills:[{id:"inline_hash_skill",version:"1.0.0",description:"Inline hash test",allowedToolIds:[],content,contentSha256:hash}]});
+ assert.equal((await inline.load("inline_hash_skill")).content,content);
+ const inlineTampered = createSkillRegistry({toolRegistry:tools,skills:[{id:"inline_bad_hash",version:"1.0.0",description:"Inline mismatch test",allowedToolIds:[],content,contentSha256:"0".repeat(64)}]});
+ await assert.rejects(()=>inlineTampered.load("inline_bad_hash"),/SKILL_CONTENT_HASH_MISMATCH/);
+ const lazy = createSkillRegistry({toolRegistry:tools,loadContent:async()=>content,skills:[{id:"lazy_hash_skill",version:"1.0.0",description:"Lazy hash test",allowedToolIds:[],contentSha256:hash}]});
+ assert.equal((await lazy.load("lazy_hash_skill")).content,content);
+ const lazyTampered = createSkillRegistry({toolRegistry:tools,loadContent:async()=>"modified bytes",skills:[{id:"lazy_bad_hash",version:"1.0.0",description:"Lazy mismatch test",allowedToolIds:[],contentSha256:hash}]});
+ await assert.rejects(()=>lazyTampered.load("lazy_bad_hash"),/SKILL_CONTENT_HASH_MISMATCH/);
+});
+test("hash-bearing skills fail closed when Web Crypto is unavailable", async () => {
+ const descriptor = Object.getOwnPropertyDescriptor(globalThis,"crypto");
+ try {
+  Object.defineProperty(globalThis,"crypto",{configurable:true,value:undefined});
+  const registry = createSkillRegistry({toolRegistry:tools,skills:[{id:"no_crypto_hash",version:"1.0.0",description:"Hash unavailable",allowedToolIds:[],content:"hash required",contentSha256:"a".repeat(64)}]});
+  await assert.rejects(()=>registry.load("no_crypto_hash"),/SKILL_HASH_UNAVAILABLE/);
+ } finally {
+  if (descriptor) Object.defineProperty(globalThis,"crypto",descriptor);
+  else delete globalThis.crypto;
+ }
+});
+test("KV publisher awaits verification of declared inline hashes", async () => {
+ const content = "publish only verified inline content";
+ const hash = createHash("sha256").update(content).digest("hex");
+ const values = new Map();
+ const kv = {async put(key,value){values.set(key,value);},async get(key){return values.get(key)??null;}};
+ const skill = {id:"published_hashed_skill",version:"1.0.0",description:"Hashed publish test",allowedToolIds:[],content,contentSha256:hash};
+ const published = await publishSkillCatalogToKV({kv,skills:[skill],toolRegistry:tools});
+ assert.equal(published.skillCount,1);
+ assert.equal(JSON.parse(values.get("skills:v1:index")).skills[0].contentSha256,hash);
+ const rejectedValues = new Map();
+ const rejectedKv = {async put(key,value){rejectedValues.set(key,value);},async get(key){return rejectedValues.get(key)??null;}};
+ await assert.rejects(()=>publishSkillCatalogToKV({kv:rejectedKv,skills:[{...skill,contentSha256:"0".repeat(64)}],toolRegistry:tools}),/SKILL_CONTENT_HASH_MISMATCH/);
+ assert.equal(rejectedValues.size,0);
+});
+test("manual skill selection requires task relevance and honors required tags", async () => {
+ const registry = createBuiltinSkillRegistry({toolRegistry:tools});
+ const supervisor = createSkillSupervisor({skillRegistry:registry});
+ const relevant = await supervisor.prepare({task:"testing red green refactor cycle",skillIds:["skill_test_driven_development"],requiredTags:["testing"]});
+ assert.equal(relevant.ok,true);
+ const unrelated = await supervisor.prepare({task:"Cloudflare Queues idempotency retries",skillIds:["skill_test_driven_development"]});
+ assert.equal(unrelated.code,"NO_RELEVANT_SKILL");
+ const tagMismatch = await supervisor.prepare({task:"testing red green refactor cycle",skillIds:["skill_test_driven_development"],requiredTags:["cloudflare"]});
+ assert.equal(tagMismatch.code,"NO_RELEVANT_SKILL");
 });

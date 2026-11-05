@@ -1,6 +1,6 @@
 // Deterministic skill selection and bounded loading. It does not call an LLM or execute tools.
 export function createSkillSupervisor({ skillRegistry, agentLoop = null, maxSelectedSkills = 3 } = {}) {
-  if (!skillRegistry || typeof skillRegistry.search !== "function" || typeof skillRegistry.load !== "function") throw new TypeError("SKILL_REGISTRY_REQUIRED");
+  if (!skillRegistry || typeof skillRegistry.search !== "function" || typeof skillRegistry.load !== "function" || typeof skillRegistry.get !== "function") throw new TypeError("SKILL_REGISTRY_REQUIRED");
   if (agentLoop !== null && typeof agentLoop.run !== "function") throw new TypeError("INVALID_AGENT_LOOP");
   if (!Number.isSafeInteger(maxSelectedSkills) || maxSelectedSkills < 1 || maxSelectedSkills > 5) throw new TypeError("INVALID_SKILL_SELECTION_LIMIT");
 
@@ -10,10 +10,12 @@ export function createSkillSupervisor({ skillRegistry, agentLoop = null, maxSele
     let selected;
     if (skillIds !== undefined) {
       if (!Array.isArray(skillIds) || skillIds.length < 1 || skillIds.length > limit || skillIds.some((id) => typeof id !== "string") || new Set(skillIds).size !== skillIds.length) return { ok: false, code: "INVALID_SKILL_SELECTION", skills: [] };
-      selected = skillIds.map((id) => skillRegistry.get(id)).filter(Boolean);
-      if (selected.length !== skillIds.length) return { ok: false, code: "SKILL_NOT_FOUND", skills: [] };
+      const existing = skillIds.map((id) => skillRegistry.get(id));
+      if (existing.some((item) => !item)) return { ok: false, code: "SKILL_NOT_FOUND", skills: [] };
+      const relevant = new Map(skillRegistry.search(task.trim().slice(0, 500), { limit: 20, requiredTags }).map((item) => [item.id, item]));
+      selected = skillIds.map((id) => relevant.get(id)).filter(Boolean);
     } else {
-      selected = skillRegistry.search(task, { limit, requiredTags });
+      selected = skillRegistry.search(task.trim().slice(0, 500), { limit, requiredTags });
     }
     if (!selected.length) return { ok: false, code: "NO_RELEVANT_SKILL", skills: [] };
     const loaded = [];

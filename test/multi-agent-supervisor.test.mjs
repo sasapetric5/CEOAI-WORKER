@@ -26,7 +26,7 @@ test("agent registry rejects unknown skills and unknown tools",()=>{
  assert.throws(()=>createAgentRegistry({agents:[{...BUILTIN_AGENTS[0],allowedToolIds:["missing"]}],skillRegistry:{get:id=>({id}),search:()=>[]},toolRegistry:emptyTools}),/INVALID_AGENT_CAPABILITIES/);
 });
 test("multi-agent supervisor requires explicit execution approval",async()=>{
- const supervisor=createMultiAgentSupervisor({agentRegistry:{search:()=>[],get:()=>null},skillRegistry:{get:()=>null},agentLoop:{run:async()=>({ok:true})}});
+ const supervisor=createMultiAgentSupervisor({agentRegistry:{search:()=>[],get:()=>null},skillRegistry:{get:()=>null,search:()=>[]},agentLoop:{run:async()=>({ok:true})}});
  const result=await supervisor.run({task:"review security",planAgent:async()=>({type:"final",output:"ok"})});
  assert.equal(result.code,"EXECUTION_NOT_APPROVED");
 });
@@ -57,4 +57,26 @@ test("agent composition loads the KV skill library and exposes supervisor",async
  assert.equal((await system.mcpResources.handle({method:"resources/list"})).error.code,"ACCESS_DENIED");
  assert.equal((await system.mcpResources.handle({method:"resources/list",authContext:{valid:true}})).ok,true);
  assert.equal((await system.multiAgentSupervisor.prepare({task:"HMAC replay security audit"})).agents[0].id,"security_reviewer");
+});
+
+test("agent discovery never falls back to an unrelated assigned skill", () => {
+ const skills = {get:id=>BUILTIN_SKILLS.find(skill=>skill.id===id)||null,search:()=>[]};
+ const registry = createAgentRegistry({agents:BUILTIN_AGENTS,skillRegistry:skills,toolRegistry:emptyTools});
+ assert.deepEqual(registry.search("HMAC replay security audit"),[]);
+});
+test("manual agent selection chooses only a task-relevant assigned skill", async () => {
+ const skills = {
+  get:id=>({id}),
+  search:task=>task.toLowerCase().includes("security")
+   ? [{id:"security_skill",score:9,matchedTerms:["security"]},{id:"generic_skill",score:2,matchedTerms:["review"]}]
+   : []
+ };
+ const agents=[{id:"security_agent",version:"1.0.0",role:"Security engineer",description:"Reviews security controls.",skillIds:["generic_skill","security_skill"],keywords:["security"],allowedToolIds:[]}];
+ const registry=createAgentRegistry({agents,skillRegistry:skills,toolRegistry:emptyTools});
+ const supervisor=createMultiAgentSupervisor({agentRegistry:registry,skillRegistry:skills,agentLoop:{run:async()=>({ok:true})}});
+ const relevant=await supervisor.prepare({task:"security review",agentIds:["security_agent"]});
+ assert.equal(relevant.ok,true);
+ assert.equal(relevant.agents[0].skillId,"security_skill");
+ const unrelated=await supervisor.prepare({task:"unrelated gardening topic",agentIds:["security_agent"]});
+ assert.equal(unrelated.code,"NO_RELEVANT_AGENT");
 });
