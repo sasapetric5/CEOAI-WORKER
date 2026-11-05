@@ -31,7 +31,7 @@ export function createCapabilityRegistry({grants=[],audit=null,now=()=>Date.now(
  function grantFor(type,id,appId,capabilityId,operation,resource){
   const grant=entries.get([type,id,appId,capabilityId].join(":"));
   if(!grant|| (grant.expiresAt!==0&&grant.expiresAt<=now()) || !grant.operations.includes(operation))return null;
-  if(grant.resourceScopes.length&&!grant.resourceScopes.some(scope=>resource===scope||resource.startsWith(scope.endsWith("*")?scope.slice(0,-1):scope+"\u0000")))return null;
+  if(grant.resourceScopes.length&&!grant.resourceScopes.some(scope=>scope.endsWith("*")?resource.startsWith(scope.slice(0,-1)):(resource===scope||resource.startsWith(scope+"/"))))return null;
   return grant;
  }
  function resolve({appId,callerId,agentId,skillId,toolId,operation="execute",resource="",approval=null}={}){
@@ -46,8 +46,13 @@ export function createCapabilityRegistry({grants=[],audit=null,now=()=>Date.now(
   const used=usage.get(key)||0,limit=Math.min(...found.map(g=>g.maxCalls));
   if(used>=limit)return {ok:false,code:"CAPABILITY_QUOTA_EXCEEDED"};
   const approvalRequired=found.some(g=>g.approvalRequired);
-  if(approvalRequired&&(!plain(approval)||approval.approved!==true||approval.appId!==appId||approval.callerId!==callerId||approval.agentId!==agentId||approval.skillId!==skillId||approval.toolId!==toolId||approval.operation!==operation))return {ok:false,code:"CAPABILITY_APPROVAL_REQUIRED"};
+  if(approvalRequired){
+   if(!plain(approval)||typeof approval.approvalId!=="string"||!APPROVAL.test(approval.approvalId)||usedApprovals.has(approval.approvalId)||!verifyApproval)return {ok:false,code:"CAPABILITY_APPROVAL_REQUIRED"};
+   let verified=false;try{verified=verifyApproval(approval,{appId,callerId,agentId,skillId,toolId,operation,resource})===true;}catch{}
+   if(!verified)return {ok:false,code:"CAPABILITY_APPROVAL_REQUIRED"};
+  }
   usage.set(key,used+1);
+  if(approvalRequired)usedApprovals.add(approval.approvalId);
   const result={ok:true,toolId,operation,approvalRequired,remaining:limit-used-1};
   try{audit?.record({type:"capability_granted",appId,callerId,agentId,skillId,toolId,operation,approvalRequired});}catch{}
   return result;
