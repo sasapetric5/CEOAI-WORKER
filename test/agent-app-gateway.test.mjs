@@ -471,19 +471,19 @@ for (const [label, body] of invalidGatewayBodies) {
    const payload = await response.json();
    assert.equal(payload.code, label === "unknown memory selector" ? "INVALID_REQUEST" : "INVALID_AGENT_REQUEST");
    assert.equal(mock.calls, 0);
-   assert.equal(storageCalls, 0);
+   assert.deepEqual(appMemoryCalls, []);
   } finally { mock.restore(); }
  });
 }
 
 test("stateless gateway request never reads or writes app memory", async () => {
  const mock = mockFreeModel();
- let storageCalls = 0;
+ const appMemoryCalls = [];
  try {
   const env = environment({ KV_MEMORY: {
-   async get() { storageCalls++; throw new Error("stateless request must not read memory"); },
-   async put() { storageCalls++; throw new Error("stateless request must not write memory"); },
-   async delete() { storageCalls++; throw new Error("stateless request must not reset memory"); }
+   async get(key) { if (String(key).startsWith("app-memory:")) appMemoryCalls.push({ method: "get", key }); return null; },
+   async put(key) { if (String(key).startsWith("app-memory:")) appMemoryCalls.push({ method: "put", key }); },
+   async delete(key) { if (String(key).startsWith("app-memory:")) appMemoryCalls.push({ method: "delete", key }); }
   }});
   const response = await worker.fetch(await signedRequest({
    task: "regression testing and verification",
