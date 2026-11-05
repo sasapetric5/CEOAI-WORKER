@@ -1,7 +1,7 @@
 # EARN and freelance service skills — intake pack
 
 - State: QUARANTINED / NOT RUNTIME-ACTIVE
-- Skill documents: 21
+- Skill documents: 26
 - Runtime seed additions: 0
 - Tool grants: 0
 - Discovery policy: WORLDWIDE by default for ordinary EARN, bounty, open-source, freelance, affiliate, and remote-work opportunities.
@@ -29,6 +29,11 @@
 - freelance-discovery-call-planner — prepares structured client discovery agendas and questions.
 - freelance-retainer-planner — defines recurring service scope, capacity, and overage terms.
 - freelance-project-profitability-checker — calculates project economics from explicit fee and effort inputs.
+- freelance-capacity-planner — plans realistic delivery capacity and deadline buffers.
+- freelance-scope-change-estimator — estimates the effort and schedule impact of scope changes.
+- freelance-payment-reconciliation — reconciles user-provided invoices and payment confirmations.
+- freelance-income-record-organizer — organizes income and expense records by currency and period.
+- open-source-contribution-planner — prepares safe, bounded plans for public open-source issues.
 
 ## Free-only and permission limits
 No CashClaw npm package, Stripe integration, HYRVE marketplace, paid SEO tools, paid APIs, scripts, or third-party runtime is imported. No account credentials, cookies, secrets, or wallet material are used. All skills are research/draft-only and grant no tools. No applications, claims, issue comments, PRs, outreach, emails, posting, publishing, invoices, transfers, signing, or payouts are permitted. Use existing CEOAI Spider only for guarded public read-only research; do not create a second crawler.
