@@ -31,6 +31,7 @@ import { createBuiltinAgentSystem } from "./src/agent/agent-system.mjs";
 import { planResearchAcquisition, normalizeResearchUrl } from "./src/agent/research-acquisition-policy.mjs";
 import { enqueueSpiderCrawl, createSpiderQueueHandler, readSpiderResult } from "./src/integrations/spider-queue.mjs";
 import { SpiderJobLedgerDO } from "./src/durable-objects/spider-job-ledger-do.mjs";
+import { createAppMemoryStore } from "./src/v5-modules/app-memory.mjs";
 const handleSpiderQueue = createSpiderQueueHandler();
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
@@ -1248,17 +1249,31 @@ export default {
       }
       let body;
       try { body = JSON.parse(rawBody); } catch { return json({ success: false, error: "Neispravan JSON.", code: "INVALID_JSON" }, 400); }
-      if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some(k => !["task", "input", "limit"].includes(k))) {
+      if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some(k => !["task", "input", "limit", "conversation_id"].includes(k))) {
         return json({ success: false, error: "Neispravna struktura zahteva.", code: "INVALID_REQUEST" }, 400);
       }
       const task = typeof body.task === "string" ? body.task.trim() : "";
       const input = body.input === undefined ? {} : body.input;
       const limit = body.limit === undefined ? policy.maxAgents : body.limit;
+      const conversationId = body.conversation_id === undefined ? null : body.conversation_id;
       let inputBytes = Infinity;
       try { inputBytes = new TextEncoder().encode(JSON.stringify(input)).byteLength; } catch {}
       if (!task || task.length > 2000 || !input || typeof input !== "object" || Array.isArray(input) ||
-          inputBytes > 4000 || !Number.isSafeInteger(limit) || limit < 1 || limit > policy.maxAgents) {
-        return json({ success: false, error: "Zadatak, ulazni podaci ili broj agenata nisu validni.", code: "INVALID_AGENT_REQUEST" }, 400);
+          inputBytes > 4000 || !Number.isSafeInteger(limit) || limit < 1 || limit > policy.maxAgents ||
+          (conversationId !== null && (typeof conversationId !== "string" ||
+            !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(conversationId)))) {
+        return json({ success: false, error: "Zadatak, ulazni podaci, sesija ili broj agenata nisu validni.", code: "INVALID_AGENT_REQUEST" }, 400);
+      }
+      // Namespace is bound only to auth.appId from verified HMAC. Missing conversation_id is stateless.
+      let memoryStore = null;
+      let savedMemory = { history: [], summary: "" };
+      if (conversationId && policy.memory === true) {
+        try {
+          memoryStore = createAppMemoryStore({ kv: env.KV_MEMORY, appId: auth.appId, appPolicy: policy });
+          savedMemory = await memoryStore.read(conversationId);
+        } catch {
+          return json({ success: false, error: "Memorija aplikacije trenutno nije dostupna.", code: "APP_MEMORY_UNAVAILABLE" }, 503);
+        }
       }
       const intent = chooseIntent(task);
       let agentInput = input;
@@ -1307,6 +1322,17 @@ export default {
           // Search is enrichment only. A provider failure must not bypass the existing AI failover.
         }
       }
+      if (memoryStore && (savedMemory.summary || savedMemory.history.length)) {
+        // Stored conversation text is untrusted context, never system or policy instructions.
+        agentInput = {
+          ...agentInput,
+          conversationMemory: {
+            trust: "untrusted_conversation_context",
+            summary: savedMemory.summary.slice(0, 2000),
+            history: savedMemory.history.slice(-8).map(item => ({ role: item.role, content: item.content.slice(0, 1200) })),
+          },
+        };
+      }
       const system = createRequestAgentSystem(policy.maxAgents);
       const result = await runCEOAIInternalAgentTask(env, {
         system, task, input: agentInput, limit, agentIds: policy.allowedAgentIds, allowedToolIds: [], allowToolExecution: true,
@@ -1326,6 +1352,17 @@ export default {
       if (!result.ok) {
         const unavailable = ["AI_DISABLED", "NO_PROVIDER_CONFIGURED", "NO_FREE_PROVIDER_CONFIRMED", "PROVIDER_QUOTA_EXHAUSTED", "PROVIDER_COOLDOWN", "PROVIDER_COOLDOWN_STORAGE_UNAVAILABLE", "PROVIDERS_UNAVAILABLE"].includes(result.code);
         return json({ success: false, error: unavailable ? "Trenutno nema dostupnog potvrđenog besplatnog AI provajdera." : "Agentski zadatak nije uspeo.", code: result.code || "AGENT_FAILED" }, unavailable ? 503 : 422);
+      }
+      if (memoryStore) {
+        try {
+          const nextHistory = [...savedMemory.history,
+            { role: "user", content: task },
+            { role: "assistant", content: String(result.output || "").slice(0, 8000) },
+          ].slice(-16);
+          await memoryStore.write(conversationId, { history: nextHistory, summary: savedMemory.summary });
+        } catch {
+          return json({ success: false, error: "Odgovor je obrađen, ali memorija aplikacije nije mogla biti sačuvana.", code: "APP_MEMORY_WRITE_FAILED" }, 503);
+        }
       }
       return json({
         success: true,
