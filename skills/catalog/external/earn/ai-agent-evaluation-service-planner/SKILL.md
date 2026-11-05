@@ -29,7 +29,7 @@ Evaluation scope, scenario matrix, scoring rubric, risk taxonomy, evidence templ
 - Do not access or operate the client's live agent without separate explicit authorization.
 - Never submit sensitive data or secrets to a model.
 - Do not fabricate test results, benchmark scores, or reliability claims.
-- No paid APIs required; no runtime activation or tool grants.
+- No paid APIs required. No runtime activation or tool grants.
 
 ## Provenance
 CEOAI-authored workflow. Evaluation planning and reporting only.
