@@ -1110,8 +1110,10 @@ export async function runCEOAIInternalAgentTask(env, { system, task, input = {},
 }
 
 const APP_AGENT_POLICIES = Object.freeze({
-  "CONTENTCRAFT-APP": Object.freeze({ maxAgents: 2, maxModelCalls: 3 }),
-  "AIFORCE-APP": Object.freeze({ maxAgents: 3, maxModelCalls: 4 }),
+  // Spider is a high-impact crawling capability. Grant it only to the SEO app that needs it.
+  // Every app remains denied unless a capability is explicitly set to true here.
+  "CONTENTCRAFT-APP": Object.freeze({ maxAgents: 2, maxModelCalls: 3, spider: true }),
+  "AIFORCE-APP": Object.freeze({ maxAgents: 3, maxModelCalls: 4, spider: false }),
 });
 
 function createRequestAgentSystem(maxAgents) {
@@ -1162,7 +1164,8 @@ export default {
       let auth;
       try { auth = await verifyHmacSignature(request, new TextEncoder().encode(rawBody), env); } catch { auth = { valid: false, status: 503 }; }
       if (!auth.valid) return json({ success: false, code: auth.status === 503 ? "AUTH_UNAVAILABLE" : "UNAUTHORIZED" }, auth.status || 401);
-      if (!APP_AGENT_POLICIES[auth.appId]) return json({ success: false, code: "APP_NOT_ENABLED" }, 403);
+      const spiderPolicy = APP_AGENT_POLICIES[auth.appId];
+      if (!spiderPolicy?.spider) return json({ success: false, code: "CAPABILITY_NOT_GRANTED" }, 403);
       if (!env.SPIDER_BROWSER_RUN_ACCOUNT_ID || !env.SPIDER_BROWSER_RUN_TOKEN) return json({ success: false, code: "SPIDER_CONFIG_UNAVAILABLE" }, 503);
       if (!env.RATE_LIMITER || typeof env.RATE_LIMITER.limit !== "function") return json({ success: false, code: "RATE_LIMITER_UNAVAILABLE" }, 503);
       try { const limited = await env.RATE_LIMITER.limit({ key: "spider:" + auth.appId }); if (!limited?.success) return json({ success: false, code: "RATE_LIMITED" }, 429, { "Retry-After": "60" }); }
