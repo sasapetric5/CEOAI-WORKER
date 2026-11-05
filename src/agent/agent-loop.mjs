@@ -44,7 +44,7 @@ export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, max
       const budgetData = budgetState.get(sharedBudget);
       if (!budgetData) return fail("INVALID_AGENT_BUDGET", 0, 0);
       audit({ type: "run_started", runId });
-      const failRun = (code, steps, calls) => { audit({ type: "run_failed", runId, code: /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? code : "AGENT_FAILED", step: steps, toolCalls: calls }); return fail(code, steps, calls); };
+      const failRun = (code, steps, calls) => { audit({ type: "run_failed", runId, code: /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? code : "AGENT_FAILED", step: steps, toolCalls: calls }); return { ...fail(code, steps, calls), budgetUsed: budgetData.used }; };
       const capabilities = new Set(allowedToolIds.filter((id) => skillRegistry.allows(skillId, id)));
       const toolSession = createToolSession({ maxCalls: maxToolCalls });
       let current = input;
