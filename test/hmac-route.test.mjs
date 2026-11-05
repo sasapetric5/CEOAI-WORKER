@@ -30,6 +30,7 @@ function makeEnv() {
   const used = new Set();
   const data = new Map();
   const writes = [];
+  const reads = [];
   const rateLimitKeys = [];
   return {
     AI_ENABLED: "true",
@@ -38,7 +39,7 @@ function makeEnv() {
     HMAC_ALLOWED_APPS: appId,
     APP_SECRET_CONTENTCRAFT_APP: secret,
     KV_MEMORY: {
-      async get(k) { return data.get(k) ?? null; },
+      async get(k) { reads.push(k); return data.get(k) ?? null; },
       async put(k, v) { writes.push(k); data.set(k, v); },
     },
     SECURITY_DO: {
@@ -56,6 +57,7 @@ function makeEnv() {
     OPENROUTER_KEY: "test-provider-key",
     RATE_LIMITER: { async limit(input) { rateLimitKeys.push(input.key); return { success: true }; } },
     __memoryWrites: writes,
+    __memoryReads: reads,
     __rateLimitKeys: rateLimitKeys,
   };
 }
@@ -193,6 +195,32 @@ test("AI Force can enqueue Spider jobs under its explicit app-scoped grant", asy
   assert.equal(queued.length, 1);
   assert.equal(queued[0].appId, "AIFORCE-APP");
   assert.equal(queued[0].id, "123e4567-e89b-42d3-a456-426614174000");
+});
+
+test("ContentCraft and AI Force have independent HMAC identities and no shared conversation memory", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ choices: [{ message: { content: "stateless isolated reply" } }] });
+  try {
+    const env = makeEnv();
+    env.HMAC_ALLOWED_APPS = "CONTENTCRAFT-APP,AIFORCE-APP";
+    env.APP_SECRET_AIFORCE_APP = secret;
+    const calls = [
+      { appId: "CONTENTCRAFT-APP", nonce: "nonce_memory_contentcraft_123" },
+      { appId: "AIFORCE-APP", nonce: "nonce_memory_aiforce_123456" }
+    ];
+    for (const call of calls) {
+      const headers = await signedHeaders(call.nonce, bytes, call.appId);
+      const response = await worker.fetch(new Request("https://ceoai.dev/v1/chat/completions", {
+        method: "POST", headers, body
+      }), env);
+      assert.equal(response.status, 200, call.appId);
+    }
+    assert.deepEqual(env.__rateLimitKeys, ["gateway:CONTENTCRAFT-APP", "gateway:AIFORCE-APP"]);
+    assert.equal(env.__memoryReads.some(key => key.startsWith("memory:") || key.startsWith("session:")), false);
+    assert.equal(env.__memoryWrites.some(key => key.startsWith("memory:") || key.startsWith("session:")), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("Reserved RankGeo app is rejected by agent and chat gateways", async () => {
