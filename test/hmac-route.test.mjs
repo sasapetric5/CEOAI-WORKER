@@ -30,6 +30,7 @@ function makeEnv() {
   const used = new Set();
   const data = new Map();
   const writes = [];
+  const rateLimitKeys = [];
   return {
     AI_ENABLED: "true",
     EXTERNAL_AI_ENABLED: "true",
@@ -53,8 +54,9 @@ function makeEnv() {
       },
     },
     OPENROUTER_KEY: "test-provider-key",
-    RATE_LIMITER: { async limit() { return { success: true }; } },
+    RATE_LIMITER: { async limit(input) { rateLimitKeys.push(input.key); return { success: true }; } },
     __memoryWrites: writes,
+    __rateLimitKeys: rateLimitKeys,
   };
 }
 
@@ -131,6 +133,29 @@ test("HMAC app chat remains stateless and never writes browser UI session memory
     }), env);
     assert.equal(response.status, 200);
     assert.deepEqual(env.__memoryWrites.filter(key => key.startsWith("memory:") || key.startsWith("session:")), []);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+
+test("HMAC app identity comes from the signed header, never a client JSON appId", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ choices: [{ message: { content: "identity remains signed" } }] });
+  try {
+    const env = makeEnv();
+    const forgedBody = JSON.stringify({
+      model: "ceoai-auto",
+      appId: "AI_FORCE",
+      messages: [{ role: "user", content: "hello" }],
+    });
+    const payload = new TextEncoder().encode(forgedBody);
+    const headers = await signedHeaders("nonce_body_appid_spoof_12345", payload);
+    const response = await worker.fetch(new Request("https://ceoai.dev/v1/chat/completions", {
+      method: "POST", headers, body: forgedBody,
+    }), env);
+    assert.equal(response.status, 200);
+    assert.deepEqual(env.__rateLimitKeys, ["gateway:CONTENTCRAFT-APP"]);
   } finally {
     globalThis.fetch = originalFetch;
   }
