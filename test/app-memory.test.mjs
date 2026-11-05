@@ -278,3 +278,105 @@ test("reset is idempotent for an already empty app session", async () => {
   assert.deepEqual(await store.read(sessionA), { history: [], summary: "" });
   assert.equal(kv.data.size, 0);
 });
+
+
+// Second consolidated batch: constructor guards, UTF-8 accounting and storage boundaries.
+test("store creation rejects a missing KV binding", () => {
+  assert.throws(
+    () => createAppMemoryStore({ appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy }),
+    /APP_MEMORY_STORAGE_UNAVAILABLE/
+  );
+});
+
+test("store creation rejects KV bindings missing required methods", () => {
+  assert.throws(
+    () => createAppMemoryStore({ kv: { get: async () => null, put: async () => {} }, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy }),
+    /APP_MEMORY_STORAGE_UNAVAILABLE/
+  );
+});
+
+test("store creation rejects a missing app policy", () => {
+  assert.throws(
+    () => createAppMemoryStore({ kv: memoryKV(), appId: "CONTENTCRAFT-APP" }),
+    /APP_MEMORY_NOT_CONFIGURED/
+  );
+});
+
+test("store creation rejects disabled app policy even when memory is enabled", () => {
+  assert.throws(
+    () => createAppMemoryStore({ kv: memoryKV(), appId: "CONTENTCRAFT-APP", appPolicy: { enabled: false, memory: true } }),
+    /APP_DISABLED/
+  );
+});
+
+test("store creation rejects fractional TTL values", () => {
+  assert.throws(
+    () => createAppMemoryStore({ kv: memoryKV(), appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy, ttlSeconds: 60.5 }),
+    /APP_MEMORY_INVALID_TTL/
+  );
+});
+
+test("store creation accepts the minimum supported sixty-second TTL", async () => {
+  const ttls = [];
+  const kv = { async get() { return null; }, async put(_key, _value, options) { ttls.push(options.expirationTtl); }, async delete() {} };
+  const store = createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy, ttlSeconds: 60 });
+  await store.write(sessionA, { summary: "minimum-ttl" });
+  assert.deepEqual(ttls, [60, 60]);
+});
+
+test("UTF-8 byte accounting rejects oversized multibyte text", async () => {
+  const kv = memoryKV();
+  const store = createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy });
+  await assert.rejects(
+    store.write(sessionA, { summary: "😀".repeat(7000) }),
+    /APP_MEMORY_VALUE_TOO_LARGE/
+  );
+  assert.equal(kv.data.size, 0);
+});
+
+test("write of an empty conversation persists a valid empty state", async () => {
+  const kv = memoryKV();
+  const store = createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy });
+  assert.deepEqual(await store.write(sessionA), { success: true });
+  assert.deepEqual(await store.read(sessionA), { history: [], summary: "" });
+  assert.equal(kv.data.size, 2);
+});
+
+test("read bounds externally stored history to the newest sixteen entries", async () => {
+  const kv = memoryKV();
+  const store = createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy });
+  const key = "app-memory:v1:CONTENTCRAFT-APP:" + sessionA + ":history";
+  await kv.put(key, JSON.stringify(Array.from({ length: 25 }, (_, i) => ({ role: "user", content: String(i) }))), { expirationTtl: 60 });
+  const result = await store.read(sessionA);
+  assert.equal(result.history.length, 16);
+  assert.equal(result.history[0].content, "9");
+  assert.equal(result.history.at(-1).content, "24");
+});
+
+test("read truncates externally stored message content to eight thousand characters", async () => {
+  const kv = memoryKV();
+  const store = createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy });
+  const key = "app-memory:v1:CONTENTCRAFT-APP:" + sessionA + ":history";
+  await kv.put(key, JSON.stringify([{ role: "assistant", content: "z".repeat(9000) }]), { expirationTtl: 60 });
+  assert.equal((await store.read(sessionA)).history[0].content.length, 8000);
+});
+
+test("read truncates externally stored summary to four thousand characters", async () => {
+  const kv = memoryKV();
+  const store = createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy });
+  await kv.put("app-memory:v1:CONTENTCRAFT-APP:" + sessionA + ":summary", "m".repeat(5000), { expirationTtl: 60 });
+  assert.equal((await store.read(sessionA)).summary.length, 4000);
+});
+
+test("summary and history use distinct keys within the same app session", async () => {
+  const kv = memoryKV();
+  const store = createAppMemoryStore({ kv, appId: "RANKGEO-APP", appPolicy: enabledPolicy });
+  await store.write(sessionA, { history: [{ role: "user", content: "history-marker" }], summary: "summary-marker" });
+  const keys = [...kv.data.keys()];
+  assert.equal(keys.length, 2);
+  assert.ok(keys.some(key => key.endsWith(":history")));
+  assert.ok(keys.some(key => key.endsWith(":summary")));
+  const result = await store.read(sessionA);
+  assert.equal(result.history[0].content, "history-marker");
+  assert.equal(result.summary, "summary-marker");
+});
