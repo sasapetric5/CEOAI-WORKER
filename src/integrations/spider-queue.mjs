@@ -278,3 +278,43 @@ export function createSpiderQueueHandler({
     }
   };
 }
+
+// Read only the authenticated application's own completed Spider result.
+export async function readSpiderResult(env, { appId, jobId } = {}) {
+  if (typeof appId !== "string" || !Object.hasOwn(APP_DAILY_JOB_LIMITS, appId)) {
+    return { ok: false, code: "SPIDER_APP_NOT_ALLOWED" };
+  }
+  if (typeof jobId !== "string" || !JOB_ID.test(jobId)) {
+    return { ok: false, code: "INVALID_SPIDER_JOB_ID" };
+  }
+  if (!env?.KV_MEMORY || typeof env.KV_MEMORY.get !== "function") {
+    return { ok: false, code: "SPIDER_RESULT_STORE_UNAVAILABLE" };
+  }
+  let ledger;
+  try { ledger = createLedger(env); }
+  catch { return { ok: false, code: "SPIDER_LEDGER_UNAVAILABLE" }; }
+  try {
+    const found = await ledger("job:" + appId + ":" + jobId, "/job/get", { id: jobId });
+    const state = found.state;
+    if (!state || state.appId !== appId || state.id !== jobId) {
+      return { ok: false, code: "SPIDER_JOB_NOT_FOUND" };
+    }
+    if (state.status !== "completed") {
+      return { ok: false, code: "SPIDER_RESULT_NOT_READY" };
+    }
+    const expectedKey = "spider:result:" + appId + ":" + jobId;
+    if (state.resultKey !== expectedKey) {
+      return { ok: false, code: "SPIDER_RESULT_SCOPE_MISMATCH" };
+    }
+    const raw = await env.KV_MEMORY.get(expectedKey);
+    if (typeof raw !== "string") return { ok: false, code: "SPIDER_RESULT_EXPIRED" };
+    let document;
+    try { document = JSON.parse(raw); } catch { return { ok: false, code: "SPIDER_RESULT_INVALID" }; }
+    if (document?.appId !== appId || document?.jobId !== jobId || !Array.isArray(document.records)) {
+      return { ok: false, code: "SPIDER_RESULT_SCOPE_MISMATCH" };
+    }
+    return { ok: true, result: document };
+  } catch {
+    return { ok: false, code: "SPIDER_RESULT_UNAVAILABLE" };
+  }
+}
