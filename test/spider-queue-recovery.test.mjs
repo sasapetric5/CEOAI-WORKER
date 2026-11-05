@@ -131,11 +131,11 @@ test("temporary result-store failure retries polling and completes after storage
   await handler({ messages: [secondPoll] }, env);
   assert.deepEqual(secondPoll.calls, ["ack"]);
   assert.equal(statusCalls, 2);
-  assert.equal(stored.has("spider:result:" + id), true);
+  assert.equal(stored.has("spider:result:CONTENTCRAFT-APP:" + id), true);
 
-  const ledger = env.SPIDER_LEDGER.get("job:" + id);
+  const ledger = env.SPIDER_LEDGER.get("job:CONTENTCRAFT-APP:" + id);
   const response = await ledger.fetch("https://ledger.test/job/get", {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }),
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ appId: "CONTENTCRAFT-APP", id }),
   });
   const result = await response.json();
   assert.equal(result.state.status, "completed");
