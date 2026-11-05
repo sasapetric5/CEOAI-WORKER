@@ -1,6 +1,7 @@
 // CEOAI skill registry: metadata-first discovery and bounded, explicit content loading.
 const ID=/^[a-z][a-z0-9_]{0,47}$/;
 const TAG=/^[a-z0-9][a-z0-9-]{0,31}$/;
+const VERSION=/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const SOURCE=new Set(["repository","path","license","commit","blobSha"]);
 const MAX=24*1024;
 const STOP=new Set(["a","an","and","are","as","at","be","by","do","for","from","how","in","is","it","of","on","or","the","this","to","with","za","od","i","u","na","je","da","kako","se","sa","iz"]);
@@ -25,7 +26,7 @@ export function createSkillRegistry({skills=[],toolRegistry,loadContent=null}={}
  for(const s of skills){
   if(!plain(s)||typeof s.id!=="string"||!ID.test(s.id))throw new TypeError("INVALID_SKILL_ID");
   if(entries.has(s.id))throw new TypeError("DUPLICATE_SKILL:"+s.id);
-  if(typeof s.version!=="string"||!/^\d+\.\d+\.\d+$/.test(s.version))throw new TypeError("INVALID_SKILL_VERSION:"+s.id);
+  if(typeof s.version!=="string"||!VERSION.test(s.version))throw new TypeError("INVALID_SKILL_VERSION:"+s.id);
   if(typeof s.description!=="string"||!s.description.trim()||s.description.length>240)throw new TypeError("INVALID_SKILL_DESCRIPTION:"+s.id);
   if(!Array.isArray(s.allowedToolIds)||s.allowedToolIds.some(id=>typeof id!=="string"||!toolRegistry.get(id)))throw new TypeError("UNKNOWN_SKILL_TOOL:"+s.id);
   if(new Set(s.allowedToolIds).size!==s.allowedToolIds.length)throw new TypeError("DUPLICATE_SKILL_TOOL:"+s.id);
