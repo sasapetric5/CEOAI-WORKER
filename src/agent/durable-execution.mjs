@@ -150,7 +150,12 @@ export function createDurableExecutionEngine({ store, executeStep, now = () => D
         return failureSave.ok ? error("STEP_EXECUTION_FAILED") : failureSave;
       }
       const safeResult = bounded(result);
-      if (safeResult === null) return error("STEP_RESULT_INVALID_OR_TOO_LARGE");
+      if (safeResult === null) {
+        const failed = { ...state, status: "failed", lastError: "STEP_RESULT_INVALID_OR_TOO_LARGE", updatedAt: now(), revision: state.revision + 1 };
+        const failureSave = await save(failed);
+        emit({ type: "step_failed", taskId: state.id, stepId: step.id });
+        return failureSave.ok ? error("STEP_RESULT_INVALID_OR_TOO_LARGE") : failureSave;
+      }
       const next = {
         ...state, results: [...state.results, { stepId: step.id, idempotencyKey, value: safeResult, completedAt: now() }],
         completedStepIds: [...state.completedStepIds, step.id], cursor: state.cursor + 1,
