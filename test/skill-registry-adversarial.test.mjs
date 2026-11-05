@@ -27,7 +27,7 @@ test("rejects duplicate skill identifiers", () => {
 });
 
 test("requires strict semantic versions", () => {
-  for (const version of ["1", "1.0", "v1.0.0", "1.0.0-beta", "01.0.0"]) {
+  for (const version of ["1", "1.0", "v1.0.0", "1.0.0-beta", "01.0.0", "1.00.0", "1.0.01"]) {
     assert.throws(() => registry([skill({ version })]), /INVALID_SKILL_VERSION/);
   }
 });
@@ -71,7 +71,7 @@ test("search safely returns no results for invalid or excessive queries", () => 
   assert.deepEqual(r.search(""), []);
   assert.deepEqual(r.search("x".repeat(501)), []);
   assert.deepEqual(r.search(null), []);
-  assert.deepEqual(r.search("HMAC security", { requiredTags: ["bad tag"] }), []);
+  assert.throws(() => r.search("HMAC security", { requiredTags: ["bad tag"] }), /INVALID_SKILL_SEARCH_TAGS/);
   assert.throws(() => r.search("HMAC", { limit: 0 }), /INVALID_SKILL_SEARCH_LIMIT/);
 });
 
