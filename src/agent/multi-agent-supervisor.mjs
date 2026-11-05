@@ -89,8 +89,13 @@ export function createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoo
   if(!successful.length)return {ok:false,code:"ALL_AGENTS_FAILED",agents:prepared.agents.map(a=>a.id),results,budgetUsed:results.reduce((n,r)=>Math.max(n,r.budgetUsed||0),0)};
   let output=successful.map(r=>({agentId:r.agentId,role:r.role,skillId:r.skillId,output:r.output}));
   if(synthesize){
-   try{const synthesized=await synthesize({task,results:output,failedAgents:results.filter(r=>!r.ok).map(r=>({agentId:r.agentId,code:r.code}))});if(safeJson(synthesized)===null)return {ok:false,code:"INVALID_SYNTHESIS_OUTPUT",agents:prepared.agents.map(a=>a.id),results};output=synthesized;}
-   catch{return {ok:false,code:"SYNTHESIS_FAILED",agents:prepared.agents.map(a=>a.id),results};}
+   try{
+    const synthesized=await synthesize({task,results:output,failedAgents:results.filter(r=>!r.ok).map(r=>({agentId:r.agentId,code:r.code}))});
+    const serialized=safeJson(synthesized);
+    if(serialized===null)return {ok:false,code:"INVALID_SYNTHESIS_OUTPUT",agents:prepared.agents.map(a=>a.id),results};
+    // Return a detached JSON snapshot, never the synthesizer's original object.
+    output=JSON.parse(serialized);
+   }catch{return {ok:false,code:"SYNTHESIS_FAILED",agents:prepared.agents.map(a=>a.id),results};}
   }
   return {ok:true,output,agents:prepared.agents.map(a=>a.id),results,budgetUsed:results.reduce((n,r)=>Math.max(n,r.budgetUsed||0),0),partial:results.some(r=>!r.ok)};
  }
