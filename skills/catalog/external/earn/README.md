@@ -1,7 +1,7 @@
 # EARN and freelance service skills — intake pack
 
 - State: QUARANTINED / NOT RUNTIME-ACTIVE
-- Skill documents: 11
+- Skill documents: 16
 - Runtime seed additions: 0
 - Tool grants: 0
 - Discovery policy: WORLDWIDE by default for ordinary EARN, bounty, open-source, freelance, affiliate, and remote-work opportunities.
@@ -19,6 +19,11 @@
 - work-sample-planner — plans bounded demonstration projects for portfolio proof.
 - freelance-platform-policy-checker — checks official platform, eligibility, fee, and payout rules.
 - remote-job-risk-reviewer — screens remote-work listings for scam indicators and unclear terms.
+- freelance-delivery-qa — verifies deliverables against accepted scope and evidence.
+- freelance-client-handoff-builder — prepares clear, evidence-backed client handoff packages.
+- digital-product-opportunity-validator — tests digital product ideas with public evidence and no-cost experiments.
+- digital-product-listing-writer — drafts honest digital product descriptions and FAQs.
+- affiliate-disclosure-reviewer — reviews commercial disclosures and substantiated affiliate claims.
 
 ## Free-only and permission limits
 No CashClaw npm package, Stripe integration, HYRVE marketplace, paid SEO tools, paid APIs, scripts, or third-party runtime is imported. No account credentials, cookies, secrets, or wallet material are used. All skills are research/draft-only and grant no tools. No applications, claims, issue comments, PRs, outreach, emails, posting, publishing, invoices, transfers, signing, or payouts are permitted. Use existing CEOAI Spider only for guarded public read-only research; do not create a second crawler.
