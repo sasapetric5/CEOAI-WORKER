@@ -2,20 +2,23 @@
 // Agent/skill declarations never grant authority; every principal layer needs an explicit grant.
 const ID=/^[a-z][a-z0-9_]{0,47}$/;
 const APP=/^[a-z][a-z0-9_-]{0,47}$/;
+const PRINCIPAL=/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
+const APPROVAL=/^[A-Za-z0-9_-]{16,128}$/;
 const OP=/^[a-z][a-z0-9:_-]{0,63}$/;
 const plain=v=>v!==null&&typeof v==="object"&&!Array.isArray(v)&&(Object.getPrototypeOf(v)===Object.prototype||Object.getPrototypeOf(v)===null);
 const SUBJECTS=new Set(["app","caller","agent","skill"]);
 const MAX_GRANTS=5000;
 const MAX_TTL=31*24*60*60*1000;
 const copy=g=>({subjectType:g.subjectType,subjectId:g.subjectId,appId:g.appId,capabilityId:g.capabilityId,operations:[...g.operations],resourceScopes:[...g.resourceScopes],maxCalls:g.maxCalls,expiresAt:g.expiresAt,approvalRequired:g.approvalRequired});
-export function createCapabilityRegistry({grants=[],audit=null,now=()=>Date.now()}={}){
+export function createCapabilityRegistry({grants=[],audit=null,now=()=>Date.now(),verifyApproval=null}={}){
  if(!Array.isArray(grants)||grants.length>MAX_GRANTS)throw new TypeError("INVALID_CAPABILITY_GRANTS");
- if(typeof now!=="function"||(audit!==null&&typeof audit.record!=="function"))throw new TypeError("INVALID_CAPABILITY_DEPENDENCY");
+ if(typeof now!=="function"||(audit!==null&&typeof audit.record!=="function")||(verifyApproval!==null&&typeof verifyApproval!=="function"))throw new TypeError("INVALID_CAPABILITY_DEPENDENCY");
+ const usedApprovals=new Set();
  const entries=new Map();
  for(const raw of grants){
   if(!plain(raw)||Object.keys(raw).some(k=>!["subjectType","subjectId","appId","capabilityId","operations","resourceScopes","maxCalls","expiresAt","approvalRequired"].includes(k)))throw new TypeError("INVALID_CAPABILITY_GRANT");
   const {subjectType,subjectId,appId,capabilityId,operations,resourceScopes=[],maxCalls=100,expiresAt=0,approvalRequired=false}=raw;
-  if(!SUBJECTS.has(subjectType)||typeof subjectId!=="string"||!(subjectType==="app"?APP:ID).test(subjectId))throw new TypeError("INVALID_CAPABILITY_SUBJECT");
+  if(!SUBJECTS.has(subjectType)||typeof subjectId!=="string"||!(subjectType==="app"?APP:subjectType==="caller"?PRINCIPAL:ID).test(subjectId))throw new TypeError("INVALID_CAPABILITY_SUBJECT");
   if(typeof appId!=="string"||!APP.test(appId)||typeof capabilityId!=="string"||!ID.test(capabilityId))throw new TypeError("INVALID_CAPABILITY_ID");
   if(!Array.isArray(operations)||!operations.length||operations.length>16||operations.some(x=>typeof x!=="string"||!OP.test(x))||new Set(operations).size!==operations.length)throw new TypeError("INVALID_CAPABILITY_OPERATIONS");
   if(!Array.isArray(resourceScopes)||resourceScopes.length>32||resourceScopes.some(x=>typeof x!=="string"||!x.trim()||x.length>256)||new Set(resourceScopes).size!==resourceScopes.length)throw new TypeError("INVALID_CAPABILITY_SCOPES");
