@@ -68,7 +68,7 @@
         "restart_recovery"
       ],
       "runtime": "workers_vitest",
-      "adaptation": "Adapted as test 40 in test/workflow-task-do.test.mjs: recreate the Durable Object instance over retained storage, verify checkpoint recovery, then assert higher fencing token and stale-writer rejection. CEOAI Node harness only; real Workers eviction test still required.",
+      "adaptation": "Adapted in test/workflow-task-do.test.mjs: test 40 simulates Durable Object eviction/re-instantiation over retained storage and checks higher fencing token plus stale-writer rejection; test 41 runs the durable engine through the real DO adapter, lease, fenced checkpoints and idempotency ledger. Workers runtime eviction still needs integration CI.",
       "status": "adapted",
       "executionEvidence": null
     },
