@@ -59,3 +59,18 @@ test("bounds timeouts and does not follow redirects", async () => {
   const result=await createAPIConnectorRegistry({fetchImpl:redirect.fetchImpl}).execute("hacker_news_algolia","search",{query:"x"});
   assert.equal(result.ok,false); assert.equal(JSON.stringify(result).includes("evil.example"),false);
 });
+
+test("rejects accessor-backed and symbol connector arguments without invoking getters", async () => {
+  const f=fake(async()=>Response.json(payload));
+  const registry=createAPIConnectorRegistry({fetchImpl:f.fetchImpl});
+  let getterCalls=0;
+  const args={};
+  Object.defineProperty(args,"query",{enumerable:true,get(){getterCalls++;return "unsafe";}});
+  const result=await registry.execute("hacker_news_algolia","search",args);
+  assert.equal(result.code,"CONNECTOR_INVALID_ARGUMENTS");
+  assert.equal(getterCalls,0);
+  const symbolArgs={query:"safe"};
+  symbolArgs[Symbol("hidden")]="unexpected";
+  assert.equal((await registry.execute("hacker_news_algolia","search",symbolArgs)).code,"CONNECTOR_UNKNOWN_ARGUMENT");
+  assert.equal(f.calls.length,0);
+});
