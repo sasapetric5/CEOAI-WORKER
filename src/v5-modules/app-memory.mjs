@@ -1,6 +1,6 @@
 // App-scoped persistent memory primitives for authenticated application gateways.
 // The caller MUST pass appId from verified HMAC auth, never from request JSON.
-// RankGeo is supported by the namespace contract but remains disabled by its app policy.
+// All three application namespaces are enabled only through their verified app policy.
 const APP_IDS = new Set(["CONTENTCRAFT-APP", "AIFORCE-APP", "RANKGEO-APP"]);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const VERSION = "v1";
