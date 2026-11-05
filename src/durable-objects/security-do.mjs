@@ -42,7 +42,12 @@ export class SecurityOrchestratorDO {
     try {
       const accepted = await this.ctx.storage.transaction(async txn => {
         const existing = await txn.get(key);
-        if (existing !== undefined) return false;
+        if (existing !== undefined) {
+          // A nonce is replay-protected for the full accepted clock-skew window plus cleanup margin.
+          // Expired records may be replaced; live records remain single-use.
+          if (!Number.isSafeInteger(existing) || existing >= now - NONCE_TTL_SECONDS) return false;
+          await txn.delete(key);
+        }
         await txn.put(key, now);
         return true;
       });
