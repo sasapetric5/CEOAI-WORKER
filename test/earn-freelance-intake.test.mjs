@@ -23,7 +23,7 @@ for (const id of skills) {
 }
 test("EARN pack registers all five new skills without runtime seed additions", async () => {
   const readme = await readFile(new URL("README.md", root), "utf8");
-  assert.match(readme, /Skill documents: 11/);
+  assert.match(readme, /Skill documents: 100/);
   assert.match(readme, /Runtime seed additions: 0/);
   assert.match(readme, /Tool grants: 0/);
   for (const id of skills) assert.ok(readme.includes(id));
