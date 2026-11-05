@@ -25,7 +25,7 @@ test("redacts bearer credentials and common credential fields", () => {
   for (const secret of ["abc.def_123", "key value", "refresh123", "secret123"]) {
     assert.equal(output.includes(secret), false);
   }
-  assert.match(output, /Bearer \[redacted\]/);
+  assert.match(output, /Authorization=\\[redacted\\]/);
 });
 
 test("redacts credential query parameters without removing harmless parameters", () => {
