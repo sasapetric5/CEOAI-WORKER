@@ -287,3 +287,16 @@ test("agent loop rejects getter-backed planner decisions without executing the g
   assert.equal(result.code, "INVALID_PLAN");
   assert.equal(getterCalls, 0);
 });
+
+test("agent loop accepts ordinary array values in sanitized input", async () => {
+  const { loop } = setup();
+  const result = await loop.run({
+    skillId: "safe_research",
+    input: { items: ["first", "second", 3] },
+    allowToolExecution: true,
+    allowedToolIds: ["local_echo"],
+    plan: async () => ({ type: "final", output: "array accepted" }),
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.output, "array accepted");
+});
