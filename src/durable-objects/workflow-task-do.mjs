@@ -88,7 +88,8 @@ export class WorkflowTaskDO {
         return state ? json({ ok: true, state }) : json({ ok: true, state: null });
       }
       if (path === "/put") {
-        if (!plain(body.state) || body.state.id !== body.id ||
+        if (Object.keys(body).length !== 3 || !Object.hasOwn(body, "state") || !Object.hasOwn(body, "expectedRevision") ||
+            !plain(body.state) || body.state.id !== body.id ||
             !Number.isSafeInteger(body.state.revision) || body.state.revision < 0 ||
             !Number.isSafeInteger(body.expectedRevision) || body.expectedRevision < -1 ||
             body.state.revision !== body.expectedRevision + 1 ||
