@@ -35,7 +35,7 @@ test("skill intake can restrict upstream repositories", () => {
 test("skill intake rejects oversized, empty and NUL-bearing content", () => {
   assert.equal(assessSkillIntake(skill({content:""})).code, "INVALID_SKILL_CONTENT");
   assert.equal(assessSkillIntake(skill({content:"x".repeat(24*1024+1)})).code, "INVALID_SKILL_CONTENT");
-  assert.equal(assessSkillIntake(skill({content:"bad\\0text"})).code, "INVALID_SKILL_CONTENT");
+  assert.equal(assessSkillIntake(skill({content:"bad\0text"})).code, "INVALID_SKILL_CONTENT");
 });
 test("agent intake only accepts already approved skill IDs", () => {
   assert.equal(assessAgentIntake(agent(), {approvedSkillIds:["safe_skill"]}).ok, true);
