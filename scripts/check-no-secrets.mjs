@@ -8,7 +8,7 @@ const TOKEN_PATTERNS = [
   /\b(?:sk-(?:proj-|ant-)?[A-Za-z0-9_-]{24,}|AIza[0-9A-Za-z_-]{30,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{20,}|(?:sk|rk)_live_[A-Za-z0-9]{16,})\b/,
 ];
 const ASSIGNMENT_PATTERN = /\b(?:api[_-]?key|access[_-]?token|client[_-]?secret|password|secret|auth[_-]?token)\b["']?\s*[:=]\s*["']([A-Za-z0-9_./+=-]{32,})["']/ig;
-const PLACEHOLDERS = /^(?:change[_-]?me|replace[_-]?me|your[_-].*|example.*|placeholder.*|process\.env.*|env\..*)$/i;
+const PLACEHOLDERS = /^(?:change[_-]?me|replace[_-]?me|your[_-].*|example.*|placeholder.*|process\.env.*|env\..*|test[-_].*)$/i;
 
 const files = execFileSync("git", ["ls-files", "-z"], { encoding: "utf8" }).split("\0").filter(Boolean);
 const findings = [];
