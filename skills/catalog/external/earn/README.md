@@ -1,7 +1,7 @@
 # EARN and freelance service skills — intake pack
 
 - State: QUARANTINED / NOT RUNTIME-ACTIVE
-- Skill documents: 55
+- Skill documents: 63
 - Runtime seed additions: 0
 - Tool grants: 0
 - Discovery policy: WORLDWIDE by default for ordinary EARN, bounty, open-source, freelance, affiliate, and remote-work opportunities.
@@ -63,6 +63,14 @@
 - wordpress-site-maintenance-audit — audits WordPress maintenance and update risks.
 - freelance-proposal-and-quote-builder — drafts transparent freelance proposals and estimate ranges.
 - freelance-client-onboarding-checklist — prepares privacy-conscious client onboarding.
+- freelance-lead-qualification-research — qualifies potential freelance clients using public business evidence.
+- freelance-marketplace-job-bid-analyzer — evaluates freelance listings before a user applies.
+- digital-product-microoffer-validator — validates small digital product offers before building.
+- digital-template-product-planner — plans original reusable digital templates and quality checks.
+- affiliate-program-terms-auditor — checks official affiliate eligibility, commission, and payout terms.
+- freelance-recurring-service-opportunity-mapper — identifies sustainable recurring freelance service opportunities.
+- open-source-maintainer-service-opportunity-finder — researches transparent paid services around open-source projects.
+- freelance-portfolio-proof-verifier — checks portfolio claims against authentic evidence and permissions.
 
 ## Free-only and permission limits
 No CashClaw npm package, Stripe integration, HYRVE marketplace, paid SEO tools, paid APIs, scripts, or third-party runtime is imported. No account credentials, cookies, secrets, or wallet material are used. All skills are research/draft-only and grant no tools. No applications, claims, issue comments, PRs, outreach, emails, posting, publishing, invoices, transfers, signing, or payouts are permitted. Use existing CEOAI Spider only for guarded public read-only research; do not create a second crawler.
