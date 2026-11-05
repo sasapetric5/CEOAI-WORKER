@@ -179,7 +179,7 @@ test("agent gateway falls back to free discovery when Jina cannot read a supplie
   };
   try {
     const response = await worker.fetch(await signedRequest({
-      task: "Pročitaj i istraži https://docs.example.com/guide",
+      task: "Pretraži web i istraži Cloudflare dokumentaciju: https://docs.example.com/guide",
       input: {},
       limit: 1,
     }), environment({ DUCKDUCKGO_ENABLED: "true" }));
