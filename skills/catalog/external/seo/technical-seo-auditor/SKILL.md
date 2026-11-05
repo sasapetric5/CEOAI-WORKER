@@ -42,3 +42,7 @@ Return an executive summary, scope and sample methodology, findings table (sever
 
 ## Provenance
 CEOAI-authored workflow. No upstream code, package, or runtime dependency imported.
+
+
+## Research transport
+Use the existing guarded Spider for public read-only research; do not introduce a second crawler.
