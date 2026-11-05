@@ -113,7 +113,6 @@
       "path": "skills/catalog/secret-guardian-scan.md",
       "license": "Internal-CEOAI",
       "commit": "b5ce2a2eea41ce14a48f3fc82d502ce5bcfd51b6",
-      "contentSha256": "c2caff5eab48063deafdfcf32944180fe0fbbd2a",
       "allowedToolIds": [],
       "scope": "owner-controlled-or-explicitly-authorized-assets-only"
     }
