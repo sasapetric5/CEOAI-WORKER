@@ -149,3 +149,46 @@ test("mixed configured providers never call any provider without explicit free c
   assert.equal(calls,0);
  }finally{globalThis.fetch=old;}
 });
+
+
+test("agent gateway rejects malformed HMAC signature before model call",async()=>{
+ const mock=mockFreeModel();
+ try{
+  const req=await signedRequest({task:"security review"});
+  req.headers.set("X-Signature","not-a-valid-signature");
+  const response=await worker.fetch(req,environment());
+  assert.equal(response.status,401);
+  assert.equal((await response.json()).code,"UNAUTHORIZED");
+  assert.equal(mock.calls,0);
+ }finally{mock.restore();}
+});
+
+test("agent gateway fails closed when HMAC secret is unavailable",async()=>{
+ const mock=mockFreeModel();
+ try{
+  const response=await worker.fetch(await signedRequest({task:"security review"}),environment({APP_SECRET_CONTENTCRAFT_APP:undefined}));
+  assert.equal(response.status,503);
+  assert.equal((await response.json()).code,"AUTH_UNAVAILABLE");
+  assert.equal(mock.calls,0);
+ }finally{mock.restore();}
+});
+
+test("agent gateway fails closed when durable nonce protection is unavailable",async()=>{
+ const mock=mockFreeModel();
+ try{
+  const response=await worker.fetch(await signedRequest({task:"security review"}),environment({SECURITY_DO:null}));
+  assert.equal(response.status,503);
+  assert.equal((await response.json()).code,"AUTH_UNAVAILABLE");
+  assert.equal(mock.calls,0);
+ }finally{mock.restore();}
+});
+
+test("agent gateway rejects non-JSON content type before authentication or model call",async()=>{
+ const mock=mockFreeModel();
+ try{
+  const response=await worker.fetch(new Request("https://ceoai.test/v1/agents/run",{method:"POST",headers:{"Content-Type":"text/plain"},body:"{}"}),environment());
+  assert.equal(response.status,415);
+  assert.equal((await response.json()).code,"INVALID_CONTENT_TYPE");
+  assert.equal(mock.calls,0);
+ }finally{mock.restore();}
+});
