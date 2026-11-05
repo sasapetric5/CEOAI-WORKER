@@ -32,7 +32,7 @@ function validateNode(node) {
   if (!Array.isArray(node.dependsOn) || node.dependsOn.length > MAX_NODES ||
       !node.dependsOn.every(id => typeof id === "string" && ID.test(id)) ||
       new Set(node.dependsOn).size !== node.dependsOn.length || node.dependsOn.includes(node.id)) return false;
-  if (node.input !== undefined && safeJson(node.input, MAX_INPUT_BYTES) === null) return false;
+  if (node.input !== undefined && node.input !== null && safeJson(node.input, MAX_INPUT_BYTES) === null) return false;
   return node.requiresApproval === undefined || typeof node.requiresApproval === "boolean";
 }
 
@@ -66,7 +66,7 @@ export function compileWorkflowGraph({ id, nodes } = {}) {
   const normalizedNodes = nodes.map(node => ({
     id: node.id, agentId: node.agentId, skillIds: [...node.skillIds],
     capabilities: [...node.capabilities], dependsOn: [...node.dependsOn],
-    input: node.input === undefined ? null : safeJson(node.input, MAX_INPUT_BYTES),
+    input: node.input === undefined || node.input === null ? null : safeJson(node.input, MAX_INPUT_BYTES),
     requiresApproval: node.requiresApproval === true,
   }));
   return Object.freeze({
@@ -85,16 +85,29 @@ export function createAdvancedOrchestrator({ executeNode, checkpoint = null, aud
   const emit = event => { try { audit?.record(Object.freeze(event)); } catch { /* audit is non-blocking */ } };
 
   async function run(graph, { grantedCapabilities = [], priorResults = {} } = {}) {
-    if (!plain(graph) || graph.version !== 1 || typeof graph.id !== "string" || !TASK_ID.test(graph.id) ||
+    if (!plain(graph) || Object.keys(graph).some(key => !["version", "id", "nodes", "waves"].includes(key)) ||
+        Object.keys(graph).length !== 4 || graph.version !== 1 || typeof graph.id !== "string" || !TASK_ID.test(graph.id) ||
         !Array.isArray(graph.nodes) || !Array.isArray(graph.waves)) return fail("INVALID_COMPILED_GRAPH");
     if (!Array.isArray(grantedCapabilities) || !grantedCapabilities.every(cap => CAPABILITIES.has(cap))) return fail("INVALID_CAPABILITY_GRANTS");
     const grants = new Set(grantedCapabilities);
     const results = safeJson(priorResults, MAX_RESULT_BYTES);
     if (!plain(results)) return fail("INVALID_PRIOR_RESULTS");
-    const byId = new Map(graph.nodes.map(node => [node.id, node]));
-    if (byId.size !== graph.nodes.length || graph.nodes.some(node => !validateNode(node))) return fail("INVALID_COMPILED_GRAPH");
+    // Recompile from the node definitions instead of trusting caller-supplied waves.
+    // This proves every node appears exactly once in the canonical topological partition.
+    const canonical = compileWorkflowGraph({ id: graph.id, nodes: graph.nodes });
+    if (!canonical.ok ||
+        JSON.stringify(graph.nodes) !== JSON.stringify(canonical.graph.nodes) ||
+        JSON.stringify(graph.waves) !== JSON.stringify(canonical.graph.waves)) {
+      return fail("INVALID_COMPILED_GRAPH");
+    }
+    const byId = new Map(canonical.graph.nodes.map(node => [node.id, node]));
     for (const id of Object.keys(results)) if (!byId.has(id)) return fail("UNKNOWN_PRIOR_RESULT");
     const completed = new Set(Object.keys(results));
+    // A restored completion is valid only when all of its prerequisites are also restored.
+    for (const id of completed) {
+      const node = byId.get(id);
+      if (node.dependsOn.some(dep => !completed.has(dep))) return fail("INVALID_PRIOR_RESULT_DEPENDENCIES");
+    }
     for (const wave of graph.waves) {
       if (!Array.isArray(wave)) return fail("INVALID_COMPILED_GRAPH");
       const pending = wave.filter(id => !completed.has(id));
