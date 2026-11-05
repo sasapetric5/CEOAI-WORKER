@@ -57,3 +57,12 @@ class_name = "SpiderJobLedgerDO"
 [[migrations]]
 tag = "v2-spider-job-ledger"
 new_sqlite_classes = ["SpiderJobLedgerDO"]
+
+# Per-task durable workflow checkpoints; separate from the specialized Spider ledger.
+[[durable_objects.bindings]]
+name = "WORKFLOW_TASKS"
+class_name = "WorkflowTaskDO"
+
+[[migrations]]
+tag = "v3-workflow-task-checkpoints"
+new_sqlite_classes = ["WorkflowTaskDO"]
