@@ -1,7 +1,7 @@
 # EARN and freelance service skills — intake pack
 
 - State: QUARANTINED / NOT RUNTIME-ACTIVE
-- Skill documents: 71
+- Skill documents: 79
 - Runtime seed additions: 0
 - Tool grants: 0
 - Discovery policy: WORLDWIDE by default for ordinary EARN, bounty, open-source, freelance, affiliate, and remote-work opportunities.
@@ -79,6 +79,22 @@
 - technical-documentation-service-planner — scopes accurate technical documentation and review.
 - website-migration-readiness-audit — checks website migration readiness, SEO continuity, and rollback.
 - freelance-service-profitability-scenario-modeler — models service profitability using explicit cost and effort assumptions.
+
+- api-integration-failure-triage-service — triages authorized API integration failures with redacted evidence and regression cases.
+
+- reproducible-software-bug-report-service — creates actionable, evidence-backed software bug reports and minimal reproductions.
+
+- software-release-readiness-audit — reviews release evidence, risk, and rollback readiness before release.
+
+- technical-changelog-and-release-notes-service — turns verified changes into clear technical and user-facing release notes.
+
+- open-source-license-compatibility-review — screens declared licenses and dependency obligations for proposed combinations.
+
+- data-import-validation-service-planner — plans schema, row-level, reconciliation, and rollback validation for data imports.
+
+- privacy-data-flow-inventory-planner — maps data collection, use, storage, sharing, retention, and deletion paths.
+
+- client-website-incident-postmortem-writer — prepares blameless, evidence-based website incident postmortems.
 
 ## Free-only and permission limits
 No CashClaw npm package, Stripe integration, HYRVE marketplace, paid SEO tools, paid APIs, scripts, or third-party runtime is imported. No account credentials, cookies, secrets, or wallet material are used. All skills are research/draft-only and grant no tools. No applications, claims, issue comments, PRs, outreach, emails, posting, publishing, invoices, transfers, signing, or payouts are permitted. Use existing CEOAI Spider only for guarded public read-only research; do not create a second crawler.
