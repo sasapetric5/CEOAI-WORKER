@@ -24,7 +24,7 @@ for (const id of ids) {
 
 test("catalogue lists the five additions and runtime registry excludes them", async () => {
   const readme = await readFile(new URL("README.md", root), "utf8");
-  assert.match(readme, /Skill documents: 26/);
+  assert.match(readme, /Skill documents: 100/);
   assert.match(readme, /Runtime seed additions: 0/);
   assert.match(readme, /Tool grants: 0/);
   for (const id of ids) assert.ok(readme.includes(id));
