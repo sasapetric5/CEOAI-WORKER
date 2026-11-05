@@ -41,6 +41,14 @@ const ids = [
   "freelance-recurring-service-opportunity-mapper",
   "open-source-maintainer-service-opportunity-finder",
   "freelance-portfolio-proof-verifier",
+  "website-accessibility-audit-service",
+  "website-security-configuration-review",
+  "analytics-event-taxonomy-planner",
+  "crm-data-quality-audit-planner",
+  "software-test-case-authoring-service",
+  "technical-documentation-service-planner",
+  "website-migration-readiness-audit",
+  "freelance-service-profitability-scenario-modeler",
 ];
 
 for (const id of ids) {
@@ -56,7 +64,7 @@ for (const id of ids) {
 
 test("EARN catalogue records the batch and runtime registry excludes it", async () => {
   const readme = await readFile(new URL("README.md", root), "utf8");
-  assert.match(readme, /Skill documents: 63/);
+  assert.match(readme, /Skill documents: 71/);
   assert.match(readme, /Runtime seed additions: 0/);
   assert.match(readme, /Tool grants: 0/);
   for (const id of ids) assert.ok(readme.includes(id));
