@@ -167,8 +167,8 @@ test("HMAC app identity comes from the signed header, never a client JSON appId"
 
 test("AI Force is denied Spider access before quota checks or queue submission", async () => {
   const env = makeEnv();
-  env.HMAC_ALLOWED_APPS = "CONTENTCRAFT-APP,RANKGEO-APP";
-  env.APP_SECRET_RANKGEO_APP = "rankgeo-independent-secret-at-least-32-bytes";
+  env.HMAC_ALLOWED_APPS = "CONTENTCRAFT-APP,AIFORCE-APP";
+  env.APP_SECRET_AIFORCE_APP = secret;
   const rateLimitKeys = [];
   const queued = [];
   env.RATE_LIMITER = { async limit(input) { rateLimitKeys.push(input.key); return { success: true }; } };
@@ -460,8 +460,8 @@ test("Spider result endpoint enforces signed app identity and hides foreign resu
       }};
     }
   };
-  env.HMAC_ALLOWED_APPS = "CONTENTCRAFT-APP,AIFORCE-APP";
-  env.APP_SECRET_AIFORCE_APP = secret;
+  env.HMAC_ALLOWED_APPS = "CONTENTCRAFT-APP,RANKGEO-APP";
+  env.APP_SECRET_RANKGEO_APP = "rankgeo-independent-secret-at-least-32-bytes";
 
   const payload = JSON.stringify({ jobId });
   const signed = new TextEncoder().encode(payload);
