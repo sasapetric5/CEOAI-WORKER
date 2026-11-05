@@ -153,7 +153,7 @@ const loopCases=[
   assert.equal((await loop.run({...baseArgs(async()=>({type:"final",output:"ok"})),budget:{used:0}})).code,"INVALID_AGENT_BUDGET");
  }],
  ["shared budget prevents overspending across runs",async()=>{
-  const loop=makeLoop(),budget=createAgentBudget({maxToolCalls:1});
+  const loop=makeLoop({maxSteps:1}),budget=createAgentBudget({maxToolCalls:1});
   const planner=async()=>({type:"tool",toolId:"safe_read",arguments:{value:"ok"}});
   const first=await loop.run({...baseArgs(planner),budget});
   const second=await loop.run({...baseArgs(planner),budget});
