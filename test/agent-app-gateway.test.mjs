@@ -12,7 +12,7 @@ function environment(extra={}){
   AI_ENABLED:"true",
   OPENROUTER_FREE_CONFIRMED:"true",
   OPENROUTER_KEY:"test-openrouter-key",
-  HMAC_ALLOWED_APPS:"CONTENTCRAFT-APP,AIFORCE-APP",
+  HMAC_ALLOWED_APPS:"CONTENTCRAFT-APP,AIFORCE-APP,RANKGEO-APP",
   APP_SECRET_CONTENTCRAFT_APP:secret,
   KV_MEMORY:{async get(k){return memory.get(k)??null;},async put(k,v){memory.set(k,v);}},
   RATE_LIMITER:{async limit({key}){return {success:true,key};}},
@@ -274,4 +274,24 @@ test("model gateway fails closed when the authenticated app rate limiter is unav
   assert.equal((await response.json()).error.code,"rate_limiter_unavailable");
   assert.equal(calls,0);
  }finally{globalThis.fetch=old;}
+});
+
+test("each application receives only its own specialist-agent allowlist",async()=>{
+ const mock=mockFreeModel();
+ try{
+  const env=environment({APP_SECRET_AIFORCE_APP:secret,APP_SECRET_RANKGEO_APP:secret});
+  const cases=[
+   {id:"CONTENTCRAFT-APP",task:"security review HMAC authentication permissions",expected:"security_reviewer"},
+   {id:"AIFORCE-APP",task:"Cloudflare Workers Durable Objects platform architecture",expected:"cloudflare_platform_engineer"},
+   {id:"RANKGEO-APP",task:"crawler queue retries idempotency spider reliability",expected:"crawler_reliability_engineer"},
+  ];
+  for(const item of cases){
+   const response=await worker.fetch(await signedRequest({task:item.task,limit:1},{id:item.id}),env);
+   assert.equal(response.status,200,JSON.stringify(await response.clone().json()));
+   const data=await response.json();
+   assert.equal(data.success,true);
+   assert.deepEqual(data.agents,[item.expected]);
+  }
+  assert.equal(mock.calls,6);
+ }finally{mock.restore();}
 });
