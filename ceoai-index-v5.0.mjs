@@ -1110,10 +1110,9 @@ export async function runCEOAIInternalAgentTask(env, { system, task, input = {},
 }
 
 const APP_AGENT_POLICIES = Object.freeze({
-  // Spider is a high-impact crawling capability. Grant it only to the SEO app that needs it.
-  // Every app remains denied unless a capability is explicitly set to true here.
+  // Shared capabilities are available to integrated apps; per-app quotas and job namespaces isolate usage and data.
   "CONTENTCRAFT-APP": Object.freeze({ maxAgents: 2, maxModelCalls: 3, spider: true }),
-  "AIFORCE-APP": Object.freeze({ maxAgents: 3, maxModelCalls: 4, spider: false }),
+  "AIFORCE-APP": Object.freeze({ maxAgents: 3, maxModelCalls: 4, spider: true }),
 });
 
 function createRequestAgentSystem(maxAgents) {
