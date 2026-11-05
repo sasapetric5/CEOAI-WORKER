@@ -486,7 +486,7 @@ test("stateless gateway request never reads or writes app memory", async () => {
    async delete() { storageCalls++; throw new Error("stateless request must not reset memory"); }
   }});
   const response = await worker.fetch(await signedRequest({
-   task: "regression testing and verification without persistent session",
+   task: "regression testing and verification",
    input: { component: "ContentCraft" },
    limit: 1
   }), env);
