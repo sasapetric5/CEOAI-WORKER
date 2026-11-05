@@ -119,3 +119,43 @@ test("app memory enforces TTL and serialized byte limits", async () => {
   );
   assert.equal(kv.data.size, 0);
 });
+
+
+test("reset is bound to one application and cannot delete another application's session", async () => {
+  const kv = memoryKV();
+  const contentCraft = createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy });
+  const aiForce = createAppMemoryStore({ kv, appId: "AIFORCE-APP", appPolicy: enabledPolicy });
+  const rankGeo = createAppMemoryStore({ kv, appId: "RANKGEO-APP", appPolicy: enabledPolicy });
+  for (const [store, marker] of [[contentCraft, "cc"], [aiForce, "af"], [rankGeo, "rg"]]) {
+    await store.write(sessionA, { history: [{ role: "user", content: marker + "-private" }] });
+  }
+  await contentCraft.reset(sessionA);
+  assert.equal((await contentCraft.read(sessionA)).history.length, 0);
+  assert.equal((await aiForce.read(sessionA)).history[0].content, "af-private");
+  assert.equal((await rankGeo.read(sessionA)).history[0].content, "rg-private");
+  await assert.rejects(contentCraft.reset("AIFORCE-APP"), /APP_MEMORY_INVALID_SESSION/);
+  assert.equal((await aiForce.read(sessionA)).history[0].content, "af-private");
+});
+
+test("application memory expires according to its configured KV TTL", async () => {
+  let now = 1_000_000;
+  const data = new Map();
+  const kv = {
+    async get(key) {
+      const item = data.get(key);
+      if (!item) return null;
+      if (item.expiresAt <= now) { data.delete(key); return null; }
+      return item.value;
+    },
+    async put(key, value, options) {
+      assert.equal(options.expirationTtl, 60);
+      data.set(key, { value, expiresAt: now + options.expirationTtl * 1000 });
+    },
+    async delete(key) { data.delete(key); },
+  };
+  const store = createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy, ttlSeconds: 60 });
+  await store.write(sessionA, { history: [{ role: "user", content: "expires-soon" }] });
+  assert.equal((await store.read(sessionA)).history[0].content, "expires-soon");
+  now += 60_001;
+  assert.deepEqual(await store.read(sessionA), { history: [], summary: "" });
+});
