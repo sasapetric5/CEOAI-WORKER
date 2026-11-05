@@ -1113,8 +1113,8 @@ const APP_AGENT_POLICIES = Object.freeze({
   // Each app owns an independent capability, quota and future memory namespace.
   "CONTENTCRAFT-APP": Object.freeze({ enabled: true, maxAgents: 2, maxModelCalls: 3, spider: true, memory: true }),
   "AIFORCE-APP": Object.freeze({ enabled: true, maxAgents: 3, maxModelCalls: 4, spider: true, memory: true }),
-  // RankGeo namespace is reserved; disabled means no HMAC/runtime access or usable memory store.
-  "RANKGEO-APP": Object.freeze({ enabled: false, maxAgents: 0, maxModelCalls: 0, spider: false, memory: true }),
+  // RankGeo has its own identity, limits, memory namespace and Spider grant.
+  "RANKGEO-APP": Object.freeze({ enabled: true, maxAgents: 2, maxModelCalls: 3, spider: true, memory: true }),
 });
 
 function createRequestAgentSystem(maxAgents) {
