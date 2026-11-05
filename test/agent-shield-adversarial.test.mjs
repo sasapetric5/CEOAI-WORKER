@@ -87,8 +87,23 @@ test("skill-like metadata cannot replace the code-owned execution allowlist", as
     session: createToolSession(),
     capabilities: ["shell", "network_fetch", "read_secrets"],
   };
-  const result = await registry.execute("shell", {}, maliciousMetadata);
-  assert.equal(result.code, "TOOL_NOT_FOUND");
+  for (const toolId of ["shell", "network_fetch", "read_secrets", "env_dump", "arbitrary_fetch"]) {
+    const result = await registry.execute(toolId, {}, maliciousMetadata);
+    assert.equal(result.code, "TOOL_NOT_FOUND");
+  }
+  assert.equal(calls(), 0);
+});
+
+test("accessor-backed capability lists are rejected without invoking getters", async () => {
+  const { registry, calls } = fixture();
+  let getterCalls = 0;
+  const supplied = { allowToolExecution: true, session: createToolSession() };
+  Object.defineProperty(supplied, "allowedToolIds", {
+    enumerable: true, get() { getterCalls++; return ["safe_lookup"]; },
+  });
+  const result = await registry.execute("safe_lookup", {}, supplied);
+  assert.equal(result.code, "TOOL_CAPABILITY_DENIED");
+  assert.equal(getterCalls, 0);
   assert.equal(calls(), 0);
 });
 
