@@ -1296,9 +1296,10 @@ export default {
       const hasHmacHeaders = ["X-App-Id", "X-Timestamp", "X-Nonce", "X-Signature"]
         .some(name => request.headers.has(name));
       if (hasHmacHeaders) {
+        if (request.method !== "POST") return handleOpenAIChatCompletions(request, env);
         let rawBody;
         try {
-          rawBody = await readBodyLimited(request.clone(), 16000);
+          rawBody = await readBodyLimited(request, 16000);
         } catch (error) {
           const tooLarge = error?.status === 413;
           return json({ error: { message: tooLarge ? "Request body too large." : "Invalid request body.", type: "invalid_request_error", code: tooLarge ? "request_too_large" : "invalid_body" } }, tooLarge ? 413 : 400);
@@ -1313,7 +1314,12 @@ export default {
             }
           }, auth.status);
         }
-        return handleOpenAIChatCompletions(request, env, { hmacAuthenticated: true, appId: auth.appId });
+        const authenticatedRequest = new Request(request.url, {
+          method: request.method,
+          headers: request.headers,
+          body: rawBody,
+        });
+        return handleOpenAIChatCompletions(authenticatedRequest, env, { hmacAuthenticated: true, appId: auth.appId });
       }
       return handleOpenAIChatCompletions(request, env);
     }
