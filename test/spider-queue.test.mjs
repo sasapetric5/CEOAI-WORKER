@@ -73,7 +73,7 @@ test("ledger claims a crawl once and never repeats an ambiguous Browser Run POST
   const call = (path, input) => ledger.fetch(new Request("https://ledger.test" + path, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
   })).then(response => response.json());
-  const job = { id, url: "https://docs.example.com/", pageLimit: 10, depth: 1, now: now() };
+  const job = { appId: "CONTENTCRAFT-APP", id, url: "https://docs.example.com/", pageLimit: 10, depth: 1, now: now() };
   const first = await call("/job/claim-start", job);
   const duplicate = await call("/job/claim-start", job);
   assert.equal(first.claimed, true);
@@ -103,7 +103,7 @@ test("daily account quota is atomic and duplicate job claims do not consume a se
   assert.equal(duplicate.duplicate, true);
   for (let i = 1; i < 5; i++) {
     const otherId = "123e4567-e89b-42d3-a456-42661417400" + i;
-    assert.equal((await call({ date: "2026-11-05", id: otherId, limit: 5, now: now() })).allowed, true);
+    assert.equal((await call({ appId: "GLOBAL", date: "2026-11-05", id: otherId, limit: 5, now: now() })).allowed, true);
   }
   const sixth = await call({ date: "2026-11-05", id: "123e4567-e89b-42d3-a456-426614174099", limit: 5, now: now() });
   assert.equal(sixth.allowed, false);
@@ -113,7 +113,7 @@ test("daily account quota is atomic and duplicate job claims do not consume a se
 test("producer validates and publishes a bounded HTTPS job", async () => {
   const sent = [];
   const env = { SPIDER_QUEUE: { async send(body) { sent.push(body); } } };
-  const result = await enqueueSpiderCrawl(env, { url: "https://docs.example.com/start?token=secret", jobId: id });
+  const result = await enqueueSpiderCrawl(env, { appId: "CONTENTCRAFT-APP", url: "https://docs.example.com/start?token=secret", jobId: id });
   assert.equal(result.ok, true);
   assert.equal(sent.length, 1);
   assert.equal(sent[0].url, "https://docs.example.com/start");
@@ -130,7 +130,7 @@ test("start message creates one Browser Run job and schedules polling", async ()
     async getResults() { throw new Error("not called"); },
   };
   const { env, sent, handler } = setup(() => crawler);
-  const message = makeMessage({ version: 1, kind: "start", id, url: "https://docs.example.com/", pageLimit: 10, depth: 1, queuedAt: now() });
+  const message = makeMessage({ version: 1, kind: "start", appId: "CONTENTCRAFT-APP", id, url: "https://docs.example.com/", pageLimit: 10, depth: 1, queuedAt: now() });
   await handler({ messages: [message] }, env);
   assert.equal(starts, 1);
   assert.equal(message.calls[0], "ack");
@@ -152,9 +152,9 @@ test("polling stores bounded untrusted records and marks the job complete idempo
     async getResults() { return { ok: true, status: "completed", records: [{ url: "https://docs.example.com/", markdown: "# docs" }] }; },
   };
   const { env, sent, stored, handler } = setup(() => crawler);
-  const start = makeMessage({ version: 1, kind: "start", id, url: "https://docs.example.com/", pageLimit: 10, depth: 1, queuedAt: now() });
+  const start = makeMessage({ version: 1, kind: "start", appId: "CONTENTCRAFT-APP", id, url: "https://docs.example.com/", pageLimit: 10, depth: 1, queuedAt: now() });
   await handler({ messages: [start] }, env);
-  const poll = makeMessage({ version: 1, kind: "poll", id, attempt: 0 });
+  const poll = makeMessage({ version: 1, kind: "poll", appId: "CONTENTCRAFT-APP", id, attempt: 0 });
   await handler({ messages: [poll] }, env);
   assert.equal(poll.calls[0], "ack");
   const saved = stored.get("spider:result:" + id);
@@ -173,7 +173,7 @@ test("missing Browser Run credentials fail closed without calling the provider",
   const crawler = { async startCrawl() { starts++; return { ok: true, jobId: browserId }; } };
   const { env, handler } = setup(() => crawler);
   delete env.SPIDER_BROWSER_RUN_TOKEN;
-  const message = makeMessage({ version: 1, kind: "start", id, url: "https://docs.example.com/", pageLimit: 10, depth: 1, queuedAt: now() });
+  const message = makeMessage({ version: 1, kind: "start", appId: "CONTENTCRAFT-APP", id, url: "https://docs.example.com/", pageLimit: 10, depth: 1, queuedAt: now() });
   await handler({ messages: [message] }, env);
   assert.equal(starts, 0);
   assert.equal(message.calls[0], "ack");
@@ -183,7 +183,7 @@ test("uncertain Browser Run start is not automatically retried", async () => {
   let starts = 0;
   const crawler = { async startCrawl() { starts++; return { ok: false, code: "CRAWL_PROVIDER_UNAVAILABLE" }; } };
   const { env, handler } = setup(() => crawler);
-  const message = makeMessage({ version: 1, kind: "start", id, url: "https://docs.example.com/", pageLimit: 10, depth: 1, queuedAt: now() });
+  const message = makeMessage({ version: 1, kind: "start", appId: "CONTENTCRAFT-APP", id, url: "https://docs.example.com/", pageLimit: 10, depth: 1, queuedAt: now() });
   await handler({ messages: [message] }, env);
   assert.equal(starts, 1);
   assert.equal(message.calls[0], "ack");
@@ -214,7 +214,7 @@ test("daily Browser Run budget is shared across separate app consumers", async (
   for (let i = 0; i < 5; i++) {
     const jobId = `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
     const message = makeMessage({
-      version: 1, kind: "start", id: jobId, url: "https://docs.example.com/",
+      version: 1, kind: "start", appId: i % 2 === 0 ? "CONTENTCRAFT-APP" : "AIFORCE-APP", id: jobId, url: "https://docs.example.com/",
       pageLimit: 10, depth: 1, queuedAt: now(),
     });
     const current = i % 2 === 0 ? appA : appB;
@@ -222,13 +222,13 @@ test("daily Browser Run budget is shared across separate app consumers", async (
     assert.equal(message.calls[0], "ack");
   }
   const sixth = makeMessage({
-    version: 1, kind: "start", id: "00000000-0000-4000-8000-000000000099",
+    version: 1, kind: "start", appId: "CONTENTCRAFT-APP", id: "00000000-0000-4000-8000-000000000099",
     url: "https://docs.example.com/", pageLimit: 10, depth: 1, queuedAt: now(),
   });
   await appB.handler({ messages: [sixth] }, appB.env);
   assert.equal(sixth.calls[0], "ack");
   assert.equal(starts, 5);
-  const quotaContext = [...sharedLedger.contexts.entries()].find(([name]) => name.startsWith("quota:"));
+  const quotaContext = [...sharedLedger.contexts.entries()].find(([name]) => name.startsWith("quota:global:"));
   assert.ok(quotaContext);
   assert.equal(quotaContext[1].storage.values.get("quota").count, 5);
 });
@@ -239,7 +239,7 @@ test("missing Browser Run configuration does not consume a daily quota slot", as
   }));
   delete env.SPIDER_BROWSER_RUN_TOKEN;
   const message = makeMessage({
-    version: 1, kind: "start", id, url: "https://docs.example.com/",
+    version: 1, kind: "start", appId: "CONTENTCRAFT-APP", id, url: "https://docs.example.com/",
     pageLimit: 10, depth: 1, queuedAt: now(),
   });
   await handler({ messages: [message] }, env);
@@ -254,12 +254,12 @@ test("reusing a request ID with a different URL never starts another crawl", asy
   };
   const { env, handler } = setup(() => crawler);
   const first = makeMessage({
-    version: 1, kind: "start", id, url: "https://docs.example.com/",
+    version: 1, kind: "start", appId: "CONTENTCRAFT-APP", id, url: "https://docs.example.com/",
     pageLimit: 10, depth: 1, queuedAt: now(),
   });
   await handler({ messages: [first] }, env);
   const reused = makeMessage({
-    version: 1, kind: "start", id, url: "https://different.example.com/",
+    version: 1, kind: "start", appId: "CONTENTCRAFT-APP", id, url: "https://different.example.com/",
     pageLimit: 10, depth: 1, queuedAt: now(),
   });
   await handler({ messages: [reused] }, env);
