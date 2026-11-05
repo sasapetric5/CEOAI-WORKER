@@ -2,9 +2,34 @@
 import { createToolSession } from "./tool-registry.mjs";
 const plain = (v) => v !== null && typeof v === "object" && !Array.isArray(v) && (Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null);
 const MAX_CONTEXT_BYTES = 8192;
+function safeSnapshot(value, seen = new WeakSet(), depth = 0) {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value !== "object" || depth > 16 || seen.has(value)) return undefined;
+  const isArray = Array.isArray(value);
+  if (!isArray && !plain(value)) return undefined;
+  seen.add(value);
+  const keys = Reflect.ownKeys(value);
+  if (keys.some(key => typeof key !== "string" || (isArray && key !== "length" && !/^(0|[1-9]\\d*)$/.test(key)))) return undefined;
+  const output = isArray ? [] : Object.create(null);
+  for (const key of keys) {
+    if (isArray && key === "length") continue;
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !Object.hasOwn(descriptor, "value") || !descriptor.enumerable) return undefined;
+    const child = safeSnapshot(descriptor.value, seen, depth + 1);
+    if (child === undefined) return undefined;
+    if (isArray) output[Number(key)] = child;
+    else output[key] = child;
+  }
+  seen.delete(value);
+  if (isArray && output.length !== value.length) return undefined;
+  return output;
+}
 function withinContextLimit(value) {
   try {
-    const serialized = JSON.stringify(value);
+    const snapshot = safeSnapshot(value);
+    if (snapshot === undefined) return false;
+    const serialized = JSON.stringify(snapshot);
     return typeof serialized === "string" && new TextEncoder().encode(serialized).byteLength <= MAX_CONTEXT_BYTES;
   } catch { return false; }
 }
@@ -68,6 +93,7 @@ export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, max
         } catch {
           return failRun("PLANNER_FAILED", step, toolCalls);
         }
+        decision = safeSnapshot(decision);
         if (!plain(decision) || !["final", "tool"].includes(decision.type)) return failRun("INVALID_PLAN", step, toolCalls);
         if (decision.type === "final") {
           if (!Object.hasOwn(decision, "output")) return failRun("INVALID_PLAN", step, toolCalls);
