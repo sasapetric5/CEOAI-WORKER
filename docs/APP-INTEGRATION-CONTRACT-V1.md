@@ -7,7 +7,7 @@ Status: reserved design contract; does not grant runtime access.
 | App | appId | Registry state | Agent quota | Model-call ceiling | Spider |
 |---|---|---:|---:|---:|---:|
 | ContentCraft | `CONTENTCRAFT-APP` | enabled | 2 agents | 3 per task | granted by current policy |
-| AI Force | `AIFORCE-APP` | enabled | 3 agents | 4 per task | denied |
+| AI Force | `AIFORCE-APP` | enabled | 3 agents | 4 per task | granted by current policy |
 | RankGeo | `RANKGEO-APP` | reserved / disabled | 0 | 0 | denied |
 
 RankGeo is a registry reservation only. Do not add `RANKGEO-APP` to `HMAC_ALLOWED_APPS`, do not create its application secret, do not issue credentials, and do not enable any capability or quota until a separate integration approval.
@@ -60,5 +60,5 @@ Errors use `success: false` and a stable `code`. Relevant access failures:
 - App identity comes only from the verified signed `X-App-Id` header, never from JSON input.
 - Rate-limit namespaces and Spider job namespaces must include the authenticated appId.
 - Memory/session data must not be shared across app identities.
-- Spider requires a separate explicit per-app grant; AI Force remains denied.
+- Spider requires a separate explicit per-app grant; ContentCraft and AI Force are currently granted independently. Each app has its own rate-limit namespace and daily quota.
 - RankGeo activation requires a future reviewed change to registry state, quotas, capabilities, HMAC allowlist/secrets, and integration tests. This document alone grants no access.
