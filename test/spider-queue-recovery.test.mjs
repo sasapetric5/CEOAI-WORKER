@@ -64,7 +64,7 @@ function makeEnvironment({ send, put = async () => {} } = {}) {
 }
 
 const startBody = {
-  version: 1, kind: "start", id, url: "https://docs.example.com/",
+  version: 1, kind: "start", appId: "CONTENTCRAFT-APP", id, url: "https://docs.example.com/",
   pageLimit: 10, depth: 1, queuedAt: nowValue,
 };
 
@@ -121,7 +121,7 @@ test("temporary result-store failure retries polling and completes after storage
   await handler({ messages: [start] }, env);
   assert.deepEqual(start.calls, ["ack"]);
 
-  const pollBody = { version: 1, kind: "poll", id, attempt: 0 };
+  const pollBody = { version: 1, kind: "poll", appId: "CONTENTCRAFT-APP", id, attempt: 0 };
   const firstPoll = makeMessage(pollBody);
   await handler({ messages: [firstPoll] }, env);
   assert.deepEqual(firstPoll.calls, [{ retry: { delaySeconds: 60 } }]);
