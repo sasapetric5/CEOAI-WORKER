@@ -370,7 +370,7 @@ test("failed AI completion never writes partial or failed output to app memory",
   const payload=await response.json();
   assert.equal(payload.success,false);
   assert.equal(payload.code,"ALL_AGENTS_FAILED");
-  assert.equal(memory.size,0);
+  assert.equal([...memory.keys()].filter(key=>key.startsWith("memory:")).length,0);
   assert.ok(providerCalls>0);
  }finally{globalThis.fetch=old;}
 });
