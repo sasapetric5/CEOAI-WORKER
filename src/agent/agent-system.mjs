@@ -15,8 +15,12 @@ export function createBuiltinAgentSystem({toolRegistry,agentLoopFactory,maxAgent
  if(!skills.agentLoop)throw new TypeError("AGENT_LOOP_FACTORY_REQUIRED");
  return attach(skills,{toolRegistry,maxAgents,maxToolCalls,mcpAuthorize,mcpAudit,mcpPageSize});
 }
-export async function createKVAgentSystem({kv,toolRegistry,agentLoopFactory,maxAgents=3,maxToolCalls=4,capabilityPolicy={},indexKey,documentPrefix,mcpAuthorize=null,mcpAudit=null,mcpPageSize=20}={}){
- const skills=await createKVSkillSystem({kv,toolRegistry,agentLoopFactory,maxSelectedSkills:3,capabilityPolicy,indexKey,documentPrefix});
+export async function createKVAgentSystem({
+ kv,toolRegistry,agentLoopFactory,maxAgents=3,maxToolCalls=4,capabilityPolicy={},
+ approvedSkillIds,categoryBySkillId={},categoryCapabilityPolicy={},indexKey,documentPrefix,
+ mcpAuthorize=null,mcpAudit=null,mcpPageSize=20
+}={}){
+ const skills=await createKVSkillSystem({kv,toolRegistry,agentLoopFactory,maxSelectedSkills:3,capabilityPolicy,approvedSkillIds,categoryBySkillId,categoryCapabilityPolicy,indexKey,documentPrefix});
  if(!skills.agentLoop)throw new TypeError("AGENT_LOOP_FACTORY_REQUIRED");
  return attach(skills,{toolRegistry,maxAgents,maxToolCalls,mcpAuthorize,mcpAudit,mcpPageSize});
 }
