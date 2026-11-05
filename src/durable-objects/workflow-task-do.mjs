@@ -2,6 +2,7 @@
 // One Durable Object instance is selected per task ID. Writes use revision CAS.
 const TASK_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/;
 const MAX_BYTES = 24_576;
+const MAX_EFFECTS_PER_TASK = 128;
 const MIN_LEASE_MS = 5_000;
 const MAX_LEASE_MS = 60_000;
 const OWNER_TOKEN = /^[A-Za-z0-9_-]{32,128}$/;
@@ -130,11 +131,31 @@ export class WorkflowTaskDO {
             if (current.status === "completed") return { ok: true, replay: true, effect: current };
             return { ok: false, code: "EFFECT_OUTCOME_UNKNOWN", effect: current };
           }
+          const count = await txn.get("effectCount") || 0;
+          if (!Number.isSafeInteger(count) || count < 0 || count >= MAX_EFFECTS_PER_TASK) {
+            return { ok: false, code: "EFFECT_LEDGER_LIMIT" };
+          }
           const effect = { status: "started", payloadHash: body.payloadHash, fencingToken: lease.fencingToken, startedAt: now };
           await txn.put(key, effect);
+          await txn.put("effectCount", count + 1);
           return { ok: true, replay: false, effect };
         });
         return json(result, result.ok ? 200 : result.code === "STALE_EXECUTOR" ? 409 : 409);
+      }
+      if (path === "/effect/get") {
+        if (Object.keys(body).length !== 4 || typeof body.ownerToken !== "string" || !OWNER_TOKEN.test(body.ownerToken) ||
+            !Number.isSafeInteger(body.fencingToken) || body.fencingToken < 1 ||
+            typeof body.effectKey !== "string" || !/^[A-Za-z0-9:_-]{1,160}$/.test(body.effectKey)) {
+          return json({ ok: false, code: "INVALID_EFFECT_REQUEST" }, 400);
+        }
+        const now = Date.now();
+        const result = await this.ctx.storage.transaction(async txn => {
+          const lease = await txn.get("lease");
+          if (!lease || lease.expiresAt <= now || lease.ownerToken !== body.ownerToken ||
+              lease.fencingToken !== body.fencingToken) return { ok: false, code: "STALE_EXECUTOR" };
+          return { ok: true, effect: await txn.get("effect:" + body.effectKey) || null };
+        });
+        return json(result, result.ok ? 200 : 409);
       }
       if (path === "/effect/complete") {
         if (Object.keys(body).length !== 6 || typeof body.ownerToken !== "string" || !OWNER_TOKEN.test(body.ownerToken) ||
