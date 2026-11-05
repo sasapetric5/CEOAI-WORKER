@@ -1,7 +1,7 @@
 // Supply Chain Shield: validate third-party skill/agent metadata before catalog admission.
 // Candidate content is never executed and candidate metadata never grants capabilities.
 const ID = /^[a-z][a-z0-9_]{0,47}$/;
-const VERSION = /^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$/;
+const VERSION = /^(0|[1-9]\d*)\\.(0|[1-9]\d*)\\.(0|[1-9]\d*)$/;
 const SHA1 = /^[a-f0-9]{40}$/;
 const SHA256 = /^[a-f0-9]{64}$/;
 const LICENSES = new Set(["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC"]);
@@ -11,7 +11,7 @@ const fail = code => Object.freeze({ ok: false, code });
 const stringList = value => Array.isArray(value) && value.every(item => typeof item === "string" && item.length > 0) &&
   new Set(value).size === value.length;
 const validPath = value => typeof value === "string" && value.length <= 512 &&
-  !/[\\\\%?#:\\x00-\\x1f\\x7f]/.test(value) && !value.startsWith("/") && !value.endsWith("/") &&
+  !/[\\%?#:\x00-\x1f\x7f]/.test(value) && !value.startsWith("/") && !value.endsWith("/") &&
   !value.includes("//") && value.split("/").every(part => part !== "." && part !== ".." && /^[A-Za-z0-9_.-]+$/.test(part));
 const validRepository = value => typeof value === "string" && value.length <= 200 &&
   value.split("/").length === 2 && value.split("/").every(part => part !== "." && part !== ".." && /^[A-Za-z0-9_-][A-Za-z0-9_.-]*$/.test(part));
@@ -25,7 +25,7 @@ export function assessSkillIntake(candidate, { approvedLicenses = [...LICENSES],
   if (typeof candidate.description !== "string" || !candidate.description.trim() || candidate.description.length > 240) return fail("INVALID_SKILL_DESCRIPTION");
   if (candidate.allowedToolIds !== undefined && (!Array.isArray(candidate.allowedToolIds) ||
       candidate.allowedToolIds.length > 0)) return fail("SKILL_CANNOT_GRANT_CAPABILITIES");
-  if (typeof candidate.content !== "string" || !candidate.content.trim() || candidate.content.includes("\\0") ||
+  if (typeof candidate.content !== "string" || !candidate.content.trim() || candidate.content.includes("\0") ||
       new TextEncoder().encode(candidate.content).byteLength > 24 * 1024) return fail("INVALID_SKILL_CONTENT");
   const source = candidate.source;
   if (!plain(source) || !validRepository(source.repository) || !validPath(source.path) ||
