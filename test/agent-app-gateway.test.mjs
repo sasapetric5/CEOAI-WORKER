@@ -192,3 +192,29 @@ test("agent gateway rejects non-JSON content type before authentication or model
   assert.equal(mock.calls,0);
  }finally{mock.restore();}
 });
+
+test("Spider capability is denied to AI Force even with valid HMAC and configured runner",async()=>{
+ const env=environment({
+  SPIDER_BROWSER_RUN_ACCOUNT_ID:"test-account",
+  SPIDER_BROWSER_RUN_TOKEN:"test-runner-token",
+  SPIDER_QUEUE:{async send(){throw new Error("must not enqueue");}}
+ });
+ const response=await worker.fetch(await signedRequest({
+  url:"https://example.com",requestId:"123e4567-e89b-42d3-a456-426614174000"
+ },{id:"AIFORCE-APP",path:"/v1/spider/crawl"}),env);
+ assert.equal(response.status,403);
+ assert.equal((await response.json()).code,"CAPABILITY_NOT_GRANTED");
+});
+test("Spider capability remains available to authorized ContentCraft policy",async()=>{
+ let sends=0;
+ const env=environment({
+  SPIDER_BROWSER_RUN_ACCOUNT_ID:"test-account",
+  SPIDER_BROWSER_RUN_TOKEN:"test-runner-token",
+  SPIDER_QUEUE:{async send(message){sends++;assert.equal(message.jobId,"123e4567-e89b-42d3-a456-426614174000");}}
+ });
+ const response=await worker.fetch(await signedRequest({
+  url:"https://example.com",requestId:"123e4567-e89b-42d3-a456-426614174000"
+ },{id:"CONTENTCRAFT-APP",path:"/v1/spider/crawl"}),env);
+ assert.equal(response.status,202);
+ assert.equal(sends,1);
+});
