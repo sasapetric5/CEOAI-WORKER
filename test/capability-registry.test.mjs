@@ -19,7 +19,7 @@ test("agent and skill declarations cannot elevate authority",()=>{
  const r=createCapabilityRegistry({grants:base().filter(g=>g.subjectType!=="skill")});
  assert.equal(r.resolve({...request,toolId:"other_tool"}).code,"CAPABILITY_NOT_GRANTED");
 });
-test("approval-required grants need a matching approval bound to all identities",()=>{
+test("approval-required grants need a matching verified one-time approval bound to all identities",()=>{
  const grants=base().map(g=>({...g,approvalRequired:g.subjectType==="skill"}));
  const r=createCapabilityRegistry({grants});
  assert.equal(r.resolve(request).code,"CAPABILITY_APPROVAL_REQUIRED");
@@ -47,7 +47,7 @@ test("quota is the strictest limit across all four layers",()=>{
 test("resource scopes restrict access",()=>{
  const grants=base().map(g=>({...g,resourceScopes:["site:example.com"]}));
  const r=createCapabilityRegistry({grants});
- assert.equal(r.resolve({...request,resource:"site:example.com"}).ok,true);
+ assert.equal(r.resolve({...request,resource:"site:example.com/page"}).ok,true);
  assert.equal(r.resolve({...request,resource:"site:evil.com"}).code,"CAPABILITY_NOT_GRANTED");
 });
 test("resolveTools returns only the intersection and reports denials",()=>{
@@ -65,4 +65,15 @@ test("audit receives grants and denials without secrets",()=>{
  r.resolve(request);r.resolve({...request,toolId:"not_allowed"});
  assert.deepEqual(events.map(e=>e.type),["capability_granted","capability_denied"]);
  assert.equal(JSON.stringify(events).includes("token"),false);
+});
+
+test("caller principal accepts opaque UUID-like identifiers",()=>{
+ const grants=base().map(g=>g.subjectType==="caller"?{...g,subjectId:"user-550E8400-E29B-41D4-A716-446655440000"}:g);
+ const r=createCapabilityRegistry({grants});
+ assert.equal(r.resolve({...request,callerId:"user-550E8400-E29B-41D4-A716-446655440000"}).ok,true);
+});
+test("approval verification failure is fail-closed",()=>{
+ const grants=base().map(g=>({...g,approvalRequired:true}));
+ const r=createCapabilityRegistry({grants,verifyApproval:()=>false});
+ assert.equal(r.resolve({...request,approval:{approvalId:"approval_abcdefghijkl"}}).code,"CAPABILITY_APPROVAL_REQUIRED");
 });
