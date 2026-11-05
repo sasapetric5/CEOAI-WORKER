@@ -65,9 +65,11 @@ test("reset only deletes the bound app and session namespace", async () => {
   const contentCraft = createAppMemoryStore({ kv, appId: "CONTENTCRAFT-APP", appPolicy: enabledPolicy });
   const aiForce = createAppMemoryStore({ kv, appId: "AIFORCE-APP", appPolicy: enabledPolicy });
   await contentCraft.write(sessionA, { history: [{ role: "user", content: "one" }] });
+  await contentCraft.write(sessionB, { history: [{ role: "user", content: "same app, other session" }] });
   await aiForce.write(sessionA, { history: [{ role: "user", content: "two" }] });
   await contentCraft.reset(sessionA);
   assert.equal((await contentCraft.read(sessionA)).history.length, 0);
+  assert.equal((await contentCraft.read(sessionB)).history[0].content, "same app, other session");
   assert.equal((await aiForce.read(sessionA)).history[0].content, "two");
 });
 
