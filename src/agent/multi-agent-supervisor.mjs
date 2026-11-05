@@ -45,8 +45,19 @@ export function createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoo
    selected=agentRegistry.search(task,{limit:5}).filter(a=>approvedIds.has(a.id)).slice(0,limit);
   }else selected=agentRegistry.search(task,{limit});
   selected=selected.filter(a=>a.skillId&&skillRegistry.get(a.skillId));
+  // A caller-selected specialist list is a strict app boundary: never escape it
+  // by silently substituting another profile or skill.
+  if(!selected.length&&agentIds===undefined){
+   const matches=skillRegistry.search(task.trim().slice(0,500),{limit});
+   selected=matches.map(skill=>({
+    id:"universal_skill_executor",role:"Universal skill executor",
+    description:"Executes one approved registry skill under the caller's capability and app boundaries.",
+    skillId:skill.id,score:skill.score??0,matchedTerms:skill.matchedTerms??[],
+    allowedToolIds:[...(skill.allowedToolIds??[])],universal:true
+   }));
+  }
   if(!selected.length)return {ok:false,code:"NO_RELEVANT_AGENT",agents:[]};
-  return {ok:true,agents:selected.map(a=>({id:a.id,role:a.role,description:a.description,skillId:a.skillId,score:a.score??null,matchedTerms:a.matchedTerms??[],allowedToolIds:a.allowedToolIds}))};
+  return {ok:true,agents:selected.map(a=>({id:a.id,role:a.role,description:a.description,skillId:a.skillId,score:a.score??null,matchedTerms:a.matchedTerms??[],allowedToolIds:a.allowedToolIds, ...(a.universal===true?{universal:true}:{})}))};
  }
  async function run({task,input={},limit=maxAgents,agentIds,planAgent,allowedToolIds=[],allowToolExecution=false,synthesize=null,maxToolCalls:budgetLimit=maxToolCalls}={}){
   if(allowToolExecution!==true)return {ok:false,code:"EXECUTION_NOT_APPROVED",agents:[],results:[]};
