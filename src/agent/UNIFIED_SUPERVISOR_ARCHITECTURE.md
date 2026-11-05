@@ -66,7 +66,7 @@ The evidence ledger for every upstream pattern, imported/adapted test, skill, ag
 
 Allowed lifecycle: candidate → license_verified → compatibility_reviewed → adapted → executed_pass / executed_fail; quarantine is a separate blocked state. Only executed_pass with evidence tied to a commit counts as passing. Test definitions, skipped tests, mocks and unexecuted upstream tests never count as successful tests.
 
-The existing `test/upstream/registry.json` is the upstream-source/adaptation manifest, not yet the full authoritative executed-test evidence ledger. The full Test Registry must be added without confusing source inventory with CI results.
+The existing `test/upstream/registry.json` remains the upstream-source/adaptation manifest. A separate `src/agent/test-registry.mjs` now defines the evidence ledger: records are append-only, and executed_pass requires a trusted CI evidence verifier plus commit/run/command/runtime/exit evidence. A production atomic storage adapter and trusted GitHub Actions evidence ingestion are still required.
 
 ## Unified execution path
 
