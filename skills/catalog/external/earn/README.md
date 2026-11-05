@@ -1,7 +1,7 @@
 # EARN and freelance service skills — intake pack
 
 - State: QUARANTINED / NOT RUNTIME-ACTIVE
-- Skill documents: 79
+- Skill documents: 87
 - Runtime seed additions: 0
 - Tool grants: 0
 - Discovery policy: WORLDWIDE by default for ordinary EARN, bounty, open-source, freelance, affiliate, and remote-work opportunities.
@@ -95,6 +95,15 @@
 - privacy-data-flow-inventory-planner — maps data collection, use, storage, sharing, retention, and deletion paths.
 
 - client-website-incident-postmortem-writer — prepares blameless, evidence-based website incident postmortems.
+
+- database-schema-review-service — reviews approved database schemas for integrity, maintainability, and migration risks.
+- accessibility-remediation-roadmap — turns accessibility findings into prioritized, testable remediation work.
+- saas-onboarding-friction-audit — audits SaaS onboarding flows for usability barriers and measurable improvements.
+- technical-runbook-authoring-service — creates operational runbooks from verified, owner-approved procedures.
+- structured-data-validation-service — reviews structured data for syntax, consistency, and visible-content alignment.
+- api-documentation-completeness-audit — checks API documentation coverage and accuracy against an approved contract.
+- software-dependency-update-impact-review — assesses dependency update compatibility, breaking changes, and test needs.
+- website-content-governance-audit — reviews content ownership, lifecycle, consistency, and maintenance controls.
 
 ## Free-only and permission limits
 No CashClaw npm package, Stripe integration, HYRVE marketplace, paid SEO tools, paid APIs, scripts, or third-party runtime is imported. No account credentials, cookies, secrets, or wallet material are used. All skills are research/draft-only and grant no tools. No applications, claims, issue comments, PRs, outreach, emails, posting, publishing, invoices, transfers, signing, or payouts are permitted. Use existing CEOAI Spider only for guarded public read-only research; do not create a second crawler.
