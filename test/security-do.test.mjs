@@ -10,6 +10,7 @@ function makeStore() {
       return callback({
         async get(key) { return values.get(key); },
         async put(key, value) { values.set(key, value); },
+        async delete(key) { values.delete(key); },
       });
     },
     async list({ prefix, limit }) {
@@ -53,4 +54,33 @@ test("Durable Object returns 404 for unsupported routes", async () => {
   const durable = new SecurityOrchestratorDO({ storage: makeStore() });
   const response = await durable.fetch(new Request("https://do/other", { method: "POST" }));
   assert.equal(response.status, 404);
+});
+
+test("Durable Object permits nonce reuse only after the replay retention window expires", async () => {
+  const storage = makeStore();
+  const durable = new SecurityOrchestratorDO({ storage });
+  const appId = "CONTENTCRAFT-APP";
+  const nonce = "nonce_do_expiry_123456789";
+  storage.values.set("nonce:" + appId + ":" + nonce, Math.floor(Date.now() / 1000) - 601);
+  const response = await durable.fetch(makeRequest({
+    appId,
+    nonce,
+    timestamp: Math.floor(Date.now() / 1000),
+  }));
+  assert.equal(response.status, 200);
+  assert.equal(storage.values.get("nonce:" + appId + ":" + nonce) > Math.floor(Date.now() / 1000) - 2, true);
+});
+
+test("Durable Object rejects a nonce record still inside its replay retention window", async () => {
+  const storage = makeStore();
+  const durable = new SecurityOrchestratorDO({ storage });
+  const appId = "CONTENTCRAFT-APP";
+  const nonce = "nonce_do_live_123456789";
+  storage.values.set("nonce:" + appId + ":" + nonce, Math.floor(Date.now() / 1000) - 30);
+  const response = await durable.fetch(makeRequest({
+    appId,
+    nonce,
+    timestamp: Math.floor(Date.now() / 1000),
+  }));
+  assert.equal(response.status, 409);
 });
