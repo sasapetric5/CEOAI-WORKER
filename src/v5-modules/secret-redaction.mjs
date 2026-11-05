@@ -1,6 +1,6 @@
 // Redact credentials before provider diagnostics can reach logs or error objects.
 const SECRET_ENV_NAME = /(?:API[_-]?KEY|[_-]KEY(?:[_-]?\d+)?|TOKEN|SECRET|PASSWORD|CREDENTIAL|ACCESS[_-]?TOKEN|AUTH)/i;
-const SECRET_FIELD = /\b(x-api-key|api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|bearer|token|client[_-]?secret|password|secret|key)\b\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;&]+)/ig;
+const SECRET_FIELD = /\b(x-api-key|api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|bearer|token|client[_-]?secret|password|secret|key)\b["']?\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;&]+)/ig;
 
 export function redactSensitiveText(value, env = {}, maxLength = 1200) {
   const limit = Number.isSafeInteger(maxLength) ? Math.max(0, Math.min(maxLength, 16_000)) : 1200;
