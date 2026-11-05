@@ -41,7 +41,7 @@ test("quota is the strictest limit across all four layers",()=>{
  assert.equal(r.resolve(request).ok,true);assert.equal(r.resolve(request).code,"CAPABILITY_QUOTA_EXCEEDED");
 });
 test("resource scopes restrict access to exact resource and descendants",()=>{
- const r=createCapabilityRegistry({grants:base().map(g=>({...g,resourceScopes:["site:example.com"]))});
+ const r=createCapabilityRegistry({grants:base().map(g=>({...g,resourceScopes:["site:example.com"]}))});
  assert.equal(r.resolve({...request,resource:"site:example.com/page"}).ok,true);
  assert.equal(r.resolve({...request,resource:"site:evil.com"}).code,"CAPABILITY_NOT_GRANTED");
 });
