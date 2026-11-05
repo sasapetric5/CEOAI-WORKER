@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { handleMemoryReset, readSessionId, withSessionLock } from "../src/v5-modules/session.mjs";
+import { createAppMemoryStore } from "../src/v5-modules/app-memory.mjs";
 
 const SID = "3f2b8c1e-5a4d-4e6f-9a7b-1c2d3e4f5a6b";
 const ORIGIN = "https://ceoai.dev";
@@ -330,3 +331,22 @@ test("reset request from a sibling subdomain is not implicitly trusted", async (
   assert.equal(kv.data.has(`memory:${SID}`), true);
 });
 
+
+
+test("CEOAI web-session reset never deletes application-scoped memory", async () => {
+  const { kv, env } = setup();
+  const appMemory = createAppMemoryStore({
+    kv,
+    appId: "CONTENTCRAFT-APP",
+    appPolicy: { enabled: true, memory: true },
+  });
+  await appMemory.write(SID, { history: [{ role: "user", content: "application-private-context" }] });
+  const response = await handleMemoryReset(request({
+    Origin: ORIGIN,
+    Cookie: `ceoai_session=${SID}`,
+  }), env);
+  assert.equal(response.status, 200);
+  assert.equal(kv.data.has(`memory:${SID}`), false);
+  assert.equal(kv.data.get(`session:${SID}`), "1");
+  assert.equal((await appMemory.read(SID)).history[0].content, "application-private-context");
+});
