@@ -27,7 +27,7 @@ function makeDO() {
   const instance = new WorkflowTaskDO({ storage });
   const stub = { fetch: (url, init) => instance.fetch(new Request(url, init)) };
   const namespace = { idFromName: id => id, get: () => stub };
-  return { instance, namespace, data };
+  return { instance, namespace, data, storage };
 }
 const state = (id, revision, status="ready") => ({version:1,id,revision,status,cursor:0,steps:[{id:"step",kind:"task"}],results:[],completedStepIds:[]});
 const OWNER_A = "owner_token_A_0123456789_abcdefgh";
@@ -227,4 +227,38 @@ test("39 idempotency payload hashing is independent of object key order", async 
   await store.completeEffect("task_39",OWNER_A,lease.fencingToken,"step:canonical",claim.payloadHash,{ok:true});
   const replay=await store.claimEffect("task_39",OWNER_A,lease.fencingToken,"step:canonical",{b:2,a:1});
   assert.equal(replay.replay,true);
+});
+
+
+test("40 checkpoint survives Durable Object instance recreation and resumes with a higher fence", async () => {
+  const { namespace, data, storage } = makeDO();
+  const firstStore = createCloudflareCheckpointStore(namespace);
+  const firstLease = await firstStore.acquireLease("task_eviction", OWNER_A, 5000);
+  await firstStore.put("task_eviction", {
+    version: 1, id: "task_eviction", revision: 0, status: "running",
+    cursor: 1, steps: [{ id: "step", kind: "task" }],
+    results: [{ stepId: "step", value: { checkpoint: "persisted" } }],
+    completedStepIds: ["step"],
+  }, { ownerToken: OWNER_A, fencingToken: firstLease.fencingToken });
+
+  // Simulate a Durable Object eviction/re-instantiation while retaining durable storage.
+  const restarted = new WorkflowTaskDO({ storage });
+  const restartedNamespace = {
+    idFromName: id => id,
+    get: () => ({ fetch: (url, init) => restarted.fetch(new Request(url, init)) }),
+  };
+  const recoveredStore = createCloudflareCheckpointStore(restartedNamespace);
+  const recovered = await recoveredStore.get("task_eviction");
+  assert.equal(recovered.revision, 0);
+  assert.deepEqual(recovered.results[0].value, { checkpoint: "persisted" });
+
+  data.set("lease", { ...data.get("lease"), expiresAt: Date.now() - 1 });
+  const nextLease = await recoveredStore.acquireLease("task_eviction", OWNER_B, 5000);
+  assert.equal(nextLease.fencingToken, firstLease.fencingToken + 1);
+  await assert.rejects(
+    () => recoveredStore.put("task_eviction", { ...recovered, revision: 1 }, {
+      ownerToken: OWNER_A, fencingToken: firstLease.fencingToken,
+    }),
+    /STALE_EXECUTOR/,
+  );
 });
