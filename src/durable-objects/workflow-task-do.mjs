@@ -33,8 +33,8 @@ export class WorkflowTaskDO {
             !Number.isSafeInteger(body.leaseMs) || body.leaseMs < MIN_LEASE_MS || body.leaseMs > MAX_LEASE_MS) {
           return json({ ok: false, code: "INVALID_LEASE_REQUEST" }, 400);
         }
-        const now = Date.now();
         const result = await this.ctx.storage.transaction(async txn => {
+          const now = Date.now();
           const current = await txn.get("lease");
           if (current && current.expiresAt > now) return { ok: false, code: "TASK_LEASE_HELD", expiresAt: current.expiresAt };
           const previous = await txn.get("fencingToken") || 0;
@@ -56,8 +56,8 @@ export class WorkflowTaskDO {
             !Number.isSafeInteger(body.leaseMs) || body.leaseMs < MIN_LEASE_MS || body.leaseMs > MAX_LEASE_MS) {
           return json({ ok: false, code: "INVALID_LEASE_REQUEST" }, 400);
         }
-        const now = Date.now();
         const result = await this.ctx.storage.transaction(async txn => {
+          const now = Date.now();
           const current = await txn.get("lease");
           if (!current || current.expiresAt <= now || current.ownerToken !== body.ownerToken ||
               current.fencingToken !== body.fencingToken) return { ok: false, code: "LEASE_NOT_OWNED" };
@@ -99,8 +99,8 @@ export class WorkflowTaskDO {
             new TextEncoder().encode(JSON.stringify(body.state)).byteLength > MAX_BYTES) {
           return json({ ok: false, code: "INVALID_CHECKPOINT" }, 400);
         }
-        const now = Date.now();
         const result = await this.ctx.storage.transaction(async txn => {
+          const now = Date.now();
           const lease = await txn.get("lease");
           if (!lease || lease.expiresAt <= now || lease.ownerToken !== body.ownerToken ||
               lease.fencingToken !== body.fencingToken) return { ok: false, code: "STALE_EXECUTOR" };
@@ -119,8 +119,8 @@ export class WorkflowTaskDO {
             typeof body.payloadHash !== "string" || !/^[a-f0-9]{64}$/.test(body.payloadHash)) {
           return json({ ok: false, code: "INVALID_EFFECT_REQUEST" }, 400);
         }
-        const now = Date.now();
         const result = await this.ctx.storage.transaction(async txn => {
+          const now = Date.now();
           const lease = await txn.get("lease");
           if (!lease || lease.expiresAt <= now || lease.ownerToken !== body.ownerToken ||
               lease.fencingToken !== body.fencingToken) return { ok: false, code: "STALE_EXECUTOR" };
@@ -148,8 +148,8 @@ export class WorkflowTaskDO {
             typeof body.effectKey !== "string" || !/^[A-Za-z0-9:_-]{1,160}$/.test(body.effectKey)) {
           return json({ ok: false, code: "INVALID_EFFECT_REQUEST" }, 400);
         }
-        const now = Date.now();
         const result = await this.ctx.storage.transaction(async txn => {
+          const now = Date.now();
           const lease = await txn.get("lease");
           if (!lease || lease.expiresAt <= now || lease.ownerToken !== body.ownerToken ||
               lease.fencingToken !== body.fencingToken) return { ok: false, code: "STALE_EXECUTOR" };
@@ -165,8 +165,8 @@ export class WorkflowTaskDO {
             !Object.hasOwn(body, "result") || new TextEncoder().encode(JSON.stringify(body.result)).byteLength > MAX_BYTES) {
           return json({ ok: false, code: "INVALID_EFFECT_REQUEST" }, 400);
         }
-        const now = Date.now();
         const result = await this.ctx.storage.transaction(async txn => {
+          const now = Date.now();
           const lease = await txn.get("lease");
           if (!lease || lease.expiresAt <= now || lease.ownerToken !== body.ownerToken ||
               lease.fencingToken !== body.fencingToken) return { ok: false, code: "STALE_EXECUTOR" };
