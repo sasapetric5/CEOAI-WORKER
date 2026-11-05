@@ -29,7 +29,7 @@ import { createToolRegistry } from "./src/agent/tool-registry.mjs";
 import { createAgentLoop } from "./src/agent/agent-loop.mjs";
 import { createBuiltinAgentSystem } from "./src/agent/agent-system.mjs";
 import { planResearchAcquisition, normalizeResearchUrl } from "./src/agent/research-acquisition-policy.mjs";
-import { enqueueSpiderCrawl, createSpiderQueueHandler } from "./src/integrations/spider-queue.mjs";
+import { enqueueSpiderCrawl, createSpiderQueueHandler, readSpiderResult } from "./src/integrations/spider-queue.mjs";
 import { SpiderJobLedgerDO } from "./src/durable-objects/spider-job-ledger-do.mjs";
 const handleSpiderQueue = createSpiderQueueHandler();
 const PROVIDER_TIMEOUT_MS = 25000;
