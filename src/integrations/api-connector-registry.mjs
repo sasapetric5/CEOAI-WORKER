@@ -15,7 +15,15 @@ const isPlain = value => value !== null && typeof value === "object" && !Array.i
 function validateArgs(operationId, args) {
   if (!isPlain(args)) return { ok: false, code: "CONNECTOR_INVALID_ARGUMENTS" };
   const allowed = new Set(["query", "tags", "page", "hitsPerPage"]);
-  if (Object.keys(args).some(key => !allowed.has(key))) return { ok: false, code: "CONNECTOR_UNKNOWN_ARGUMENT" };
+  const keys = Reflect.ownKeys(args);
+  if (keys.some(key => typeof key !== "string" || !allowed.has(key))) return { ok: false, code: "CONNECTOR_UNKNOWN_ARGUMENT" };
+  const safeArgs = Object.create(null);
+  for (const key of keys) {
+    const descriptor = Object.getOwnPropertyDescriptor(args, key);
+    if (!descriptor || !Object.hasOwn(descriptor, "value")) return { ok: false, code: "CONNECTOR_INVALID_ARGUMENTS" };
+    safeArgs[key] = descriptor.value;
+  }
+  args = safeArgs;
   if (operationId === "search" && (typeof args.query !== "string" || !args.query.trim() || args.query.length > 120)) {
     return { ok: false, code: Object.hasOwn(args, "query") ? "CONNECTOR_INVALID_ARGUMENT" : "CONNECTOR_MISSING_ARGUMENT" };
   }
