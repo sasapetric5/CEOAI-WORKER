@@ -165,13 +165,13 @@ test("HMAC app identity comes from the signed header, never a client JSON appId"
 });
 
 
-test("AI Force can enqueue Spider jobs under its explicit app-scoped grant", async () => {
+test("AI Force is denied Spider access before quota checks or queue submission", async () => {
   const env = makeEnv();
-  env.HMAC_ALLOWED_APPS = "CONTENTCRAFT-APP,AIFORCE-APP";
-  env.APP_SECRET_AIFORCE_APP = secret;
-  let rateLimitCalls = 0;
+  env.HMAC_ALLOWED_APPS = "CONTENTCRAFT-APP,RANKGEO-APP";
+  env.APP_SECRET_RANKGEO_APP = "rankgeo-independent-secret-at-least-32-bytes";
+  const rateLimitKeys = [];
   const queued = [];
-  env.RATE_LIMITER = { async limit(input) { rateLimitCalls++; assert.equal(input.key, "spider:AIFORCE-APP"); return { success: true }; } };
+  env.RATE_LIMITER = { async limit(input) { rateLimitKeys.push(input.key); return { success: true }; } };
   env.SPIDER_BROWSER_RUN_ACCOUNT_ID = "test-account";
   env.SPIDER_BROWSER_RUN_TOKEN = "test-token";
   env.SPIDER_QUEUE = { async send(message) { queued.push(message); } };
@@ -183,19 +183,17 @@ test("AI Force can enqueue Spider jobs under its explicit app-scoped grant", asy
     requestId: "123e4567-e89b-42d3-a456-426614174000"
   });
   const signedPayload = new TextEncoder().encode(payload);
-  const headers = await signedHeaders("nonce_aiforce_spider_granted_123", signedPayload, "AIFORCE-APP", "/v1/spider/crawl");
+  const headers = await signedHeaders("nonce_aiforce_spider_denied_123", signedPayload, "AIFORCE-APP", "/v1/spider/crawl");
   const response = await worker.fetch(new Request("https://ceoai.dev/v1/spider/crawl", {
     method: "POST",
     headers: { ...headers, "Content-Type": "application/json" },
     body: payload
   }), env);
 
-  assert.equal(response.status, 202);
-  assert.equal((await response.json()).status, "queued");
-  assert.equal(rateLimitCalls, 1);
-  assert.equal(queued.length, 1);
-  assert.equal(queued[0].appId, "AIFORCE-APP");
-  assert.equal(queued[0].id, "123e4567-e89b-42d3-a456-426614174000");
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).code, "CAPABILITY_NOT_GRANTED");
+  assert.deepEqual(rateLimitKeys, []);
+  assert.deepEqual(queued, []);
 });
 
 test("ContentCraft and AI Force have independent HMAC identities and no shared conversation memory", async () => {
@@ -474,12 +472,12 @@ test("Spider result endpoint enforces signed app identity and hides foreign resu
   assert.equal(ownerResponse.status, 200);
   assert.equal((await ownerResponse.json()).result.appId, ownerApp);
 
-  const foreignHeaders = await signedHeaders("nonce_spider_result_foreign_123", signed, "AIFORCE-APP", "/v1/spider/result");
+  const foreignHeaders = await signedHeaders("nonce_spider_result_foreign_123", signed, "RANKGEO-APP", "/v1/spider/result", "rankgeo-independent-secret-at-least-32-bytes");
   const foreignResponse = await worker.fetch(new Request("https://ceoai.dev/v1/spider/result", {
     method: "POST", headers: foreignHeaders, body: payload
   }), env);
   assert.equal(foreignResponse.status, 404);
   assert.equal((await foreignResponse.json()).code, "SPIDER_JOB_NOT_FOUND");
-  assert.deepEqual(env.__rateLimitKeys, ["spider-results:CONTENTCRAFT-APP", "spider-results:AIFORCE-APP"]);
+  assert.deepEqual(env.__rateLimitKeys, ["spider-results:CONTENTCRAFT-APP", "spider-results:RANKGEO-APP"]);
 });
 
