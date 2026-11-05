@@ -69,8 +69,11 @@ export function createCloudflareCheckpointStore(namespace) {
       });
       return true;
     },
-    async delete(id, expectedRevision) {
-      await request(id, "/delete", { expectedRevision });
+    async delete(id, expectedRevision, lease) {
+      if (!lease || typeof lease.ownerToken !== "string" || !Number.isSafeInteger(lease.fencingToken)) {
+        throw new TypeError("ACTIVE_WORKFLOW_LEASE_REQUIRED");
+      }
+      await request(id, "/delete", { expectedRevision, ownerToken: lease.ownerToken, fencingToken: lease.fencingToken });
       return true;
     },
   });
