@@ -50,7 +50,7 @@ export function createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoo
      plan:context=>planAgent({agent,skill:{id:skill.id,version:skill.version,description:skill.description},context,task,input,instructionTrust:"untrusted_reference_only"})
     });
    }catch{result={ok:false,code:"AGENT_INTERNAL_ERROR",steps:0,toolCalls:0};}
-   results.push({agentId:agent.id,role:agent.role,skillId:agent.skillId,ok:result?.ok===true,...(result?.ok===true?{output:result.output,steps:result.steps,toolCalls:result.toolCalls}:{code:typeof result?.code==="string"?result.code:"AGENT_FAILED",steps:result?.steps??0,toolCalls:result?.toolCalls??0})});
+   results.push({agentId:agent.id,role:agent.role,skillId:agent.skillId,ok:result?.ok===true,...(result?.ok===true?{output:result.output,steps:result.steps,toolCalls:result.toolCalls,budgetUsed:result.budgetUsed??0}:{code:typeof result?.code==="string"?result.code:"AGENT_FAILED",steps:result?.steps??0,toolCalls:result?.toolCalls??0,budgetUsed:result?.budgetUsed??0})});
   }
   const successful=results.filter(r=>r.ok);
   if(!successful.length)return {ok:false,code:"ALL_AGENTS_FAILED",agents:prepared.agents.map(a=>a.id),results,budgetUsed:results.reduce((n,r)=>Math.max(n,r.budgetUsed||0),0)};
