@@ -459,7 +459,7 @@ const invalidGatewayBodies = [
 for (const [label, body] of invalidGatewayBodies) {
  test("gateway rejects " + label + " before any model or memory access", async () => {
   const mock = mockFreeModel();
-  let storageCalls = 0;
+  const appMemoryCalls = [];
   try {
    const env = environment({ KV_MEMORY: {
     async get() { storageCalls++; throw new Error("must not access memory"); },
@@ -494,7 +494,7 @@ test("stateless gateway request never reads or writes app memory", async () => {
   const result = await response.json();
   if (response.status === 200) assert.equal(result.success, true);
   else assert.equal(result.code, "ALL_AGENTS_FAILED");
-  assert.equal(storageCalls, 0);
+  assert.equal(appMemoryCalls.length, 0);
   assert.ok(mock.calls > 0);
  } finally { mock.restore(); }
 });
