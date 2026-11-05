@@ -54,17 +54,17 @@ function makeMessage(body) {
   };
 }
 
-function setup(createCrawler) {
+function setup(createCrawler, sharedLedger = makeLedgerNamespace()) {
   const sent = [];
   const stored = new Map();
   const env = {
     SPIDER_QUEUE: { async send(body, options) { sent.push({ body, options }); } },
-    SPIDER_LEDGER: makeLedgerNamespace(),
+    SPIDER_LEDGER: sharedLedger,
     SPIDER_BROWSER_RUN_ACCOUNT_ID: "0123456789abcdef0123456789abcdef",
     SPIDER_BROWSER_RUN_TOKEN: "test-token",
     KV_MEMORY: { async put(key, value, options) { stored.set(key, { value, options }); } },
   };
-  return { env, sent, stored, handler: createSpiderQueueHandler({ createCrawler, now }) };
+  return { env, sent, stored, ledger: sharedLedger, handler: createSpiderQueueHandler({ createCrawler, now }) };
 }
 
 test("ledger claims a crawl once and never repeats an ambiguous Browser Run POST", async () => {
@@ -79,6 +79,11 @@ test("ledger claims a crawl once and never repeats an ambiguous Browser Run POST
   assert.equal(first.claimed, true);
   assert.equal(duplicate.claimed, false);
   assert.equal(duplicate.state.status, "starting");
+  const payloadConflict = await call("/job/claim-start", {
+    ...job, url: "https://other.example.com/", now: now() + 1,
+  });
+  assert.equal(payloadConflict.claimed, false);
+  assert.equal(payloadConflict.conflict, true);
   const stale = await call("/job/claim-start", { ...job, now: now() + 120_001 });
   assert.equal(stale.state.status, "start_unknown");
   const afterUnknown = await call("/job/claim-start", { ...job, now: now() + 180_000 });
@@ -195,4 +200,69 @@ test("malformed queue messages are retried for eventual DLQ inspection and never
   await handler({ messages: [message] }, env);
   assert.equal(calls, 0);
   assert.deepEqual(message.calls[0], { retry: { delaySeconds: 60 } });
+});
+
+
+test("daily Browser Run budget is shared across separate app consumers", async () => {
+  const sharedLedger = makeLedgerNamespace();
+  let starts = 0;
+  const createCrawler = () => ({
+    async startCrawl() { starts++; return { ok: true, jobId: browserId }; },
+  });
+  const appA = setup(createCrawler, sharedLedger);
+  const appB = setup(createCrawler, sharedLedger);
+  for (let i = 0; i < 5; i++) {
+    const jobId = `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
+    const message = makeMessage({
+      version: 1, kind: "start", id: jobId, url: "https://docs.example.com/",
+      pageLimit: 10, depth: 1, queuedAt: now(),
+    });
+    const current = i % 2 === 0 ? appA : appB;
+    await current.handler({ messages: [message] }, current.env);
+    assert.equal(message.calls[0], "ack");
+  }
+  const sixth = makeMessage({
+    version: 1, kind: "start", id: "00000000-0000-4000-8000-000000000099",
+    url: "https://docs.example.com/", pageLimit: 10, depth: 1, queuedAt: now(),
+  });
+  await appB.handler({ messages: [sixth] }, appB.env);
+  assert.equal(sixth.calls[0], "ack");
+  assert.equal(starts, 5);
+  const quotaContext = [...sharedLedger.contexts.entries()].find(([name]) => name.startsWith("quota:"));
+  assert.ok(quotaContext);
+  assert.equal(quotaContext[1].storage.values.get("quota").count, 5);
+});
+
+test("missing Browser Run configuration does not consume a daily quota slot", async () => {
+  const { env, ledger, handler } = setup(() => ({
+    async startCrawl() { throw new Error("must not be called"); },
+  }));
+  delete env.SPIDER_BROWSER_RUN_TOKEN;
+  const message = makeMessage({
+    version: 1, kind: "start", id, url: "https://docs.example.com/",
+    pageLimit: 10, depth: 1, queuedAt: now(),
+  });
+  await handler({ messages: [message] }, env);
+  assert.equal(message.calls[0], "ack");
+  assert.equal([...ledger.contexts.keys()].some(name => name.startsWith("quota:")), false);
+});
+
+test("reusing a request ID with a different URL never starts another crawl", async () => {
+  let starts = 0;
+  const crawler = {
+    async startCrawl() { starts++; return { ok: true, jobId: browserId }; },
+  };
+  const { env, handler } = setup(() => crawler);
+  const first = makeMessage({
+    version: 1, kind: "start", id, url: "https://docs.example.com/",
+    pageLimit: 10, depth: 1, queuedAt: now(),
+  });
+  await handler({ messages: [first] }, env);
+  const reused = makeMessage({
+    version: 1, kind: "start", id, url: "https://different.example.com/",
+    pageLimit: 10, depth: 1, queuedAt: now(),
+  });
+  await handler({ messages: [reused] }, env);
+  assert.equal(starts, 1);
+  assert.equal(reused.calls[0], "ack");
 });

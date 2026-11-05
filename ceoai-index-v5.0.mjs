@@ -27,6 +27,7 @@ import { createProviderAgentRuntime } from "./src/agent/provider-agent-runtime.m
 import { createToolRegistry } from "./src/agent/tool-registry.mjs";
 import { createAgentLoop } from "./src/agent/agent-loop.mjs";
 import { createBuiltinAgentSystem } from "./src/agent/agent-system.mjs";
+import { planResearchAcquisition, normalizeResearchUrl } from "./src/agent/research-acquisition-policy.mjs";
 import { enqueueSpiderCrawl, createSpiderQueueHandler } from "./src/integrations/spider-queue.mjs";
 import { SpiderJobLedgerDO } from "./src/durable-objects/spider-job-ledger-do.mjs";
 const handleSpiderQueue = createSpiderQueueHandler();
@@ -491,10 +492,8 @@ async function executeModel(provider, messages, timeoutMs = PROVIDER_TIMEOUT_MS)
 // Free-tier URL reader (Jina Reader). No API key required; rate-limited by Jina.
 // Only used when research intent includes a concrete HTTP(S) URL.
 async function fetchUrlWithJina(url) {
-  const cleaned = String(url || "").trim();
-  if (!/^https?:\/\/[^\s]+$/i.test(cleaned)) return null;
-  // Bound target length and reject obvious non-http schemes already handled above.
-  if (cleaned.length > 2000) return null;
+  const cleaned = normalizeResearchUrl(String(url || ""));
+  if (!cleaned) return null;
   const jinaUrl = `https://r.jina.ai/${cleaned}`;
   try {
     const response = await withTimeoutFetch(jinaUrl, {
@@ -1228,14 +1227,26 @@ export default {
         try {
           // Free-only discovery: no paid search APIs are called by the app gateway.
           // DuckDuckGo Instant Answer is a no-key, best-effort source; URL reading uses Jina Reader.
-          const urlMatch = task.match(/https?:\/\/[^\s<>"']+/i);
+          const jinaAvailable = env.JINA_READER_ENABLED !== "false" &&
+            !(await isInCooldown(env, "search-jina"));
+          const plan = planResearchAcquisition({
+            task,
+            jinaAvailable,
+            freeSearchAvailable: env.DUCKDUCKGO_ENABLED !== "false",
+            // Public app agents do not receive Browser Run capability automatically.
+            browserRunRequested: false,
+            browserRunAuthorized: false,
+            browserRunBudgetAvailable: false,
+          });
           let enriched = { text: "", source: null };
-          if (urlMatch && env.JINA_READER_ENABLED !== "false" &&
-              !(await isInCooldown(env, "search-jina"))) {
-            const pageText = await fetchUrlWithJina(urlMatch[0]);
+          if (plan.strategy === "jina_read") {
+            const pageText = await fetchUrlWithJina(plan.url);
             if (pageText) enriched = { text: pageText, source: "jina-reader" };
-          } else {
-            const text = await fetchSearchDuckDuckGo(env, task);
+          }
+          // A failed or disabled direct read falls back to no-key web discovery.
+          if (!enriched.text &&
+              (plan.strategy === "duckduckgo_search" || plan.fallbackStrategy === "duckduckgo_search")) {
+            const text = await fetchSearchDuckDuckGo(env, plan.query || task);
             if (text) enriched = { text, source: "duckduckgo" };
           }
           if (typeof enriched?.text === "string" && enriched.text.trim()) {

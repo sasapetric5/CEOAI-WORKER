@@ -22,9 +22,10 @@ No additional Queue resource is intended. Wrangler declares one-message batches,
 
 - HTTPS only, public host validation, same-origin crawl, no JS rendering.
 - Maximum 20 pages and depth 2 per crawl.
-- Atomic five-start daily quota in a dedicated Durable Object.
-- Per-job Durable Object ledger with atomic state transitions.
-- A duplicate start delivery never issues a second Browser Run POST.
+- Atomic five-start daily quota in a dedicated Durable Object, shared across all app callers.
+- Configuration is checked before a quota slot is claimed; a transient quota-ledger failure cannot strand a job start lease.
+- Per-job Durable Object ledger with atomic state transitions and request-payload consistency checks.
+- A duplicate start delivery never issues a second Browser Run POST; reusing a request ID with a different URL or crawl limit is rejected internally.
 - A network-ambiguous Browser Run start is marked start_unknown; automatic POST replay is forbidden.
 - Poll messages are delayed 60 seconds and bounded to 60 checks.
 - Results are limited to 20 Markdown records, 20,000 characters per record and 512 KB serialized output; stored for seven days.

@@ -101,11 +101,48 @@ export function createSpiderQueueHandler({
   if (typeof createCrawler !== "function" || typeof now !== "function") throw new TypeError("INVALID_SPIDER_QUEUE_DEPENDENCY");
 
   async function processStart(message, env, ledger) {
+    // Validate configuration before claiming scarce daily crawl capacity.
+    let crawler;
+    try { crawler = makeCrawler(env, createCrawler); }
+    catch {
+      const unconfigured = await ledger("job:" + message.id, "/job/claim-start", {
+        id: message.id, url: message.url, pageLimit: message.pageLimit, depth: message.depth, now: now(),
+      });
+      if (unconfigured.claimed) {
+        await ledger("job:" + message.id, "/job/mark-failed", {
+          id: message.id, code: "SPIDER_CONFIGURATION_MISSING", now: now(),
+        });
+      }
+      return;
+    }
+
+    // One account-wide date bucket is shared by all app callers and queue consumers.
+    // Claim quota before creating a start lease so a quota-ledger outage cannot strand a job.
+    const quotaDate = utcDate(now());
+    const quota = await ledger("quota:" + quotaDate, "/quota/claim", {
+      date: quotaDate, id: message.id, limit: DAILY_JOB_LIMIT, now: now(),
+    });
+    if (!quota.allowed) {
+      const overLimit = await ledger("job:" + message.id, "/job/claim-start", {
+        id: message.id, url: message.url, pageLimit: message.pageLimit, depth: message.depth, now: now(),
+      });
+      if (overLimit.claimed) {
+        await ledger("job:" + message.id, "/job/mark-failed", {
+          id: message.id, code: "SPIDER_DAILY_LIMIT_REACHED", now: now(),
+        });
+      }
+      return;
+    }
+
     const claimed = await ledger("job:" + message.id, "/job/claim-start", {
       id: message.id, url: message.url, pageLimit: message.pageLimit, depth: message.depth, now: now(),
     });
-    const state = claimed.state;
     if (!claimed.claimed) {
+      if (claimed.conflict) {
+        console.warn("CEOAI_SPIDER", JSON.stringify({ event: "idempotency_payload_conflict" }));
+        return;
+      }
+      const state = claimed.state;
       if (!state) throw new Error("SPIDER_JOB_STATE_MISSING");
       if (state.status === "running") {
         await env.SPIDER_QUEUE.send({ version: 1, kind: "poll", id: message.id, attempt: 0 }, { delaySeconds: POLL_DELAY_SECONDS });
@@ -113,25 +150,6 @@ export function createSpiderQueueHandler({
       }
       if (["completed", "failed", "start_unknown"].includes(state.status)) return;
       throw Object.assign(new Error("SPIDER_START_IN_PROGRESS"), { code: "SPIDER_START_IN_PROGRESS" });
-    }
-
-    const quota = await ledger("quota:" + utcDate(now()), "/quota/claim", {
-      date: utcDate(now()), id: message.id, limit: DAILY_JOB_LIMIT, now: now(),
-    });
-    if (!quota.allowed) {
-      await ledger("job:" + message.id, "/job/mark-failed", {
-        id: message.id, code: "SPIDER_DAILY_LIMIT_REACHED", now: now(),
-      });
-      return;
-    }
-
-    let crawler;
-    try { crawler = makeCrawler(env, createCrawler); }
-    catch {
-      await ledger("job:" + message.id, "/job/mark-failed", {
-        id: message.id, code: "SPIDER_CONFIGURATION_MISSING", now: now(),
-      });
-      return;
     }
 
     let started;

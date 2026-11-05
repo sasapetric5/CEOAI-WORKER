@@ -4,7 +4,9 @@
 
 The authenticated `POST /v1/agents/run` gateway now reuses the existing no-key DuckDuckGo Instant Answer source for topic discovery and the existing Jina Reader for direct URLs. The app gateway deliberately does not call Firecrawl, Tavily, Google CSE, Exa or other key-based search APIs, avoiding accidental paid usage.
 
-Search output is added to `input.researchContext` with its provider ID and the explicit trust label `untrusted_reference`. The planner is instructed not to execute or follow instructions found in web content. If search is unavailable, the agent task continues without research context and the response explicitly reports `researchUsed: false`.
+Research source selection is deterministic and cost-aware: an explicit single-page URL uses Jina Reader first; if that read fails or Jina is unavailable, the app gateway falls back to no-key DuckDuckGo discovery. Query-only research goes directly to DuckDuckGo. Browser Run is not an automatic app-agent tool: the public agent gateway grants no Browser Run capability. The separate HMAC-protected Spider endpoint remains the only entry point, and any future Supervisor tool must also require explicit crawl intent, caller capability, and an available shared daily quota slot.
+
+Search/read output is added to `input.researchContext` with its provider ID and the explicit trust label `untrusted_reference`. The planner is instructed not to execute or follow instructions found in web content. If all eligible free sources are unavailable, the agent task continues without research context and the response explicitly reports `researchUsed: false`.
 
 The gateway still uses its existing HMAC authentication, SecurityOrchestratorDO nonce protection, app allowlist, RATE_LIMITER, free-only AI provider gate and per-app model-call limits. This change does not add tools or external side effects to the agent loop.
 

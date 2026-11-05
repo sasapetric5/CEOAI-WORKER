@@ -61,7 +61,10 @@ export class SpiderJobLedgerDO {
         await txn.put("state", state);
         return { claimed: true, state };
       }
-      if (state.id !== input.id) return { claimed: false, conflict: true };
+      if (state.id !== input.id || state.url !== input.url ||
+          state.pageLimit !== input.pageLimit || state.depth !== input.depth) {
+        return { claimed: false, conflict: true };
+      }
       if (state.status === "starting" && input.now - state.updatedAt >= START_LEASE_MS) {
         state = { ...state, status: "start_unknown", errorCode: "START_OUTCOME_UNKNOWN", updatedAt: input.now };
         await txn.put("state", state);

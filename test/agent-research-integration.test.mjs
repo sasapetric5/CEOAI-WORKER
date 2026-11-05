@@ -145,3 +145,52 @@ test("agent gateway continues safely when no search provider returns results", a
     globalThis.fetch = originalFetch;
   }
 });
+
+
+test("agent gateway falls back to free discovery when Jina cannot read a supplied URL", async () => {
+  const originalFetch = globalThis.fetch;
+  let searchCalls = 0;
+  let sawResearch = false;
+  globalThis.fetch = async (url, options) => {
+    const target = String(url);
+    if (target.startsWith("https://r.jina.ai/")) throw new Error("Jina temporarily unavailable");
+    if (target.startsWith("https://api.duckduckgo.com/")) {
+      searchCalls++;
+      return Response.json({
+        AbstractText: "Fallback research excerpt.", AbstractURL: "https://docs.example.com/", RelatedTopics: [],
+      });
+    }
+    if (target === "https://openrouter.ai/api/v1/chat/completions") {
+      const body = JSON.parse(options.body);
+      const synthesis = body.messages[0].content.includes("završni koordinator");
+      if (!synthesis) {
+        const plan = JSON.parse(body.messages[1].content);
+        const context = plan.context?.input?.researchContext ?? plan.originalInput?.researchContext;
+        sawResearch = context?.source === "duckduckgo" &&
+          context?.trust === "untrusted_reference" &&
+          context?.content?.includes("Fallback research excerpt.") === true;
+      }
+      const content = synthesis
+        ? JSON.stringify({ output: "Fallback izvor je iskorišćen." })
+        : JSON.stringify({ type: "final", output: "Istraživanje je nastavljeno drugim besplatnim izvorom." });
+      return Response.json({ choices: [{ message: { content } }] });
+    }
+    throw new Error("Unexpected network destination");
+  };
+  try {
+    const response = await worker.fetch(await signedRequest({
+      task: "Pročitaj i istraži https://docs.example.com/guide",
+      input: {},
+      limit: 1,
+    }), environment({ DUCKDUCKGO_ENABLED: "true" }));
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.success, true);
+    assert.equal(data.researchUsed, true);
+    assert.equal(data.researchSource, "duckduckgo");
+    assert.equal(searchCalls, 1);
+    assert.equal(sawResearch, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
