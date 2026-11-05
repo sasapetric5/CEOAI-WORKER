@@ -2,7 +2,29 @@
 import {createAgentBudget} from "./agent-loop.mjs";
 const MAX_CONTEXT_BYTES=8192;
 const plain=v=>v!==null&&typeof v==="object"&&!Array.isArray(v)&&(Object.getPrototypeOf(v)===Object.prototype||Object.getPrototypeOf(v)===null);
-const safeJson=value=>{try{const json=JSON.stringify(value);return typeof json==="string"&&new TextEncoder().encode(json).byteLength<=MAX_CONTEXT_BYTES?json:null;}catch{return null;}};
+function safeSnapshot(value, seen = new WeakSet(), depth = 0) {
+ if(value===null||typeof value==="string"||typeof value==="boolean")return value;
+ if(typeof value==="number")return Number.isFinite(value)?value:null;
+ if(typeof value!=="object"||depth>16||seen.has(value))return undefined;
+ const array=Array.isArray(value);
+ if(!array&&!plain(value))return undefined;
+ seen.add(value);
+ const keys=Reflect.ownKeys(value);
+ if(keys.some(key=>typeof key!=="string"||(array&&key!=="length"&&!/^(0|[1-9]\\d*)$/.test(key))))return undefined;
+ const output=array?[]:Object.create(null);
+ for(const key of keys){
+  if(array&&key==="length")continue;
+  const descriptor=Object.getOwnPropertyDescriptor(value,key);
+  if(!descriptor||!Object.hasOwn(descriptor,"value")||!descriptor.enumerable)return undefined;
+  const child=safeSnapshot(descriptor.value,seen,depth+1);
+  if(child===undefined)return undefined;
+  if(array)output[Number(key)]=child;else output[key]=child;
+ }
+ seen.delete(value);
+ if(array&&output.length!==value.length)return undefined;
+ return output;
+}
+const safeJson=value=>{try{const snapshot=safeSnapshot(value);if(snapshot===undefined)return null;const json=JSON.stringify(snapshot);return typeof json==="string"&&new TextEncoder().encode(json).byteLength<=MAX_CONTEXT_BYTES?json:null;}catch{return null;}};
 export function createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoop,maxAgents=3,maxToolCalls=4}={}){
  if(!agentRegistry||typeof agentRegistry.search!=="function"||typeof agentRegistry.get!=="function")throw new TypeError("AGENT_REGISTRY_REQUIRED");
  if(!skillRegistry||typeof skillRegistry.get!=="function"||typeof skillRegistry.search!=="function")throw new TypeError("SKILL_REGISTRY_REQUIRED");
@@ -33,7 +55,8 @@ export function createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoo
   if(!Array.isArray(allowedToolIds)||allowedToolIds.some(id=>typeof id!=="string"))return {ok:false,code:"INVALID_CALLER_CAPABILITIES",agents:[],results:[]};
   if(synthesize!==null&&typeof synthesize!=="function")return {ok:false,code:"INVALID_SYNTHESIZER",agents:[],results:[]};
   if(!Number.isSafeInteger(budgetLimit)||budgetLimit<1||budgetLimit>maxToolCalls)return {ok:false,code:"INVALID_SHARED_BUDGET",agents:[],results:[]};
-  if(safeJson(input)===null)return {ok:false,code:"INPUT_TOO_LARGE_OR_INVALID",agents:[],results:[]};
+  const safeInput=safeSnapshot(input);
+  if(safeInput===undefined||safeJson(safeInput)===null)return {ok:false,code:"INPUT_TOO_LARGE_OR_INVALID",agents:[],results:[]};
   const prepared=await prepare({task,limit,agentIds});
   if(!prepared.ok)return {...prepared,results:[]};
   const budget=createAgentBudget({maxToolCalls:budgetLimit}),results=[];
@@ -41,13 +64,13 @@ export function createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoo
    const skill=skillRegistry.get(agent.skillId);
    if(!skill){results.push({agentId:agent.id,ok:false,code:"SKILL_NOT_FOUND"});continue;}
    const effectiveTools=allowedToolIds.filter(id=>agent.allowedToolIds.includes(id)&&skill.allowedToolIds.includes(id));
-   const runInput={task,input,agentId:agent.id,role:agent.role};
+   const runInput={task,input:safeInput,agentId:agent.id,role:agent.role};
    if(safeJson(runInput)===null){results.push({agentId:agent.id,ok:false,code:"AGENT_CONTEXT_TOO_LARGE"});continue;}
    let result;
    try{
     result=await agentLoop.run({
      skillId:agent.skillId,input:runInput,allowToolExecution:true,allowedToolIds:effectiveTools,budget,
-     plan:context=>planAgent({agent,skill:{id:skill.id,version:skill.version,description:skill.description},context,task,input,instructionTrust:"untrusted_reference_only"})
+     plan:context=>planAgent({agent,skill:{id:skill.id,version:skill.version,description:skill.description},context,task,input:safeInput,instructionTrust:"untrusted_reference_only"})
     });
    }catch{result={ok:false,code:"AGENT_INTERNAL_ERROR",steps:0,toolCalls:0};}
    results.push({agentId:agent.id,role:agent.role,skillId:agent.skillId,ok:result?.ok===true,...(result?.ok===true?{output:result.output,steps:result.steps,toolCalls:result.toolCalls,budgetUsed:result.budgetUsed??0}:{code:typeof result?.code==="string"?result.code:"AGENT_FAILED",steps:result?.steps??0,toolCalls:result?.toolCalls??0,budgetUsed:result?.budgetUsed??0})});
