@@ -1757,3 +1757,6 @@ export { SpiderJobLedgerDO };
 export { WorkflowTaskDO } from "./src/durable-objects/workflow-task-do.mjs";
 
 export { createCloudflareDurableExecutionEngine } from "./src/agent/cloudflare-durable-runtime.mjs";
+
+export { createCapabilityRegistry } from "./src/agent/capability-registry.mjs";
+export { createTestRegistry, createMemoryTestEvidenceStore } from "./src/agent/test-registry.mjs";
