@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { SpiderJobLedgerDO } from "../src/durable-objects/spider-job-ledger-do.mjs";
-import { createSpiderQueueHandler, enqueueSpiderCrawl } from "../src/integrations/spider-queue.mjs";
+import { createSpiderQueueHandler, enqueueSpiderCrawl, readSpiderResult } from "../src/integrations/spider-queue.mjs";
 
 const id = "123e4567-e89b-42d3-a456-426614174000";
 const browserId = "crawl_job_12345678";
@@ -66,6 +66,30 @@ function setup(createCrawler, sharedLedger = makeLedgerNamespace()) {
   };
   return { env, sent, stored, ledger: sharedLedger, handler: createSpiderQueueHandler({ createCrawler, now }) };
 }
+
+test("Spider results can only be read from the authenticated app namespace", async () => {
+  const ns = makeLedgerNamespace();
+  const jobId = "123e4567-e89b-42d3-a456-426614174020";
+  const appId = "CONTENTCRAFT-APP";
+  const stub = ns.get("job:" + appId + ":" + jobId);
+  const post = (path, body) => stub.fetch(new Request("https://ledger.test" + path, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+  })).then(response => response.json());
+  await post("/job/claim-start", { appId, id: jobId, url: "https://docs.example.com/", pageLimit: 1, depth: 0, now: now() });
+  await post("/job/mark-running", { appId, id: jobId, browserJobId: browserId, now: now() });
+  const resultKey = "spider:result:" + appId + ":" + jobId;
+  await post("/job/mark-complete", { appId, id: jobId, resultKey, recordCount: 1, now: now() });
+  const resultDoc = { appId, jobId, records: [{ url: "https://docs.example.com/" }] };
+  const kv = { async get(key) { return key === resultKey ? JSON.stringify(resultDoc) : null; } };
+  const env = { SPIDER_LEDGER: ns, KV_MEMORY: kv };
+  const own = await readSpiderResult(env, { appId, jobId });
+  assert.equal(own.ok, true);
+  assert.equal(own.result.records.length, 1);
+  const foreign = await readSpiderResult(env, { appId: "AIFORCE-APP", jobId });
+  assert.deepEqual(foreign, { ok: false, code: "SPIDER_JOB_NOT_FOUND" });
+  const invalid = await readSpiderResult(env, { appId: "UNKNOWN-APP", jobId });
+  assert.deepEqual(invalid, { ok: false, code: "SPIDER_APP_NOT_ALLOWED" });
+});
 
 test("ledger claims a crawl once and never repeats an ambiguous Browser Run POST", async () => {
   const ctx = { storage: makeStorage() };
