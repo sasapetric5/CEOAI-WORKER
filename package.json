@@ -7,7 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "check": "node --check ceoai-index-v5.0.mjs && node --check src/v5-modules/pii-shield.mjs && node --check src/v5-modules/hmac-auth.mjs && node --check src/v5-modules/app-memory.mjs && node --check src/openai-compat.mjs && node --check src/durable-objects/security-do.mjs && node --check src/agent/durable-execution.mjs && node --check src/agent/cloudflare-checkpoint-store.mjs && node --check src/durable-objects/workflow-task-do.mjs && node --check src/agent/advanced-orchestrator.mjs",
+    "check": "node --check ceoai-index-v5.0.mjs && node --check src/v5-modules/pii-shield.mjs && node --check src/v5-modules/hmac-auth.mjs && node --check src/v5-modules/app-memory.mjs && node --check src/openai-compat.mjs && node --check src/durable-objects/security-do.mjs && node --check src/agent/durable-execution.mjs && node --check src/agent/cloudflare-checkpoint-store.mjs && node --check src/durable-objects/workflow-task-do.mjs && node --check src/agent/advanced-orchestrator.mjs && node --check src/agent/capability-registry.mjs && node --check src/agent/test-registry.mjs && node --check src/agent/cloudflare-durable-runtime.mjs",
     "test": "node test-ceoai-v5.0.mjs && node --test test/*.test.mjs",
     "check:secrets": "node scripts/check-no-secrets.mjs",
     "verify": "npm run check:secrets && npm run check && npm test"
