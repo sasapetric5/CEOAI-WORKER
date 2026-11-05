@@ -1,7 +1,7 @@
 # EARN and freelance service skills — intake pack
 
 - State: QUARANTINED / NOT RUNTIME-ACTIVE
-- Skill documents: 31
+- Skill documents: 39
 - Runtime seed additions: 0
 - Tool grants: 0
 - Discovery policy: WORLDWIDE by default for ordinary EARN, bounty, open-source, freelance, affiliate, and remote-work opportunities.
@@ -39,6 +39,14 @@
 - seo-audit-client-report-builder — turns verified SEO/AEO findings into client-ready reports.
 - bounty-reward-terms-verifier — verifies official bounty rewards, eligibility, deadlines, and payout terms.
 - spreadsheet-cleanup-service-planner — scopes safe spreadsheet cleanup and reporting services.
+- ai-agent-prototype-planner — plans a bounded client AI-agent proof of concept.
+- client-code-maintenance-estimator — scopes and estimates client code maintenance work.
+- web-app-delivery-planner — plans testable web application delivery and handoff.
+- rest-api-integration-planner — maps documented REST API integrations and failure handling.
+- webhook-integration-validator — reviews webhook security, retries, and idempotency.
+- api-contract-test-designer — designs synthetic API contract and compatibility tests.
+- business-process-automation-planner — designs measurable, human-reviewed business automation.
+- open-source-good-first-issue-qualifier — qualifies beginner-friendly public issues and distinguishes paid from unpaid work.
 
 ## Free-only and permission limits
 No CashClaw npm package, Stripe integration, HYRVE marketplace, paid SEO tools, paid APIs, scripts, or third-party runtime is imported. No account credentials, cookies, secrets, or wallet material are used. All skills are research/draft-only and grant no tools. No applications, claims, issue comments, PRs, outreach, emails, posting, publishing, invoices, transfers, signing, or payouts are permitted. Use existing CEOAI Spider only for guarded public read-only research; do not create a second crawler.
