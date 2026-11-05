@@ -5,18 +5,23 @@ import { createCloudflareCheckpointStore } from "../src/agent/cloudflare-checkpo
 
 function makeDO() {
   const data = new Map();
+  let transactionTail = Promise.resolve();
   const storage = {
     async get(k) { return data.get(k) ?? null; },
-    async transaction(fn) {
-      const staged = new Map(data);
-      const txn = {
-        get: async k => staged.get(k) ?? null,
-        put: async (k,v) => staged.set(k, structuredClone(v)),
-        delete: async k => staged.delete(k),
-      };
-      const result = await fn(txn);
-      data.clear(); for (const [k,v] of staged) data.set(k,v);
-      return result;
+    transaction(fn) {
+      const run = transactionTail.then(async () => {
+        const staged = new Map(data);
+        const txn = {
+          get: async k => staged.get(k) ?? null,
+          put: async (k,v) => staged.set(k, structuredClone(v)),
+          delete: async k => staged.delete(k),
+        };
+        const result = await fn(txn);
+        data.clear(); for (const [k,v] of staged) data.set(k,v);
+        return result;
+      });
+      transactionTail = run.catch(() => {});
+      return run;
     },
   };
   const instance = new WorkflowTaskDO({ storage });
@@ -40,3 +45,7 @@ test("11 adapter surfaces revision conflicts", async () => { const {namespace}=m
 test("12 adapter validates its binding", () => { assert.throws(()=>createCloudflareCheckpointStore(null),/WORKFLOW_TASK_BINDING_REQUIRED/); });
 test("13 deletes only the expected revision", async () => { const {namespace}=makeDO(); const store=createCloudflareCheckpointStore(namespace); await store.put("task_13",state("task_13",0)); await store.delete("task_13",0); assert.equal(await store.get("task_13"),null); });
 test("14 rejects delete with stale revision", async () => { const {namespace}=makeDO(); const store=createCloudflareCheckpointStore(namespace); await store.put("task_14",state("task_14",0)); await assert.rejects(()=>store.delete("task_14",1),/CHECKPOINT_CONFLICT/); });
+
+test("15 concurrent writes using one revision allow exactly one winner", async () => { const {instance}=makeDO(); const send=status=>instance.fetch(new Request("https://x/put",{method:"POST",body:JSON.stringify({id:"task_15",expectedRevision:-1,state:state("task_15",0,status)})})); const results=await Promise.all([send("ready"),send("running")]); assert.deepEqual(results.map(r=>r.status).sort(),[200,409]); });
+test("16 rejects extra checkpoint envelope fields", async () => { const {instance}=makeDO(); const r=await instance.fetch(new Request("https://x/put",{method:"POST",body:JSON.stringify({id:"task_16",expectedRevision:-1,state:state("task_16",0),admin:true})})); assert.equal(r.status,400); });
+test("17 rejects extra delete envelope fields", async () => { const {instance}=makeDO(); const r=await instance.fetch(new Request("https://x/delete",{method:"POST",body:JSON.stringify({id:"task_17",expectedRevision:0,force:true})})); assert.equal(r.status,400); });
