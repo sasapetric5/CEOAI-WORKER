@@ -181,8 +181,16 @@ export class WorkflowTaskDO {
         return json(result, result.ok ? 200 : 409);
       }
       if (path === "/delete") {
-        if (Object.keys(body).length !== 2 || !Number.isSafeInteger(body.expectedRevision)) return json({ ok: false, code: "INVALID_REQUEST" }, 400);
+        if (Object.keys(body).length !== 4 || !Number.isSafeInteger(body.expectedRevision) ||
+            typeof body.ownerToken !== "string" || !OWNER_TOKEN.test(body.ownerToken) ||
+            !Number.isSafeInteger(body.fencingToken) || body.fencingToken < 1) {
+          return json({ ok: false, code: "INVALID_REQUEST" }, 400);
+        }
         const result = await this.ctx.storage.transaction(async txn => {
+          const now = Date.now();
+          const lease = await txn.get("lease");
+          if (!lease || lease.expiresAt <= now || lease.ownerToken !== body.ownerToken ||
+              lease.fencingToken !== body.fencingToken) return { ok: false, code: "STALE_EXECUTOR" };
           const current = await txn.get("checkpoint");
           if (!current || current.revision !== body.expectedRevision) return { ok: false, code: "CHECKPOINT_CONFLICT" };
           await txn.delete("checkpoint");
