@@ -2,6 +2,7 @@
 const JOB_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const QUOTA_TTL_MS = 2 * 24 * 60 * 60 * 1000;
 const START_LEASE_MS = 120_000;
+const APP_ID = /^[A-Z][A-Z0-9_-]{1,63}$/;
 const JOB_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const plain = value => value !== null && typeof value === "object" && !Array.isArray(value) &&
   (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
@@ -29,6 +30,7 @@ export class SpiderJobLedgerDO {
     if (!plain(input)) return fail("INVALID_REQUEST");
 
     try {
+      if ((path.startsWith("/job/") || path === "/quota/claim") && !APP_ID.test(input.appId || "")) return fail("INVALID_APP_ID");
       if (path === "/job/claim-start") return await this.claimStart(input);
       if (path === "/job/get") return await this.getJob(input);
       if (path === "/job/mark-running") return await this.markRunning(input);
@@ -47,21 +49,21 @@ export class SpiderJobLedgerDO {
         !Number.isSafeInteger(input.pageLimit) || input.pageLimit < 1 || input.pageLimit > 20 ||
         !Number.isSafeInteger(input.depth) || input.depth < 0 || input.depth > 2 ||
         !Number.isSafeInteger(input.now) || input.now < 0 ||
-        Object.keys(input).some(key => !["id", "url", "pageLimit", "depth", "now"].includes(key))) {
+        Object.keys(input).some(key => !["appId", "id", "url", "pageLimit", "depth", "now"].includes(key))) {
       return fail("INVALID_JOB");
     }
     const result = await this.ctx.storage.transaction(async txn => {
       let state = await txn.get("state");
       if (!state) {
         state = {
-          version: 1, id: input.id, url: input.url, pageLimit: input.pageLimit, depth: input.depth,
+          version: 1, appId: input.appId, id: input.id, url: input.url, pageLimit: input.pageLimit, depth: input.depth,
           status: "starting", createdAt: input.now, updatedAt: input.now,
           browserJobId: null, errorCode: null, resultKey: null, recordCount: 0,
         };
         await txn.put("state", state);
         return { claimed: true, state };
       }
-      if (state.id !== input.id || state.url !== input.url ||
+      if (state.appId !== input.appId || state.id !== input.id || state.url !== input.url ||
           state.pageLimit !== input.pageLimit || state.depth !== input.depth) {
         return { claimed: false, conflict: true };
       }
@@ -76,19 +78,19 @@ export class SpiderJobLedgerDO {
   }
 
   async getJob(input) {
-    if (!JOB_ID.test(input.id || "") || Object.keys(input).some(key => key !== "id")) return fail("INVALID_JOB");
+    if (!JOB_ID.test(input.id || "") || Object.keys(input).some(key => !["appId", "id"].includes(key))) return fail("INVALID_JOB");
     const state = await this.ctx.storage.get("state");
-    if (!state || state.id !== input.id) return json({ ok: true, state: null });
+    if (!state || state.appId !== input.appId || state.id !== input.id) return json({ ok: true, state: null });
     return json({ ok: true, state });
   }
 
   async markRunning(input) {
     if (!JOB_ID.test(input.id || "") || typeof input.browserJobId !== "string" ||
         !/^[A-Za-z0-9_-]{8,80}$/.test(input.browserJobId) || !Number.isSafeInteger(input.now) ||
-        Object.keys(input).some(key => !["id", "browserJobId", "now"].includes(key))) return fail("INVALID_JOB");
+        Object.keys(input).some(key => !["appId", "id", "browserJobId", "now"].includes(key))) return fail("INVALID_JOB");
     const result = await this.ctx.storage.transaction(async txn => {
       const state = await txn.get("state");
-      if (!state || state.id !== input.id) return { ok: false, code: "JOB_NOT_FOUND" };
+      if (!state || state.appId !== input.appId || state.id !== input.id) return { ok: false, code: "JOB_NOT_FOUND" };
       if (state.status === "running" && state.browserJobId === input.browserJobId) return { ok: true, state };
       if (state.status !== "starting") return { ok: false, code: "INVALID_JOB_TRANSITION" };
       const next = { ...state, status: "running", browserJobId: input.browserJobId, updatedAt: input.now };
@@ -102,10 +104,10 @@ export class SpiderJobLedgerDO {
   async markUnknown(input) {
     if (!JOB_ID.test(input.id || "") || typeof input.code !== "string" ||
         !/^[A-Z][A-Z0-9_]{0,63}$/.test(input.code) || !Number.isSafeInteger(input.now) ||
-        Object.keys(input).some(key => !["id", "code", "now"].includes(key))) return fail("INVALID_JOB");
+        Object.keys(input).some(key => !["appId", "id", "code", "now"].includes(key))) return fail("INVALID_JOB");
     const result = await this.ctx.storage.transaction(async txn => {
       const state = await txn.get("state");
-      if (!state || state.id !== input.id) return { ok: false, code: "JOB_NOT_FOUND" };
+      if (!state || state.appId !== input.appId || state.id !== input.id) return { ok: false, code: "JOB_NOT_FOUND" };
       if (state.status === "start_unknown") return { ok: true, state };
       if (state.status !== "starting") return { ok: false, code: "INVALID_JOB_TRANSITION" };
       const next = { ...state, status: "start_unknown", errorCode: input.code, updatedAt: input.now };
@@ -118,10 +120,10 @@ export class SpiderJobLedgerDO {
   async markFailed(input) {
     if (!JOB_ID.test(input.id || "") || typeof input.code !== "string" ||
         !/^[A-Z][A-Z0-9_]{0,63}$/.test(input.code) || !Number.isSafeInteger(input.now) ||
-        Object.keys(input).some(key => !["id", "code", "now"].includes(key))) return fail("INVALID_JOB");
+        Object.keys(input).some(key => !["appId", "id", "code", "now"].includes(key))) return fail("INVALID_JOB");
     const result = await this.ctx.storage.transaction(async txn => {
       const state = await txn.get("state");
-      if (!state || state.id !== input.id) return { ok: false, code: "JOB_NOT_FOUND" };
+      if (!state || state.appId !== input.appId || state.id !== input.id) return { ok: false, code: "JOB_NOT_FOUND" };
       if (state.status === "failed") return { ok: true, state };
       if (!["starting", "running"].includes(state.status)) return { ok: false, code: "INVALID_JOB_TRANSITION" };
       const next = { ...state, status: "failed", errorCode: input.code, updatedAt: input.now };
@@ -133,13 +135,13 @@ export class SpiderJobLedgerDO {
 
   async markComplete(input) {
     if (!JOB_ID.test(input.id || "") || typeof input.resultKey !== "string" ||
-        !/^spider:result:[0-9a-f-]{36}$/i.test(input.resultKey) ||
+        !/^spider:result:[A-Z0-9_-]{2,64}:[0-9a-f-]{36}$/i.test(input.resultKey) ||
         !Number.isSafeInteger(input.recordCount) || input.recordCount < 0 || input.recordCount > 20 ||
         !Number.isSafeInteger(input.now) ||
-        Object.keys(input).some(key => !["id", "resultKey", "recordCount", "now"].includes(key))) return fail("INVALID_JOB");
+        Object.keys(input).some(key => !["appId", "id", "resultKey", "recordCount", "now"].includes(key))) return fail("INVALID_JOB");
     const result = await this.ctx.storage.transaction(async txn => {
       const state = await txn.get("state");
-      if (!state || state.id !== input.id) return { ok: false, code: "JOB_NOT_FOUND" };
+      if (!state || state.appId !== input.appId || state.id !== input.id) return { ok: false, code: "JOB_NOT_FOUND" };
       if (state.status === "completed" && state.resultKey === input.resultKey) return { ok: true, state };
       if (state.status !== "running") return { ok: false, code: "INVALID_JOB_TRANSITION" };
       const next = {
@@ -156,12 +158,12 @@ export class SpiderJobLedgerDO {
   async claimQuota(input) {
     if (typeof input.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(input.date) ||
         !JOB_ID.test(input.id || "") || !Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 5 ||
-        !Number.isSafeInteger(input.now) || Object.keys(input).some(key => !["date", "id", "limit", "now"].includes(key))) {
+        !Number.isSafeInteger(input.now) || Object.keys(input).some(key => !["appId", "date", "id", "limit", "now"].includes(key))) {
       return fail("INVALID_QUOTA_REQUEST");
     }
     const result = await this.ctx.storage.transaction(async txn => {
-      const existing = await txn.get("quota") || { date: input.date, count: 0, jobIds: [] };
-      if (existing.date !== input.date) return { ok: false, code: "QUOTA_DATE_MISMATCH" };
+      const existing = await txn.get("quota") || { appId: input.appId, date: input.date, count: 0, jobIds: [] };
+      if (existing.appId !== input.appId || existing.date !== input.date) return { ok: false, code: "QUOTA_DATE_MISMATCH" };
       if (existing.jobIds.includes(input.id)) return { ok: true, allowed: true, duplicate: true, count: existing.count, limit: input.limit };
       if (existing.count >= input.limit) return { ok: true, allowed: false, duplicate: false, count: existing.count, limit: input.limit };
       const next = { ...existing, count: existing.count + 1, jobIds: [...existing.jobIds, input.id] };
