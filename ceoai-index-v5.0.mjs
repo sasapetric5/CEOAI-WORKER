@@ -1110,11 +1110,11 @@ export async function runCEOAIInternalAgentTask(env, { system, task, input = {},
 }
 
 const APP_AGENT_POLICIES = Object.freeze({
-  // Each application has an explicit lifecycle state and isolated capability/quota profile.
-  "CONTENTCRAFT-APP": Object.freeze({ enabled: true, maxAgents: 2, maxModelCalls: 3, spider: true }),
-  "AIFORCE-APP": Object.freeze({ enabled: true, maxAgents: 3, maxModelCalls: 4, spider: true }),
-  // Reserved integration slot only. No HMAC allowlist entry, capabilities, quota, or runtime access.
-  "RANKGEO-APP": Object.freeze({ enabled: false, maxAgents: 0, maxModelCalls: 0, spider: false }),
+  // Each app owns an independent capability, quota and future memory namespace.
+  "CONTENTCRAFT-APP": Object.freeze({ enabled: true, maxAgents: 2, maxModelCalls: 3, spider: true, memory: true }),
+  "AIFORCE-APP": Object.freeze({ enabled: true, maxAgents: 3, maxModelCalls: 4, spider: true, memory: true }),
+  // RankGeo namespace is reserved; disabled means no HMAC/runtime access or usable memory store.
+  "RANKGEO-APP": Object.freeze({ enabled: false, maxAgents: 0, maxModelCalls: 0, spider: false, memory: true }),
 });
 
 function createRequestAgentSystem(maxAgents) {
