@@ -36,14 +36,14 @@ export function createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoo
   if(!Number.isSafeInteger(limit)||limit<1||limit>maxAgents)return {ok:false,code:"INVALID_AGENT_LIMIT",agents:[]};
   let selected;
   if(agentIds!==undefined){
-   if(!Array.isArray(agentIds)||!agentIds.length||agentIds.length>limit||agentIds.some(id=>typeof id!=="string")||new Set(agentIds).size!==agentIds.length)return {ok:false,code:"INVALID_AGENT_SELECTION",agents:[]};
+   if(!Array.isArray(agentIds)||!agentIds.length||agentIds.length>100||agentIds.some(id=>typeof id!=="string")||new Set(agentIds).size!==agentIds.length)return {ok:false,code:"INVALID_AGENT_SELECTION",agents:[]};
    selected=agentIds.map(id=>agentRegistry.get(id));
    if(selected.some(a=>!a))return {ok:false,code:"AGENT_NOT_FOUND",agents:[]};
    const relevantSkills=skillRegistry.search(task.trim().slice(0,500),{limit:20});
    selected=selected.map(a=>{
     const match=relevantSkills.filter(s=>a.skillIds.includes(s.id)).sort((x,y)=>(y.score??0)-(x.score??0)||x.id.localeCompare(y.id))[0];
     return match?{...a,skillId:match.id,score:match.score,matchedTerms:match.matchedTerms??[]}:null;
-   }).filter(Boolean);
+   }).filter(Boolean).slice(0,limit);
   }else selected=agentRegistry.search(task,{limit});
   selected=selected.filter(a=>a.skillId&&skillRegistry.get(a.skillId));
   if(!selected.length)return {ok:false,code:"NO_RELEVANT_AGENT",agents:[]};
