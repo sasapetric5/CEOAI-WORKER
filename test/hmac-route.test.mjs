@@ -10,12 +10,12 @@ const body = JSON.stringify({ model: "ceoai-auto", messages: [{ role: "user", co
 const bytes = new TextEncoder().encode(body);
 const appId = "CONTENTCRAFT-APP";
 
-async function signedHeaders(nonce, payload = bytes, signedAppId = appId, pathname = "/v1/chat/completions") {
+async function signedHeaders(nonce, payload = bytes, signedAppId = appId, pathname = "/v1/chat/completions", signingSecret = secret) {
   const timestamp = String(Math.floor(Date.now() / 1000));
   const hash = await crypto.subtle.digest("SHA-256", payload);
   const hex = Array.from(new Uint8Array(hash), b => b.toString(16).padStart(2, "0")).join("");
   const canonical = ["POST", pathname, timestamp, nonce, hex].join("\n");
-  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(signingSecret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(canonical));
   return {
     "Content-Type": "application/json",
@@ -224,43 +224,79 @@ test("ContentCraft and AI Force have independent HMAC identities and no shared c
   }
 });
 
-test("Reserved RankGeo app is rejected by agent and chat gateways", async () => {
-  const env = makeEnv();
-  env.HMAC_ALLOWED_APPS = "CONTENTCRAFT-APP,RANKGEO-APP";
-  env.APP_SECRET_RANKGEO_APP = secret;
-  let providerCalls = 0;
+test("RankGeo has an independent HMAC identity and enabled chat memory", async () => {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => {
-    providerCalls++;
-    return Response.json({ choices: [{ message: { content: "should not run" } }] });
+  const rankGeoSecret = "rankgeo-independent-secret-at-least-32-bytes";
+  const providerPayloads = [];
+  globalThis.fetch = async (_url, options) => {
+    providerPayloads.push(JSON.parse(options.body));
+    return Response.json({ choices: [{ message: { content: "rankgeo private reply" } }] });
   };
   try {
-    const agentPayload = JSON.stringify({ task: "test", input: {}, limit: 1 });
-    const agentBytes = new TextEncoder().encode(agentPayload);
-    const agentHeaders = await signedHeaders("nonce_rankgeo_agent_reserved_123", agentBytes, "RANKGEO-APP", "/v1/agents/run");
-    const agentResponse = await worker.fetch(new Request("https://ceoai.dev/v1/agents/run", {
-      method: "POST",
-      headers: { ...agentHeaders, "Content-Type": "application/json" },
-      body: agentPayload
+    const env = makeEnv();
+    env.HMAC_ALLOWED_APPS = "CONTENTCRAFT-APP,RANKGEO-APP";
+    env.APP_SECRET_RANKGEO_APP = rankGeoSecret;
+    const conversationId = "123e4567-e89b-42d3-a456-426614174002";
+    const payload = JSON.stringify({
+      model: "ceoai-auto",
+      conversation_id: conversationId,
+      messages: [{ role: "user", content: "rankgeo private context" }],
+    });
+    const headers = await signedHeaders(
+      "nonce_rankgeo_chat_enabled_12345",
+      new TextEncoder().encode(payload),
+      "RANKGEO-APP",
+      "/v1/chat/completions",
+      rankGeoSecret
+    );
+    const response = await worker.fetch(new Request("https://ceoai.dev/v1/chat/completions", {
+      method: "POST", headers, body: payload,
     }), env);
-    assert.equal(agentResponse.status, 403);
-    assert.equal((await agentResponse.json()).code, "APP_NOT_ENABLED");
-
-    const chatBytes = new TextEncoder().encode(body);
-    const chatHeaders = await signedHeaders("nonce_rankgeo_chat_reserved_123", chatBytes, "RANKGEO-APP");
-    const chatResponse = await worker.fetch(new Request("https://ceoai.dev/v1/chat/completions", {
-      method: "POST",
-      headers: chatHeaders,
-      body
-    }), env);
-    assert.equal(chatResponse.status, 403);
-    assert.equal((await chatResponse.json()).error.code, "app_not_enabled");
-    assert.equal(providerCalls, 0);
+    assert.equal(response.status, 200);
+    assert.equal(providerPayloads.length, 1);
+    assert.deepEqual(env.__rateLimitKeys, ["gateway:RANKGEO-APP"]);
+    assert.equal(env.__memoryWrites.some(key => key.startsWith("app-memory:v1:RANKGEO-APP:")), true);
+    assert.equal(env.__memoryWrites.some(key => key.startsWith("app-memory:v1:CONTENTCRAFT-APP:")), false);
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
+test("RankGeo has its own Spider grant and per-app quota key", async () => {
+  const rankGeoSecret = "rankgeo-independent-secret-at-least-32-bytes";
+  const env = makeEnv();
+  env.HMAC_ALLOWED_APPS = "CONTENTCRAFT-APP,RANKGEO-APP";
+  env.APP_SECRET_RANKGEO_APP = rankGeoSecret;
+  const queued = [];
+  const rateLimitKeys = [];
+  env.RATE_LIMITER = { async limit(input) { rateLimitKeys.push(input.key); return { success: true }; } };
+  env.SPIDER_BROWSER_RUN_ACCOUNT_ID = "test-account";
+  env.SPIDER_BROWSER_RUN_TOKEN = "test-token";
+  env.SPIDER_QUEUE = { async send(message) { queued.push(message); } };
+  const payload = JSON.stringify({
+    url: "https://example.com",
+    pageLimit: 1,
+    depth: 1,
+    requestId: "123e4567-e89b-42d3-a456-426614174003"
+  });
+  const headers = await signedHeaders(
+    "nonce_rankgeo_spider_enabled_1234",
+    new TextEncoder().encode(payload),
+    "RANKGEO-APP",
+    "/v1/spider/crawl",
+    rankGeoSecret
+  );
+  const response = await worker.fetch(new Request("https://ceoai.dev/v1/spider/crawl", {
+    method: "POST",
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: payload
+  }), env);
+  assert.equal(response.status, 202);
+  assert.deepEqual(rateLimitKeys, ["spider:RANKGEO-APP"]);
+  assert.equal(queued.length, 1);
+  assert.equal(queued[0].appId, "RANKGEO-APP");
+  assert.equal(queued[0].id, "123e4567-e89b-42d3-a456-426614174003");
+});
 
 test("HMAC chat persists and reloads only its own app conversation when conversation_id is supplied", async () => {
   const originalFetch = globalThis.fetch;
