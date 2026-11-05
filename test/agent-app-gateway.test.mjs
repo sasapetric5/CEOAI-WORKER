@@ -195,6 +195,7 @@ test("agent gateway rejects non-JSON content type before authentication or model
 
 test("Spider capability is denied to AI Force even with valid HMAC and configured runner",async()=>{
  const env=environment({
+  APP_SECRET_AIFORCE_APP:secret,
   SPIDER_BROWSER_RUN_ACCOUNT_ID:"test-account",
   SPIDER_BROWSER_RUN_TOKEN:"test-runner-token",
   SPIDER_QUEUE:{async send(){throw new Error("must not enqueue");}}
@@ -210,11 +211,12 @@ test("Spider capability remains available to authorized ContentCraft policy",asy
  const env=environment({
   SPIDER_BROWSER_RUN_ACCOUNT_ID:"test-account",
   SPIDER_BROWSER_RUN_TOKEN:"test-runner-token",
-  SPIDER_QUEUE:{async send(message){sends++;assert.equal(message.jobId,"123e4567-e89b-42d3-a456-426614174000");}}
+  SPIDER_QUEUE:{async send(message){sends++;assert.equal(message.id,"123e4567-e89b-42d3-a456-426614174000");}}
  });
  const response=await worker.fetch(await signedRequest({
   url:"https://example.com",requestId:"123e4567-e89b-42d3-a456-426614174000"
  },{id:"CONTENTCRAFT-APP",path:"/v1/spider/crawl"}),env);
- assert.equal(response.status,202);
+ const payload=await response.json();
+ assert.equal(response.status,202,JSON.stringify(payload));
  assert.equal(sends,1);
 });
