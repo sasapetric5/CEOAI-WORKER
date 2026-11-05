@@ -1112,7 +1112,7 @@ export async function runCEOAIInternalAgentTask(env, { system, task, input = {},
 const APP_AGENT_POLICIES = Object.freeze({
   // Each application has an explicit lifecycle state and isolated capability/quota profile.
   "CONTENTCRAFT-APP": Object.freeze({ enabled: true, maxAgents: 2, maxModelCalls: 3, spider: true }),
-  "AIFORCE-APP": Object.freeze({ enabled: true, maxAgents: 3, maxModelCalls: 4, spider: false }),
+  "AIFORCE-APP": Object.freeze({ enabled: true, maxAgents: 3, maxModelCalls: 4, spider: true }),
   // Reserved integration slot only. No HMAC allowlist entry, capabilities, quota, or runtime access.
   "RANKGEO-APP": Object.freeze({ enabled: false, maxAgents: 0, maxModelCalls: 0, spider: false }),
 });
