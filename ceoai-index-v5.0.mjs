@@ -1410,6 +1410,8 @@ export default {
     if (typeof prompt !== "string" || !prompt.trim() || prompt.length > MAX_PROMPT_CHARS) {
       return json({ success: false, error: "Poruka mora imati između 1 i 2000 karaktera." }, 400, corsHeaders(origin));
     }
+    // Remove configured credentials and labeled secret values before provider use or persistence.
+    const safePrompt = redactSensitiveText(prompt.trim(), env, MAX_PROMPT_CHARS);
 
     const ip = request.headers.get("CF-Connecting-IP");
     if (!ip) {
@@ -1443,7 +1445,7 @@ export default {
       if (!memory || typeof memory !== "object" || !Array.isArray(memory.messages)) {
         memory = { messages: [], summary: null, estimatedTokensSaved: 0, compressions: 0 };
       }
-      memory.summary = typeof memory.summary === "string" ? memory.summary.slice(0, MAX_SUMMARY_CHARS) : null;
+      memory.summary = typeof memory.summary === "string" ? redactSensitiveText(memory.summary, env, MAX_SUMMARY_CHARS) : null;
       memory.estimatedTokensSaved = safeInteger(memory.estimatedTokensSaved);
       memory.compressions = safeInteger(memory.compressions);
 
@@ -1453,13 +1455,13 @@ export default {
       const validatedHistory = memory.messages
         .filter(m => m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string")
         .slice(-MAX_HISTORY_INPUT_MESSAGES)
-        .map(m => ({ role: m.role, content: m.content.slice(0, MAX_REPLY_CHARS) }));
+        .map(m => ({ role: m.role, content: redactSensitiveText(m.content, env, MAX_REPLY_CHARS) }));
       const canCompressHistory = validatedHistory.length >= COMPRESSION_THRESHOLD - 1 &&
         env.AI_ENABLED === "true" &&
         Boolean(env.AI) && env.WORKERS_AI_ENABLED === "true";
       const prepared = await prepareConversation({
         stored: validatedHistory,
-        userMessage: prompt.trim(),
+        userMessage: safePrompt,
         summary: memory.summary || "",
         max: MAX_HISTORY_MESSAGES,
         compressAt: COMPRESSION_THRESHOLD,
@@ -1480,17 +1482,17 @@ export default {
         "Ti si CEOAI, koristan i iskren asistent. Odgovaraj na srpskom osim ako korisnik traži drugi jezik. Ne tvrdi da si izvršio radnje ili testove koje nisi izvršio."
       );
 
-      const intent = chooseIntent(prompt);
+      const intent = chooseIntent(safePrompt);
 
       // Research enrichment with automatic search-provider failover (Jina → Tavily → Google CSE → Exa).
       // When one provider quota is exhausted, the next configured source takes over.
       let researchContext = "";
       let researchSource = null;
       if (intent === CAPABILITY.research) {
-        const enriched = await enrichWithSearchFailover(env, prompt);
+        const enriched = await enrichWithSearchFailover(env, safePrompt);
         if (enriched.text) {
           researchSource = enriched.source;
-          researchContext = `\n\n[ISTRAŽIVAČKI KONTEKST — izvor: ${enriched.source}, quota/rate-limited]\n${enriched.text}`;
+          researchContext = `\n\n[ISTRAŽIVAČKI KONTEKST — izvor: ${enriched.source}, quota/rate-limited]\n${redactSensitiveText(enriched.text, env, 12_000)}`;
         }
       }
       if (researchContext) {
@@ -1559,7 +1561,7 @@ export default {
         if (inFlightProviders.has(candidate.id)) { sawCooldownSkip = true; continue; }
         inFlightProviders.add(candidate.id);
         try {
-          reply = await executeModel(candidate, messages, remainingMs);
+          reply = redactSensitiveText(await executeModel(candidate, messages, remainingMs), env, MAX_REPLY_CHARS);
           if (!reply.trim()) throw new Error("Prazan odgovor");
           providerSucceeded = true;
           usedProviderId = candidate.id;
