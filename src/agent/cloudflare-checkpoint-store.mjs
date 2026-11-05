@@ -52,8 +52,14 @@ export function createCloudflareCheckpointStore(namespace) {
       return (await request(id, "/effect/complete", { ownerToken, fencingToken, effectKey, payloadHash, result })).effect;
     },
     async get(id) { return (await request(id, "/get")).state; },
-    async put(id, state) {
-      await request(id, "/put", { state, expectedRevision: state.revision - 1 });
+    async put(id, state, lease) {
+      if (!lease || typeof lease.ownerToken !== "string" || !Number.isSafeInteger(lease.fencingToken)) {
+        throw new TypeError("ACTIVE_WORKFLOW_LEASE_REQUIRED");
+      }
+      await request(id, "/put", {
+        state, expectedRevision: state.revision - 1,
+        ownerToken: lease.ownerToken, fencingToken: lease.fencingToken,
+      });
       return true;
     },
     async delete(id, expectedRevision) {
