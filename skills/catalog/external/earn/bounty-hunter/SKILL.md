@@ -36,7 +36,7 @@ For every opportunity, record:
 Score 0–5 and explain evidence for legitimacy, payout certainty, skill fit, scope clarity, effort versus likely net reward, listing-specific eligibility/payment support, and safety. Missing critical facts are UNKNOWN, not positive scores. Do not convert token rewards into guaranteed fiat value. Separate advertised reward from expected net earnings. Reject upfront payment, wallet-signing requests, or secret disclosure.
 
 ## Output
-Return a ranked worldwide shortlist with title, official source link, advertised reward, status/deadline, fit and effort estimate, explicit eligibility/payout restrictions or UNKNOWN, fees/prerequisites, risk flags, recommendation (REVIEW, PASS, REJECT), and a manual next step.
+Return a ranked worldwide shortlist with title, official source link, advertised reward, status/deadline, fit and effort estimate, explicit payout eligibility, restrictions, or UNKNOWN, fees/prerequisites, risk flags, recommendation (REVIEW, PASS, REJECT), and a manual next step.
 
 ## Hard safety boundaries
 - Never claim, reserve, comment, apply, bid, submit a PR, message a client, create an account, or accept terms.
