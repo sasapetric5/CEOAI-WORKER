@@ -58,7 +58,7 @@ test("parallel daily quota claims never exceed the atomic five-job limit", async
 test("parallel duplicate quota claims for one job consume exactly one slot", async () => {
   const storage = makeSerializedStorage();
   const call = makeLedger(storage);
-  const input = { date: "2026-11-05", id: uuid(1), limit: 5, now: 1_798_000_000_000 };
+  const input = { appId: "GLOBAL", date: "2026-11-05", id: uuid(1), limit: 5, now: 1_798_000_000_000 };
   const results = await Promise.all(Array.from({ length: 25 }, () => call("/quota/claim", input)));
   assert.equal(results.every(x => x.status === 200 && x.body.allowed), true);
   assert.equal(results.filter(x => x.body.duplicate === false).length, 1);
@@ -69,7 +69,7 @@ test("parallel duplicate start deliveries create exactly one start lease", async
   const storage = makeSerializedStorage();
   const call = makeLedger(storage);
   const input = {
-    id: uuid(2), url: "https://docs.example.com/", pageLimit: 10,
+    appId: "CONTENTCRAFT-APP", id: uuid(2), url: "https://docs.example.com/", pageLimit: 10,
     depth: 1, now: 1_798_000_000_000,
   };
   const results = await Promise.all(Array.from({ length: 25 }, () => call("/job/claim-start", input)));
@@ -83,7 +83,7 @@ test("parallel request-ID payload conflicts cannot replace the first accepted cr
   const storage = makeSerializedStorage();
   const call = makeLedger(storage);
   const base = {
-    id: uuid(3), url: "https://docs.example.com/", pageLimit: 10,
+    appId: "CONTENTCRAFT-APP", id: uuid(3), url: "https://docs.example.com/", pageLimit: 10,
     depth: 1, now: 1_798_000_000_000,
   };
   const results = await Promise.all([
