@@ -441,3 +441,56 @@ test("gateway keeps ContentCraft, AI Force and RankGeo memory isolated across fo
   }
  }finally{globalThis.fetch=old;}
 });
+
+
+// Gateway validation batch: malformed sessions and stateless-memory boundaries.
+const invalidGatewayBodies = [
+  ["null conversation id", { task: "valid task", conversation_id: null }],
+  ["numeric conversation id", { task: "valid task", conversation_id: 42 }],
+  ["array conversation id", { task: "valid task", conversation_id: [] }],
+  ["empty conversation id", { task: "valid task", conversation_id: "" }],
+  ["boolean conversation id", { task: "valid task", conversation_id: false }],
+  ["object conversation id", { task: "valid task", conversation_id: { id: "123" } }],
+  ["malformed UUID", { task: "valid task", conversation_id: "123e4567-e89b-42d3-a456" }],
+  ["unsupported UUID version", { task: "valid task", conversation_id: "123e4567-e89b-02d3-a456-426614174000" }],
+  ["unsupported UUID variant", { task: "valid task", conversation_id: "123e4567-e89b-42d3-7456-426614174000" }],
+  ["unknown memory selector", { task: "valid task", conversation_id: "123e4567-e89b-42d3-a456-426614174000", memoryApp: "AIFORCE-APP" }],
+];
+
+for (const [label, body] of invalidGatewayBodies) {
+ test("gateway rejects " + label + " before any model or memory access", async () => {
+  const mock = mockFreeModel();
+  let storageCalls = 0;
+  try {
+   const env = environment({ KV_MEMORY: {
+    async get() { storageCalls++; throw new Error("must not access memory"); },
+    async put() { storageCalls++; throw new Error("must not access memory"); },
+    async delete() { storageCalls++; throw new Error("must not access memory"); }
+   }});
+   const response = await worker.fetch(await signedRequest(body), env);
+   assert.equal(response.status, 400);
+   assert.equal((await response.json()).code, "INVALID_AGENT_REQUEST");
+   assert.equal(mock.calls, 0);
+   assert.equal(storageCalls, 0);
+  } finally { mock.restore(); }
+ });
+}
+
+test("stateless gateway request never reads or writes app memory", async () => {
+ const mock = mockFreeModel();
+ let storageCalls = 0;
+ try {
+  const env = environment({ KV_MEMORY: {
+   async get() { storageCalls++; throw new Error("stateless request must not read memory"); },
+   async put() { storageCalls++; throw new Error("stateless request must not write memory"); },
+   async delete() { storageCalls++; throw new Error("stateless request must not reset memory"); }
+  }});
+  const response = await worker.fetch(await signedRequest({
+   task: "regression testing and verification without persistent conversation"
+  }), env);
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).success, true);
+  assert.equal(storageCalls, 0);
+  assert.equal(mock.calls, 2);
+ } finally { mock.restore(); }
+});
