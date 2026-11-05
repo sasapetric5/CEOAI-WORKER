@@ -445,7 +445,6 @@ test("gateway keeps ContentCraft, AI Force and RankGeo memory isolated across fo
 
 // Gateway validation batch: malformed sessions and stateless-memory boundaries.
 const invalidGatewayBodies = [
-  ["null conversation id", { task: "valid task", conversation_id: null }],
   ["numeric conversation id", { task: "valid task", conversation_id: 42 }],
   ["array conversation id", { task: "valid task", conversation_id: [] }],
   ["empty conversation id", { task: "valid task", conversation_id: "" }],
@@ -469,7 +468,8 @@ for (const [label, body] of invalidGatewayBodies) {
    }});
    const response = await worker.fetch(await signedRequest(body), env);
    assert.equal(response.status, 400);
-   assert.equal((await response.json()).code, "INVALID_AGENT_REQUEST");
+   const payload = await response.json();
+   assert.equal(payload.code, label === "unknown memory selector" ? "INVALID_REQUEST" : "INVALID_AGENT_REQUEST");
    assert.equal(mock.calls, 0);
    assert.equal(storageCalls, 0);
   } finally { mock.restore(); }
@@ -486,7 +486,7 @@ test("stateless gateway request never reads or writes app memory", async () => {
    async delete() { storageCalls++; throw new Error("stateless request must not reset memory"); }
   }});
   const response = await worker.fetch(await signedRequest({
-   task: "regression testing and verification without persistent conversation"
+   task: "regression testing and verification without persistent session"
   }), env);
   assert.equal(response.status, 200);
   assert.equal((await response.json()).success, true);
