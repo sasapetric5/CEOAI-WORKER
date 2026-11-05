@@ -3,7 +3,8 @@ import { createBrowserRunCrawler, normalizeBrowserRunUrl } from "./browser-run-c
 
 const MAX_PAGES = 20;
 const MAX_DEPTH = 2;
-const DAILY_JOB_LIMIT = 5;
+const GLOBAL_DAILY_JOB_LIMIT = 5;
+const APP_DAILY_JOB_LIMITS = Object.freeze({ "CONTENTCRAFT-APP": 3, "AIFORCE-APP": 2, "RANKGEO-APP": 2 });
 const POLL_DELAY_SECONDS = 60;
 const MAX_POLL_ATTEMPTS = 60;
 const RESULT_TTL_SECONDS = 7 * 24 * 60 * 60;
@@ -34,9 +35,10 @@ function safeError(error, fallback = "SPIDER_PROCESSING_FAILED") {
 }
 
 export async function enqueueSpiderCrawl(env, {
-  url, pageLimit = 10, depth = 1, jobId = crypto.randomUUID(),
+  appId, url, pageLimit = 10, depth = 1, jobId = crypto.randomUUID(),
 } = {}) {
   if (!env?.SPIDER_QUEUE || typeof env.SPIDER_QUEUE.send !== "function") return { ok: false, code: "SPIDER_QUEUE_UNAVAILABLE" };
+  if (typeof appId !== "string" || !Object.hasOwn(APP_DAILY_JOB_LIMITS, appId)) return { ok: false, code: "SPIDER_APP_NOT_ALLOWED" };
   const safeUrl = normalizeBrowserRunUrl(url);
   if (!safeUrl) return { ok: false, code: "CRAWL_URL_REJECTED" };
   if (!validPageLimit(pageLimit)) return { ok: false, code: "CRAWL_PAGE_LIMIT_REJECTED" };
@@ -44,7 +46,7 @@ export async function enqueueSpiderCrawl(env, {
   if (typeof jobId !== "string" || !JOB_ID.test(jobId)) return { ok: false, code: "INVALID_SPIDER_JOB_ID" };
   try {
     await env.SPIDER_QUEUE.send({
-      version: 1, kind: "start", id: jobId, url: safeUrl,
+      version: 1, kind: "start", appId, id: jobId, url: safeUrl,
       pageLimit, depth, queuedAt: Date.now(),
     });
     return { ok: true, jobId, status: "queued" };
@@ -57,9 +59,13 @@ function createLedger(env) {
   if (!env?.SPIDER_LEDGER || typeof env.SPIDER_LEDGER.idFromName !== "function" ||
       typeof env.SPIDER_LEDGER.get !== "function") throw new Error("SPIDER_LEDGER_UNAVAILABLE");
   return async (name, path, input) => {
+    const parts = name.split(":");
+    const appId = parts[0] === "job" ? parts[1] : parts[1] === "app" ? parts[2] : parts[1] === "global" ? "GLOBAL" : null;
+    if (!appId) throw new Error("SPIDER_LEDGER_SCOPE_INVALID");
+    const scopedInput = { ...input, appId: input.appId || appId };
     const stub = env.SPIDER_LEDGER.get(env.SPIDER_LEDGER.idFromName(name));
     const response = await stub.fetch("https://spider-ledger.internal" + path, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(scopedInput),
     });
     let data;
     try { data = await response.json(); } catch { throw new Error("SPIDER_LEDGER_INVALID_RESPONSE"); }
@@ -69,18 +75,18 @@ function createLedger(env) {
 }
 
 function validateMessage(body) {
-  if (!plain(body) || body.version !== 1 || typeof body.kind !== "string" || !JOB_ID.test(body.id || "")) return null;
+  if (!plain(body) || body.version !== 1 || typeof body.kind !== "string" || !JOB_ID.test(body.id || "") || !Object.hasOwn(APP_DAILY_JOB_LIMITS, body.appId)) return null;
   if (body.kind === "start") {
-    if (Object.keys(body).some(key => !["version", "kind", "id", "url", "pageLimit", "depth", "queuedAt"].includes(key)) ||
+    if (Object.keys(body).some(key => !["version", "kind", "appId", "id", "url", "pageLimit", "depth", "queuedAt"].includes(key)) ||
         typeof body.url !== "string" || !normalizeBrowserRunUrl(body.url) ||
         !validPageLimit(body.pageLimit) || !validDepth(body.depth) ||
         !Number.isSafeInteger(body.queuedAt)) return null;
-    return { kind: "start", id: body.id, url: normalizeBrowserRunUrl(body.url), pageLimit: body.pageLimit, depth: body.depth };
+    return { kind: "start", appId: body.appId, id: body.id, url: normalizeBrowserRunUrl(body.url), pageLimit: body.pageLimit, depth: body.depth };
   }
   if (body.kind === "poll") {
-    if (Object.keys(body).some(key => !["version", "kind", "id", "attempt"].includes(key)) ||
+    if (Object.keys(body).some(key => !["version", "kind", "appId", "id", "attempt"].includes(key)) ||
         !Number.isSafeInteger(body.attempt) || body.attempt < 0 || body.attempt > MAX_POLL_ATTEMPTS) return null;
-    return { kind: "poll", id: body.id, attempt: body.attempt };
+    return { kind: "poll", appId: body.appId, id: body.id, attempt: body.attempt };
   }
   return null;
 }
@@ -105,11 +111,11 @@ export function createSpiderQueueHandler({
     let crawler;
     try { crawler = makeCrawler(env, createCrawler); }
     catch {
-      const unconfigured = await ledger("job:" + message.id, "/job/claim-start", {
+      const unconfigured = await ledger("job:" + message.appId + ":" + message.id, "/job/claim-start", {
         id: message.id, url: message.url, pageLimit: message.pageLimit, depth: message.depth, now: now(),
       });
       if (unconfigured.claimed) {
-        await ledger("job:" + message.id, "/job/mark-failed", {
+        await ledger("job:" + message.appId + ":" + message.id, "/job/mark-failed", {
           id: message.id, code: "SPIDER_CONFIGURATION_MISSING", now: now(),
         });
       }
@@ -119,22 +125,25 @@ export function createSpiderQueueHandler({
     // One account-wide date bucket is shared by all app callers and queue consumers.
     // Claim quota before creating a start lease so a quota-ledger outage cannot strand a job.
     const quotaDate = utcDate(now());
-    const quota = await ledger("quota:" + quotaDate, "/quota/claim", {
-      date: quotaDate, id: message.id, limit: DAILY_JOB_LIMIT, now: now(),
+    const appQuota = await ledger("quota:app:" + message.appId + ":" + quotaDate, "/quota/claim", {
+      date: quotaDate, id: message.id, limit: APP_DAILY_JOB_LIMITS[message.appId], now: now(),
     });
-    if (!quota.allowed) {
-      const overLimit = await ledger("job:" + message.id, "/job/claim-start", {
+    const globalQuota = await ledger("quota:global:" + quotaDate, "/quota/claim", {
+      date: quotaDate, id: message.id, limit: GLOBAL_DAILY_JOB_LIMIT, now: now(),
+    });
+    if (!appQuota.allowed || !globalQuota.allowed) {
+      const overLimit = await ledger("job:" + message.appId + ":" + message.id, "/job/claim-start", {
         id: message.id, url: message.url, pageLimit: message.pageLimit, depth: message.depth, now: now(),
       });
       if (overLimit.claimed) {
-        await ledger("job:" + message.id, "/job/mark-failed", {
+        await ledger("job:" + message.appId + ":" + message.id, "/job/mark-failed", {
           id: message.id, code: "SPIDER_DAILY_LIMIT_REACHED", now: now(),
         });
       }
       return;
     }
 
-    const claimed = await ledger("job:" + message.id, "/job/claim-start", {
+    const claimed = await ledger("job:" + message.appId + ":" + message.id, "/job/claim-start", {
       id: message.id, url: message.url, pageLimit: message.pageLimit, depth: message.depth, now: now(),
     });
     if (!claimed.claimed) {
@@ -145,7 +154,7 @@ export function createSpiderQueueHandler({
       const state = claimed.state;
       if (!state) throw new Error("SPIDER_JOB_STATE_MISSING");
       if (state.status === "running") {
-        await env.SPIDER_QUEUE.send({ version: 1, kind: "poll", id: message.id, attempt: 0 }, { delaySeconds: POLL_DELAY_SECONDS });
+        await env.SPIDER_QUEUE.send({ version: 1, kind: "poll", appId: message.appId, id: message.id, attempt: 0 }, { delaySeconds: POLL_DELAY_SECONDS });
         return;
       }
       if (["completed", "failed", "start_unknown"].includes(state.status)) return;
@@ -155,7 +164,7 @@ export function createSpiderQueueHandler({
     let started;
     try { started = await crawler.startCrawl({ url: message.url, pageLimit: message.pageLimit, depth: message.depth }); }
     catch {
-      await ledger("job:" + message.id, "/job/mark-unknown", {
+      await ledger("job:" + message.appId + ":" + message.id, "/job/mark-unknown", {
         id: message.id, code: "CRAWL_START_OUTCOME_UNKNOWN", now: now(),
       });
       return;
@@ -163,22 +172,22 @@ export function createSpiderQueueHandler({
     if (!started?.ok) {
       const code = safeError(started, "CRAWL_START_FAILED");
       const route = START_TERMINAL_ERRORS.has(code) ? "/job/mark-failed" : "/job/mark-unknown";
-      await ledger("job:" + message.id, route, { id: message.id, code, now: now() });
+      await ledger("job:" + message.appId + ":" + message.id, route, { id: message.id, code, now: now() });
       return;
     }
 
-    await ledger("job:" + message.id, "/job/mark-running", {
+    await ledger("job:" + message.appId + ":" + message.id, "/job/mark-running", {
       id: message.id, browserJobId: started.jobId, now: now(),
     });
     // If publishing the poll message fails, the original start message is retried.
     // Its durable running state prevents a second Browser Run POST.
     await env.SPIDER_QUEUE.send({
-      version: 1, kind: "poll", id: message.id, attempt: 0,
+      version: 1, kind: "poll", appId: message.appId, id: message.id, attempt: 0,
     }, { delaySeconds: POLL_DELAY_SECONDS });
   }
 
   async function processPoll(message, env, ledger) {
-    const found = await ledger("job:" + message.id, "/job/get", { id: message.id });
+    const found = await ledger("job:" + message.appId + ":" + message.id, "/job/get", { id: message.id });
     const state = found.state;
     if (!state) throw new Error("SPIDER_JOB_STATE_MISSING");
     if (["completed", "failed", "start_unknown"].includes(state.status)) return;
@@ -192,26 +201,26 @@ export function createSpiderQueueHandler({
     if (!status?.ok) {
       const code = safeError(status, "CRAWL_STATUS_UNAVAILABLE");
       if (["CRAWL_AUTH_FAILED", "CRAWL_JOB_NOT_FOUND", "CRAWL_REQUEST_REJECTED"].includes(code)) {
-        await ledger("job:" + message.id, "/job/mark-failed", { id: message.id, code, now: now() });
+        await ledger("job:" + message.appId + ":" + message.id, "/job/mark-failed", { id: message.id, code, now: now() });
         return;
       }
       throw Object.assign(new Error(code), { code });
     }
     if (status.status === "running") {
       if (message.attempt >= MAX_POLL_ATTEMPTS) {
-        await ledger("job:" + message.id, "/job/mark-failed", {
+        await ledger("job:" + message.appId + ":" + message.id, "/job/mark-failed", {
           id: message.id, code: "CRAWL_POLL_WINDOW_EXHAUSTED", now: now(),
         });
         return;
       }
       await env.SPIDER_QUEUE.send({
-        version: 1, kind: "poll", id: message.id, attempt: message.attempt + 1,
+        version: 1, kind: "poll", appId: message.appId, id: message.id, attempt: message.attempt + 1,
       }, { delaySeconds: POLL_DELAY_SECONDS });
       return;
     }
     if (status.status !== "completed") {
       if (TERMINAL_STATUSES.has(status.status)) {
-        await ledger("job:" + message.id, "/job/mark-failed", {
+        await ledger("job:" + message.appId + ":" + message.id, "/job/mark-failed", {
           id: message.id, code: "CRAWL_" + status.status.toUpperCase(), now: now(),
         });
         return;
@@ -224,9 +233,9 @@ export function createSpiderQueueHandler({
       throw new Error(safeError(results, "CRAWL_RESULTS_UNAVAILABLE"));
     }
     if (!env.KV_MEMORY || typeof env.KV_MEMORY.put !== "function") throw new Error("SPIDER_RESULT_STORE_UNAVAILABLE");
-    const resultKey = "spider:result:" + message.id;
+    const resultKey = "spider:result:" + message.appId + ":" + message.id;
     const resultDocument = {
-      version: 1, jobId: message.id, sourceUrl: state.url,
+      version: 1, appId: message.appId, jobId: message.id, sourceUrl: state.url,
       browserJobId: state.browserJobId, completedAt: new Date(now()).toISOString(),
       count: results.records.length, records: results.records,
       meta: { total: results.total ?? null, finished: results.finished ?? null },
@@ -235,7 +244,7 @@ export function createSpiderQueueHandler({
     const encoded = JSON.stringify(resultDocument);
     if (new TextEncoder().encode(encoded).byteLength > 512_000) throw new Error("SPIDER_RESULT_TOO_LARGE");
     await env.KV_MEMORY.put(resultKey, encoded, { expirationTtl: RESULT_TTL_SECONDS });
-    await ledger("job:" + message.id, "/job/mark-complete", {
+    await ledger("job:" + message.appId + ":" + message.id, "/job/mark-complete", {
       id: message.id, resultKey, recordCount: results.records.length, now: now(),
     });
   }
