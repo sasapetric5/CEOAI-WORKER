@@ -133,6 +133,28 @@ test("daily account quota is atomic and duplicate job claims do not consume a se
   assert.equal(sixth.count, 5);
 });
 
+test("daily per-application Spider quotas are independent and enforce RankGeo limit", async () => {
+  const ns = makeLedgerNamespace();
+  const date = "2026-11-05";
+  const claim = (appId, jobId, limit) => ns.get("quota:app:" + appId + ":" + date).fetch(new Request("https://ledger.test/quota/claim", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ appId, date, id: jobId, limit, now: now() })
+  })).then(response => response.json());
+  const rankGeoIds = [
+    "123e4567-e89b-42d3-a456-426614174010",
+    "123e4567-e89b-42d3-a456-426614174011",
+    "123e4567-e89b-42d3-a456-426614174012"
+  ];
+  assert.equal((await claim("RANKGEO-APP", rankGeoIds[0], 2)).allowed, true);
+  assert.equal((await claim("CONTENTCRAFT-APP", rankGeoIds[0], 3)).allowed, true);
+  assert.equal((await claim("AIFORCE-APP", rankGeoIds[0], 2)).allowed, true);
+  assert.equal((await claim("RANKGEO-APP", rankGeoIds[1], 2)).allowed, true);
+  const blocked = await claim("RANKGEO-APP", rankGeoIds[2], 2);
+  assert.equal(blocked.allowed, false);
+  assert.equal(blocked.count, 2);
+  assert.equal((await claim("CONTENTCRAFT-APP", rankGeoIds[2], 3)).allowed, true);
+});
+
 test("producer validates and publishes a bounded HTTPS job", async () => {
   const sent = [];
   const env = { SPIDER_QUEUE: { async send(body) { sent.push(body); } } };
