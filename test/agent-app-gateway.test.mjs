@@ -374,3 +374,27 @@ test("failed AI completion never writes partial or failed output to app memory",
   assert.ok(providerCalls>0);
  }finally{globalThis.fetch=old;}
 });
+
+test("agent gateway rejects caller-supplied appId and never lets request JSON select a memory namespace",async()=>{
+ const mock=mockFreeModel();
+ try{
+  const memory=new Map();
+  const env=environment({
+   APP_SECRET_AIFORCE_APP:secret,
+   KV_MEMORY:{
+    async get(key){return memory.get(key)??null;},
+    async put(key,value){memory.set(key,value);},
+    async delete(key){memory.delete(key);}
+   }
+  });
+  const response=await worker.fetch(await signedRequest({
+   task:"attempt to impersonate another application",
+   conversation_id:"123e4567-e89b-42d3-a456-426614174096",
+   appId:"AIFORCE-APP"
+  }),env);
+  assert.equal(response.status,400);
+  assert.equal((await response.json()).code,"INVALID_REQUEST");
+  assert.equal(mock.calls,0);
+  assert.equal(memory.size,0);
+ }finally{mock.restore();}
+});
