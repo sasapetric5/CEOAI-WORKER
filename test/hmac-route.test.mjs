@@ -41,6 +41,7 @@ function makeEnv() {
     KV_MEMORY: {
       async get(k) { reads.push(k); return data.get(k) ?? null; },
       async put(k, v) { writes.push(k); data.set(k, v); },
+      async delete(k) { data.delete(k); },
     },
     SECURITY_DO: {
       idFromName(name) { return name; },
@@ -255,6 +256,89 @@ test("Reserved RankGeo app is rejected by agent and chat gateways", async () => 
     assert.equal(chatResponse.status, 403);
     assert.equal((await chatResponse.json()).error.code, "app_not_enabled");
     assert.equal(providerCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+
+test("HMAC chat persists and reloads only its own app conversation when conversation_id is supplied", async () => {
+  const originalFetch = globalThis.fetch;
+  const providerPayloads = [];
+  globalThis.fetch = async (_url, options) => {
+    providerPayloads.push(JSON.parse(options.body));
+    return Response.json({ choices: [{ message: { content: "remembered reply " + providerPayloads.length } }] });
+  };
+  try {
+    const env = makeEnv();
+    const conversationId = "123e4567-e89b-42d3-a456-426614174000";
+    const send = async (nonce, message) => {
+      const payload = JSON.stringify({
+        model: "ceoai-auto",
+        conversation_id: conversationId,
+        messages: [{ role: "user", content: message }],
+      });
+      const headers = await signedHeaders(nonce, new TextEncoder().encode(payload));
+      return worker.fetch(new Request("https://ceoai.dev/v1/chat/completions", {
+        method: "POST", headers, body: payload,
+      }), env);
+    };
+    assert.equal((await send("nonce_app_memory_first_123456", "first private message")).status, 200);
+    assert.equal((await send("nonce_app_memory_second_12345", "second private message")).status, 200);
+    assert.deepEqual(providerPayloads[0].messages.map(m => m.content), ["first private message"]);
+    assert.deepEqual(providerPayloads[1].messages.map(m => m.content), [
+      "first private message", "remembered reply 1", "second private message",
+    ]);
+    assert.equal(env.__memoryWrites.some(key => key.startsWith("app-memory:v1:CONTENTCRAFT-APP:")), true);
+    assert.equal(env.__memoryWrites.some(key => key.startsWith("memory:") || key.startsWith("session:")), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("same conversation UUID is isolated between ContentCraft and AI Force", async () => {
+  const originalFetch = globalThis.fetch;
+  const providerPayloads = [];
+  globalThis.fetch = async (_url, options) => {
+    providerPayloads.push(JSON.parse(options.body));
+    return Response.json({ choices: [{ message: { content: "reply" } }] });
+  };
+  try {
+    const env = makeEnv();
+    env.HMAC_ALLOWED_APPS = "CONTENTCRAFT-APP,AIFORCE-APP";
+    env.APP_SECRET_AIFORCE_APP = secret;
+    const conversationId = "123e4567-e89b-42d3-a456-426614174001";
+    for (const [app, nonce, message] of [
+      ["CONTENTCRAFT-APP", "nonce_cc_isolation_123456789", "cc-only"],
+      ["AIFORCE-APP", "nonce_af_isolation_123456789", "af-only"],
+    ]) {
+      const payload = JSON.stringify({ model: "ceoai-auto", conversation_id: conversationId, messages: [{ role: "user", content: message }] });
+      const headers = await signedHeaders(nonce, new TextEncoder().encode(payload), app);
+      const response = await worker.fetch(new Request("https://ceoai.dev/v1/chat/completions", { method: "POST", headers, body: payload }), env);
+      assert.equal(response.status, 200);
+    }
+    assert.deepEqual(providerPayloads[0].messages.map(m => m.content), ["cc-only"]);
+    assert.deepEqual(providerPayloads[1].messages.map(m => m.content), ["af-only"]);
+    assert.equal(env.__memoryWrites.some(key => key.startsWith("app-memory:v1:CONTENTCRAFT-APP:")), true);
+    assert.equal(env.__memoryWrites.some(key => key.startsWith("app-memory:v1:AIFORCE-APP:")), true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("HMAC chat rejects malformed conversation_id before provider or memory access", async () => {
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  globalThis.fetch = async () => { providerCalls++; throw new Error("unexpected provider call"); };
+  try {
+    const env = makeEnv();
+    const payload = JSON.stringify({ model: "ceoai-auto", conversation_id: "../other-app", messages: [{ role: "user", content: "hello" }] });
+    const headers = await signedHeaders("nonce_invalid_conversation_id_123", new TextEncoder().encode(payload));
+    const response = await worker.fetch(new Request("https://ceoai.dev/v1/chat/completions", { method: "POST", headers, body: payload }), env);
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).error.code, "invalid_conversation_id");
+    assert.equal(providerCalls, 0);
+    assert.equal(env.__memoryWrites.length, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }
