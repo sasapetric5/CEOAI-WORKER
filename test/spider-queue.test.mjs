@@ -91,6 +91,29 @@ test("ledger claims a crawl once and never repeats an ambiguous Browser Run POST
   assert.equal(afterUnknown.state.status, "start_unknown");
 });
 
+test("Spider ledger prevents cross-application reads and state transitions", async () => {
+  const ns = makeLedgerNamespace();
+  const appA = ns.get("job:CONTENTCRAFT-APP:" + id);
+  const appB = ns.get("job:AIFORCE-APP:" + id);
+  const post = (stub, path, body) => stub.fetch(new Request("https://ledger.test" + path, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  })).then(async response => ({ status: response.status, body: await response.json() }));
+  const job = { appId: "CONTENTCRAFT-APP", id, url: "https://docs.example.com/", pageLimit: 10, depth: 1, now: now() };
+  const created = await post(appA, "/job/claim-start", job);
+  assert.equal(created.body.claimed, true);
+  const foreignRead = await post(appA, "/job/get", { appId: "AIFORCE-APP", id });
+  assert.equal(foreignRead.body.state, null);
+  const foreignMutation = await post(appA, "/job/mark-failed", {
+    appId: "AIFORCE-APP", id, code: "ATTACK_ATTEMPT", now: now(),
+  });
+  assert.equal(foreignMutation.status, 409);
+  assert.equal(foreignMutation.body.code, "JOB_NOT_FOUND");
+  const ownRead = await post(appA, "/job/get", { appId: "CONTENTCRAFT-APP", id });
+  assert.equal(ownRead.body.state.status, "starting");
+  const otherTenantRead = await post(appB, "/job/get", { appId: "AIFORCE-APP", id });
+  assert.equal(otherTenantRead.body.state, null);
+});
+
 test("daily account quota is atomic and duplicate job claims do not consume a second slot", async () => {
   const ns = makeLedgerNamespace();
   const stub = ns.get("quota:2026-11-05");
