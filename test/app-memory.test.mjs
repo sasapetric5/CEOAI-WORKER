@@ -29,12 +29,17 @@ test("app memory namespaces isolate ContentCraft, AI Force and RankGeo", async (
   assert.notEqual(stores[0].namespacePrefix, stores[1].namespacePrefix);
 });
 
-test("RankGeo memory namespace is prepared but disabled until activation", async () => {
+test("RankGeo receives an enabled but isolated memory namespace", async () => {
   const kv = memoryKV();
-  assert.throws(
-    () => createAppMemoryStore({ kv, appId: "RANKGEO-APP", appPolicy: { enabled: false, memory: true } }),
-    /APP_DISABLED/
-  );
+  const rankGeo = createAppMemoryStore({
+    kv,
+    appId: "RANKGEO-APP",
+    appPolicy: { enabled: true, memory: true }
+  });
+  await rankGeo.write(sessionA, { history: [{ role: "user", content: "rankgeo-only" }] });
+  assert.match(rankGeo.namespacePrefix, /RANKGEO-APP/);
+  assert.equal((await rankGeo.read(sessionA)).history[0].content, "rankgeo-only");
+  assert.equal([...kv.data.keys()].every(key => key.startsWith("app-memory:v1:RANKGEO-APP:")), true);
 });
 
 test("reset only deletes the bound app and session namespace", async () => {
