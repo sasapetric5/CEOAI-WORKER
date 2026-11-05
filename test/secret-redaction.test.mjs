@@ -66,3 +66,13 @@ test("redacts secrets embedded in JSON-like request content", () => {
   assert.equal(output.includes("private_token_123456"), false);
   assert.ok(output.includes("safe"));
 });
+
+
+test("redacts provider-specific API headers and session cookies", () => {
+  const output = redactSensitiveText(
+    "x-goog-api-key: google_private_123; x-auth-token=auth_private_123; Cookie: session=private_session_123; Set-Cookie: refresh_token=private_refresh_123",
+  );
+  for (const secret of ["google_private_123", "auth_private_123", "private_session_123", "private_refresh_123"]) {
+    assert.equal(output.includes(secret), false);
+  }
+});
