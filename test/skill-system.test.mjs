@@ -63,7 +63,7 @@ test("KV rejects tampered content and catalog capability escalation",async()=>{
 test("KV skill system creates registry before agent loop",async()=>{
  const values=new Map(),kv={async put(k,v){values.set(k,v);},async get(k){return values.get(k)??null;}};
  await publishSkillCatalogToKV({kv,skills:[BUILTIN_SKILLS[0]],toolRegistry:tools,approvedSkillIds:[BUILTIN_SKILLS[0].id]});
- const system=await createKVSkillSystem({kv,toolRegistry:tools,agentLoopFactory:({skillRegistry})=>createAgentLoop({toolRegistry:tools,skillRegistry})});
+ const system=await createKVSkillSystem({kv,toolRegistry:tools,approvedSkillIds:[BUILTIN_SKILLS[0].id],agentLoopFactory:({skillRegistry})=>createAgentLoop({toolRegistry:tools,skillRegistry})});
  assert.ok(system.agentLoop);assert.equal((await system.supervisor.prepare({task:"Cloudflare Agents SDK and MCP tools"})).ok,true);
 });
 
