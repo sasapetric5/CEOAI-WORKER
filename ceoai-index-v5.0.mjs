@@ -1173,7 +1173,7 @@ export default {
       let body;
       try { body = JSON.parse(rawBody); } catch { return json({ success: false, code: "INVALID_JSON" }, 400); }
       if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some(key => !["url", "pageLimit", "depth", "requestId"].includes(key)) || typeof body.requestId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.requestId)) return json({ success: false, code: "INVALID_SPIDER_REQUEST" }, 400);
-      const queued = await enqueueSpiderCrawl(env, { url: body.url, pageLimit: body.pageLimit === undefined ? 10 : body.pageLimit, depth: body.depth === undefined ? 1 : body.depth, jobId: body.requestId });
+      const queued = await enqueueSpiderCrawl(env, { appId: auth.appId, url: body.url, pageLimit: body.pageLimit === undefined ? 10 : body.pageLimit, depth: body.depth === undefined ? 1 : body.depth, jobId: body.requestId });
       if (!queued.ok) return json({ success: false, code: queued.code }, queued.code === "SPIDER_QUEUE_UNAVAILABLE" ? 503 : 400);
       return json({ success: true, jobId: queued.jobId, status: queued.status }, 202);
     }
