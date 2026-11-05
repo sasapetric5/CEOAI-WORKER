@@ -51,7 +51,7 @@ test("agents run sequentially under one shared tool-call budget",async()=>{
 test("agent composition loads the KV skill library and exposes supervisor",async()=>{
  const values=new Map(),kv={async put(k,v){values.set(k,v);},async get(k){return values.get(k)??null;}};
  const toolRegistry=createToolRegistry({tools:[]});
- await publishSkillCatalogToKV({kv,skills:BUILTIN_SKILLS,toolRegistry});
+ await publishSkillCatalogToKV({kv,skills:BUILTIN_SKILLS,toolRegistry,approvedSkillIds:BUILTIN_SKILLS.map(skill=>skill.id)});
  const system=await createKVAgentSystem({kv,toolRegistry,agentLoopFactory:({toolRegistry,skillRegistry})=>createAgentLoop({toolRegistry,skillRegistry}),mcpAuthorize:async context=>context?.valid===true});
  assert.equal(system.agents.size,5);assert.ok(system.multiAgentSupervisor);assert.ok(system.mcpResources);
  assert.equal((await system.mcpResources.handle({method:"resources/list"})).error.code,"ACCESS_DENIED");
