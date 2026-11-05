@@ -78,7 +78,7 @@ export async function verifyHmacSignature(request, rawBuffer, env) {
     const bodyHash = await crypto.subtle.digest("SHA-256", bodyBytes);
     const bodyHashHex = Array.from(new Uint8Array(bodyHash), byte => byte.toString(16).padStart(2, "0")).join("");
     const url = new URL(request.url);
-    const canonical = [request.method.toUpperCase(), url.pathname, timestampStr, nonce, bodyHashHex].join("\n");
+    const canonical = [request.method.toUpperCase(), url.pathname + url.search, timestampStr, nonce, bodyHashHex].join("\n");
     const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
     const valid = await crypto.subtle.verify("HMAC", key, signatureBytes, new TextEncoder().encode(canonical));
     if (!valid) return invalid();
