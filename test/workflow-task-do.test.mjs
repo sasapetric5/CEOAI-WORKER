@@ -184,3 +184,38 @@ test("34 stale fencing token cannot complete a claimed effect", async () => {
   await store.acquireLease("task_34",OWNER_B,5000);
   await assert.rejects(()=>store.completeEffect("task_34",OWNER_A,first.fencingToken,"step:once",claim.payloadHash,{ok:true}),/STALE_EXECUTOR/);
 });
+
+test("35 recovery inspection exposes an interrupted effect without retrying it", async () => {
+  const {namespace,data}=makeDO(); const store=createCloudflareCheckpointStore(namespace);
+  const first=await store.acquireLease("task_35",OWNER_A,5000);
+  await store.claimEffect("task_35",OWNER_A,first.fencingToken,"step:uncertain",{send:true});
+  data.set("lease",{...data.get("lease"),expiresAt:Date.now()-1});
+  const recovered=await store.acquireLease("task_35",OWNER_B,5000);
+  const effect=await store.getEffect("task_35",OWNER_B,recovered.fencingToken,"step:uncertain");
+  assert.equal(effect.status,"started");
+  await assert.rejects(()=>store.claimEffect("task_35",OWNER_B,recovered.fencingToken,"step:uncertain",{send:true}),/EFFECT_OUTCOME_UNKNOWN/);
+});
+test("36 completed effects remain replayable after lease recovery", async () => {
+  const {namespace,data}=makeDO(); const store=createCloudflareCheckpointStore(namespace);
+  const first=await store.acquireLease("task_36",OWNER_A,5000);
+  const claim=await store.claimEffect("task_36",OWNER_A,first.fencingToken,"step:done",{x:1});
+  await store.completeEffect("task_36",OWNER_A,first.fencingToken,"step:done",claim.payloadHash,{ok:true});
+  data.set("lease",{...data.get("lease"),expiresAt:Date.now()-1});
+  const second=await store.acquireLease("task_36",OWNER_B,5000);
+  const replay=await store.claimEffect("task_36",OWNER_B,second.fencingToken,"step:done",{x:1});
+  assert.equal(replay.replay,true); assert.deepEqual(replay.result,{ok:true});
+});
+test("37 the per-task idempotency ledger has a hard entry limit", async () => {
+  const {namespace}=makeDO(); const store=createCloudflareCheckpointStore(namespace);
+  const lease=await store.acquireLease("task_37",OWNER_A,5000);
+  for(let i=0;i<128;i++) await store.claimEffect("task_37",OWNER_A,lease.fencingToken,"effect_"+i,{i});
+  await assert.rejects(()=>store.claimEffect("task_37",OWNER_A,lease.fencingToken,"effect_overflow",{x:1}),/EFFECT_LEDGER_LIMIT/);
+});
+test("38 stale executors cannot inspect the effect ledger", async () => {
+  const {namespace,data}=makeDO(); const store=createCloudflareCheckpointStore(namespace);
+  const first=await store.acquireLease("task_38",OWNER_A,5000);
+  await store.claimEffect("task_38",OWNER_A,first.fencingToken,"step:inspect",{x:1});
+  data.set("lease",{...data.get("lease"),expiresAt:Date.now()-1});
+  await store.acquireLease("task_38",OWNER_B,5000);
+  await assert.rejects(()=>store.getEffect("task_38",OWNER_A,first.fencingToken,"step:inspect"),/STALE_EXECUTOR/);
+});
