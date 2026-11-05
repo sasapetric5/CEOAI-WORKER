@@ -97,15 +97,15 @@ test("daily account quota is atomic and duplicate job claims do not consume a se
   const call = input => stub.fetch(new Request("https://ledger.test/quota/claim", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input),
   })).then(response => response.json());
-  const first = await call({ date: "2026-11-05", id, limit: 5, now: now() });
-  const duplicate = await call({ date: "2026-11-05", id, limit: 5, now: now() });
+  const first = await call({ appId: "GLOBAL", date: "2026-11-05", id, limit: 5, now: now() });
+  const duplicate = await call({ appId: "GLOBAL", date: "2026-11-05", id, limit: 5, now: now() });
   assert.equal(first.allowed, true);
   assert.equal(duplicate.duplicate, true);
   for (let i = 1; i < 5; i++) {
     const otherId = "123e4567-e89b-42d3-a456-42661417400" + i;
     assert.equal((await call({ appId: "GLOBAL", date: "2026-11-05", id: otherId, limit: 5, now: now() })).allowed, true);
   }
-  const sixth = await call({ date: "2026-11-05", id: "123e4567-e89b-42d3-a456-426614174099", limit: 5, now: now() });
+  const sixth = await call({ appId: "GLOBAL", date: "2026-11-05", id: "123e4567-e89b-42d3-a456-426614174099", limit: 5, now: now() });
   assert.equal(sixth.allowed, false);
   assert.equal(sixth.count, 5);
 });
@@ -118,7 +118,7 @@ test("producer validates and publishes a bounded HTTPS job", async () => {
   assert.equal(sent.length, 1);
   assert.equal(sent[0].url, "https://docs.example.com/start");
   assert.equal(sent[0].id, id);
-  assert.equal((await enqueueSpiderCrawl(env, { url: "http://127.0.0.1" })).code, "CRAWL_URL_REJECTED");
+  assert.equal((await enqueueSpiderCrawl(env, { appId: "CONTENTCRAFT-APP", url: "http://127.0.0.1" })).code, "CRAWL_URL_REJECTED");
   assert.equal(sent.length, 1);
 });
 
@@ -157,7 +157,7 @@ test("polling stores bounded untrusted records and marks the job complete idempo
   const poll = makeMessage({ version: 1, kind: "poll", appId: "CONTENTCRAFT-APP", id, attempt: 0 });
   await handler({ messages: [poll] }, env);
   assert.equal(poll.calls[0], "ack");
-  const saved = stored.get("spider:result:" + id);
+  const saved = stored.get("spider:result:CONTENTCRAFT-APP:" + id);
   assert.ok(saved);
   assert.equal(saved.options.expirationTtl, 7 * 24 * 60 * 60);
   assert.equal(JSON.parse(saved.value).trust, "untrusted_reference");
