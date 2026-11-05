@@ -33,3 +33,7 @@ Provide the target question, answer summary, content gaps, entity/terminology no
 
 ## Provenance
 Original CEOAI-authored workflow. No upstream code, copied skill text, package, or runtime dependency.
+
+
+## Research transport
+Use the existing guarded Spider for public read-only research; do not introduce a second crawler.
