@@ -25,3 +25,15 @@ test("MCP adapter exposes no write or tool methods",async()=>{
  assert.equal((await gateway.handle({method:"tools/call",params:{name:"anything"}})).error.code,"METHOD_NOT_FOUND");
  assert.equal((await gateway.handle({method:"resources/write"})).error.code,"METHOD_NOT_FOUND");
 });
+
+test("MCP resource adapter rejects accessor and unknown parameters without invoking getters",async()=>{
+ const gateway=createSkillMCPResources({skillRegistry:registry,authorize:async()=>true});
+ let getterCalls=0;
+ const params={};
+ Object.defineProperty(params,"uri",{enumerable:true,get(){getterCalls++;return "ceoai://skills/alpha_skill";}});
+ const result=await gateway.handle({method:"resources/read",params});
+ assert.equal(result.error.code,"INVALID_PARAMS");
+ assert.equal(getterCalls,0);
+ const unknown=await gateway.handle({method:"resources/read",params:{uri:"ceoai://skills/alpha_skill",path:"/etc/passwd"}});
+ assert.equal(unknown.error.code,"INVALID_PARAMS");
+});
