@@ -13,6 +13,15 @@ export function createSkillMCPResources({skillRegistry,authorize,maxPageSize=20,
   try{allowed=await authorize(authContext,{method});}catch{}
   if(allowed!==true){record({type:"mcp_denied",method});return {ok:false,error:{code:"ACCESS_DENIED"}};}
   if(!plain(params))return {ok:false,error:{code:"INVALID_PARAMS"}};
+  const allowedParams = method==="resources/list" ? new Set(["cursor"]) : new Set(["uri"]);
+  const safeParams = Object.create(null);
+  for(const key of Reflect.ownKeys(params)){
+   if(typeof key!=="string"||!allowedParams.has(key))return {ok:false,error:{code:"INVALID_PARAMS"}};
+   const descriptor=Object.getOwnPropertyDescriptor(params,key);
+   if(!descriptor||!Object.hasOwn(descriptor,"value"))return {ok:false,error:{code:"INVALID_PARAMS"}};
+   safeParams[key]=descriptor.value;
+  }
+  params=safeParams;
   if(method==="resources/list"){
    const cursor=params.cursor??"0";
    if(typeof cursor!=="string"||!/^(0|[1-9][0-9]{0,5})$/.test(cursor))return {ok:false,error:{code:"INVALID_CURSOR"}};
