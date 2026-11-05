@@ -1298,11 +1298,12 @@ export default {
       if (hasHmacHeaders) {
         let rawBody;
         try {
-          rawBody = await request.clone().arrayBuffer();
-        } catch {
-          return json({ error: { message: "Invalid request body.", type: "authentication_error", code: "invalid_body" } }, 400);
+          rawBody = await readBodyLimited(request.clone(), 16000);
+        } catch (error) {
+          const tooLarge = error?.status === 413;
+          return json({ error: { message: tooLarge ? "Request body too large." : "Invalid request body.", type: "invalid_request_error", code: tooLarge ? "request_too_large" : "invalid_body" } }, tooLarge ? 413 : 400);
         }
-        const auth = await verifyHmacSignature(request, rawBody, env);
+        const auth = await verifyHmacSignature(request, new TextEncoder().encode(rawBody), env);
         if (!auth.valid) {
           return json({
             error: {
