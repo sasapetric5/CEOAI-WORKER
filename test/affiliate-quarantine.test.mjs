@@ -68,7 +68,7 @@ test("affiliate README lists every newly imported skill", async () => {
 });
 
 test("new skills remain outside the built-in runtime seed", async () => {
-  const builtins = await readFile(new URL("../../../src/agent/builtin-skills.mjs", import.meta.url), "utf8");
+  const builtins = await readFile(new URL("../src/agent/builtin-skills.mjs", import.meta.url), "utf8");
   for (const id of [
     "seo_audit", "internal_linking_optimizer", "performance_report",
     "keyword_cluster_architect", "content_decay_detector", "content_research_brief",
