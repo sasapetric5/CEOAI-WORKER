@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { WorkflowTaskDO } from "../src/durable-objects/workflow-task-do.mjs";
 import { createCloudflareCheckpointStore } from "../src/agent/cloudflare-checkpoint-store.mjs";
+import { createCloudflareDurableExecutionEngine } from "../src/agent/cloudflare-durable-runtime.mjs";
 
 function makeDO() {
   const data = new Map();
@@ -261,4 +262,30 @@ test("40 checkpoint survives Durable Object instance recreation and resumes with
     }),
     /STALE_EXECUTOR/,
   );
+});
+
+
+test("41 durable engine executes through Durable Object lease, fenced checkpoint and idempotency ledger", async () => {
+  const { namespace } = makeDO();
+  const calls = [];
+  const engine = createCloudflareDurableExecutionEngine({
+    env: { WORKFLOW_TASKS: namespace },
+    executeStep: async context => {
+      calls.push(context);
+      return { completed: context.stepId, idempotencyKey: context.idempotencyKey };
+    },
+  });
+  const created = await engine.create({
+    id: "task_41",
+    input: { goal: "integration" },
+    steps: [{ id: "only", kind: "task" }],
+  });
+  assert.equal(created.ok, true);
+  const completed = await engine.run("task_41");
+  assert.equal(completed.status, "completed");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].idempotencyKey, "task_41:only");
+  const recovered = await engine.get("task_41");
+  assert.equal(recovered.state.status, "completed");
+  assert.equal(recovered.state.completedStepIds[0], "only");
 });
