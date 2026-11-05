@@ -1,4 +1,4 @@
-name: CEOAI V5.0 production deploy
+name: CEOAI V5.1 production deploy
 
 on:
   workflow_dispatch:
@@ -22,20 +22,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Check out verified main source
+      - name: Check out the exact workflow-dispatch commit
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Run complete Worker verification
+      - name: Run complete Worker verification (including Spider, Queue, HMAC and Security DO tests)
         run: npm run verify
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-      - name: Run Spider sidecar tests
-        run: cargo test --manifest-path sidecar/spider/Cargo.toml
 
   deploy:
     name: Deploy existing ceoai-worker Worker
@@ -44,10 +40,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Check out the exact verified main source
+      - name: Check out the exact verified commit
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.sha }}
       - name: Validate Cloudflare credentials are configured
         env:
           CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
