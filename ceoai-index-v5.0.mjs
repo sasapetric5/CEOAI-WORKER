@@ -19,6 +19,7 @@ const MAX_HISTORY_MESSAGES = 16;
 const MAX_HISTORY_INPUT_MESSAGES = 64;
 const MAX_REPLY_CHARS = 12000;
 import { verifyHmacSignature } from "./src/v5-modules/hmac-auth.mjs";
+import { redactSensitiveText } from "./src/v5-modules/secret-redaction.mjs";
 import { handleOpenAIChatCompletions } from "./src/openai-compat.mjs";
 import { prepareConversation, appendReply, withSummary } from "./src/v5-modules/history.mjs";
 import { handleMemoryReset } from "./src/v5-modules/session.mjs";
@@ -384,7 +385,7 @@ async function withTimeoutFetch(url, options, timeoutMs = PROVIDER_TIMEOUT_MS) {
   }
 }
 
-async function readProviderError(response, provider) {
+async function readProviderError(response, provider, env = {}) {
   // Bound the amount of error text retained in memory/logs; never return it to the client.
   let detail = "";
   try { detail = (await response.text()).slice(0, 1200); } catch {}
@@ -397,12 +398,7 @@ async function readProviderError(response, provider) {
   error.quotaExhausted = response.status === 429 && /quota|daily|monthly|resource.?exhausted|billing|exceeded.?limit|rate.?limit.?exceeded|tokens?.?per?.?(day|month)|free.?tier|usage.?limit/i.test(detailLower)
     || response.status === 403 && /quota|billing|exceeded|permission.?denied.*quota/i.test(detailLower)
     || /you exceeded your current quota|resource_exhausted|insufficient_quota/i.test(detailLower);
-  error.providerDetail = detail
-    // Redact bearer credentials first, including when the text is JSON-escaped.
-    .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/ig, "Bearer [redacted]")
-    // Match credential field names at word boundaries; do not match substrings such as "monkey".
-    // Supports quoted values with spaces and ordinary unquoted values.
-    .replace(/\b(x-api-key|api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|token|key)\b\s*[:=]\s*(?:\\?["'][^"']*\\?["']|[^\s,;]+)/ig, "$1=[redacted]");
+  error.providerDetail = redactSensitiveText(detail, { ...env, API_KEY: env.API_KEY || "" });
   return error;
 }
 
@@ -446,7 +442,7 @@ async function executeModel(provider, messages, timeoutMs = PROVIDER_TIMEOUT_MS)
       { method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": provider.key }, body: JSON.stringify(payload) },
       timeoutMs
     );
-    if (!response.ok) throw await readProviderError(response, "Gemini");
+    if (!response.ok) throw await readProviderError(response, "Gemini", { API_KEY: provider.key });
     const data = await response.json();
     const parts = data?.candidates?.[0]?.content?.parts;
     const result = Array.isArray(parts) ? parts.map(p => p?.text || "").join("") : "";
@@ -480,7 +476,7 @@ async function executeModel(provider, messages, timeoutMs = PROVIDER_TIMEOUT_MS)
         temperature: 0.3,
       }),
     }, timeoutMs);
-    if (!response.ok) throw await readProviderError(response, provider.provider);
+    if (!response.ok) throw await readProviderError(response, provider.provider, { API_KEY: provider.key });
     const data = await response.json();
     const result = data?.choices?.[0]?.message?.content;
     if (typeof result !== "string" || !result.trim()) throw new Error(`${provider.provider} je vratio prazan odgovor`);
@@ -621,7 +617,7 @@ async function fetchSearchTavily(env, query) {
       body: JSON.stringify({ query: String(query).slice(0, 400), max_results: 5, search_depth: "basic" }),
     }, SEARCH_TIMEOUT_MS);
     if (!response.ok) {
-      const err = await readProviderError(response, "tavily");
+      const err = await readProviderError(response, "tavily", env);
       if (isQuotaError(err) || response.status === 429) {
         await markCooldown(env, "search-tavily", isQuotaError(err) ? QUOTA_COOLDOWN_TTL : COOLDOWN_TTL);
       }
@@ -651,7 +647,7 @@ async function fetchSearchGoogleCse(env, query) {
       + `&num=5`;
     const response = await withTimeoutFetch(url, { method: "GET" }, SEARCH_TIMEOUT_MS);
     if (!response.ok) {
-      const err = await readProviderError(response, "google-cse");
+      const err = await readProviderError(response, "google-cse", env);
       if (isQuotaError(err) || response.status === 429) {
         await markCooldown(env, "search-google-cse", isQuotaError(err) ? QUOTA_COOLDOWN_TTL : COOLDOWN_TTL);
       }
@@ -679,7 +675,7 @@ async function fetchSearchExa(env, query) {
       body: JSON.stringify({ query: String(query).slice(0, 400), num_results: 5, type: "auto" }),
     }, SEARCH_TIMEOUT_MS);
     if (!response.ok) {
-      const err = await readProviderError(response, "exa");
+      const err = await readProviderError(response, "exa", env);
       if (isQuotaError(err) || response.status === 429) {
         await markCooldown(env, "search-exa", isQuotaError(err) ? QUOTA_COOLDOWN_TTL : COOLDOWN_TTL);
       }
@@ -716,7 +712,7 @@ async function fetchSearchFirecrawl(env, query) {
         body: JSON.stringify({ url: urlMatch[0].slice(0, 2000), formats: ["markdown"] }),
       }, SEARCH_TIMEOUT_MS);
       if (!response.ok) {
-        const err = await readProviderError(response, "firecrawl");
+        const err = await readProviderError(response, "firecrawl", env);
         if (isQuotaError(err) || response.status === 429) {
           await markCooldown(env, "search-firecrawl", isQuotaError(err) ? QUOTA_COOLDOWN_TTL : COOLDOWN_TTL);
         }
@@ -924,7 +920,7 @@ async function fetchSearchSerpApi(env, query) {
       method: "GET", headers: { "Accept": "application/json" },
     }, SEARCH_TIMEOUT_MS);
     if (!response.ok) {
-      const err = await readProviderError(response, "serpapi");
+      const err = await readProviderError(response, "serpapi", env);
       if (isQuotaError(err) || response.status === 429) {
         await markCooldown(env, "search-serpapi", isQuotaError(err) ? QUOTA_COOLDOWN_TTL : COOLDOWN_TTL);
       }
@@ -1573,7 +1569,7 @@ export default {
           const msg = String(error?.message || "");
           console.warn("CEOAI_DIAG provider_failed", JSON.stringify({ provider: candidate.id, status: lastStatus, quota: isQuotaError(error) }));
           if (env.DEBUG_PROVIDER_ERRORS === "true" && error?.providerDetail) {
-            console.debug(`Provider ${candidate.id} detail: ${String(error.providerDetail).slice(0, 600)}`);
+            console.debug(`Provider ${candidate.id} detail: ${redactSensitiveText(error.providerDetail, env).slice(0, 600)}`);
           }
           const quotaHit = isQuotaError(error);
           const cooldown = providerFailureCooldown({
@@ -1646,7 +1642,7 @@ export default {
         },
       }, 200, corsHeaders(origin));
     } catch (error) {
-      console.error("Chat request failed:", String(error?.message || error).slice(0, 180));
+      console.error("Chat request failed:", redactSensitiveText(error?.message || error, env).slice(0, 180));
       return json({ success: false, error: "Interna greška pri obradi zahteva." }, 500, corsHeaders(origin));
     }
   },
