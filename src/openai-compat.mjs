@@ -1,4 +1,5 @@
-// OpenAI-compatible, non-streaming gateway for CEOAI V5.0.\nimport { createAppMemoryStore } from "./v5-modules/app-memory.mjs";
+// OpenAI-compatible, non-streaming gateway for CEOAI V5.0.
+import { createAppMemoryStore } from "./v5-modules/app-memory.mjs";
 // Requires server-side GATEWAY_SECRET and explicit AI opt-in. No client-supplied provider keys.
 const MAX_BODY_BYTES=16000, MAX_MESSAGES=16, MAX_MESSAGE_CHARS=8000, MAX_TOTAL_CHARS=14000;
 const DEADLINE_MS=24000, MAX_ATTEMPTS=4;
