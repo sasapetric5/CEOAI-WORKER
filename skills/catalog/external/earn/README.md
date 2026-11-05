@@ -1,7 +1,7 @@
 # EARN and freelance service skills — intake pack
 
 - State: QUARANTINED / NOT RUNTIME-ACTIVE
-- Skill documents: 63
+- Skill documents: 71
 - Runtime seed additions: 0
 - Tool grants: 0
 - Discovery policy: WORLDWIDE by default for ordinary EARN, bounty, open-source, freelance, affiliate, and remote-work opportunities.
@@ -71,6 +71,14 @@
 - freelance-recurring-service-opportunity-mapper — identifies sustainable recurring freelance service opportunities.
 - open-source-maintainer-service-opportunity-finder — researches transparent paid services around open-source projects.
 - freelance-portfolio-proof-verifier — checks portfolio claims against authentic evidence and permissions.
+- website-accessibility-audit-service — plans evidence-based website accessibility audits.
+- website-security-configuration-review — reviews public website security headers without invasive testing.
+- analytics-event-taxonomy-planner — designs privacy-conscious analytics events and metrics.
+- crm-data-quality-audit-planner — plans safe CRM data-quality audits and correction proposals.
+- software-test-case-authoring-service — turns software requirements into traceable test cases.
+- technical-documentation-service-planner — scopes accurate technical documentation and review.
+- website-migration-readiness-audit — checks website migration readiness, SEO continuity, and rollback.
+- freelance-service-profitability-scenario-modeler — models service profitability using explicit cost and effort assumptions.
 
 ## Free-only and permission limits
 No CashClaw npm package, Stripe integration, HYRVE marketplace, paid SEO tools, paid APIs, scripts, or third-party runtime is imported. No account credentials, cookies, secrets, or wallet material are used. All skills are research/draft-only and grant no tools. No applications, claims, issue comments, PRs, outreach, emails, posting, publishing, invoices, transfers, signing, or payouts are permitted. Use existing CEOAI Spider only for guarded public read-only research; do not create a second crawler.
