@@ -68,8 +68,8 @@
         "restart_recovery"
       ],
       "runtime": "workers_vitest",
-      "adaptation": "Translate recovery invariants to CEOAI WorkflowTaskDO and verify with Workers runtime tests.",
-      "status": "license_verified",
+      "adaptation": "Adapted as test 40 in test/workflow-task-do.test.mjs: recreate the Durable Object instance over retained storage, verify checkpoint recovery, then assert higher fencing token and stale-writer rejection. CEOAI Node harness only; real Workers eviction test still required.",
+      "status": "adapted",
       "executionEvidence": null
     },
     {
