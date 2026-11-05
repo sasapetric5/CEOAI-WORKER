@@ -62,7 +62,8 @@ function createLedger(env) {
     const parts = name.split(":");
     const appId = parts[0] === "job" ? parts[1] : parts[1] === "app" ? parts[2] : parts[1] === "global" ? "GLOBAL" : null;
     if (!appId) throw new Error("SPIDER_LEDGER_SCOPE_INVALID");
-    const scopedInput = { ...input, appId: input.appId || appId };
+    if (input.appId !== undefined && input.appId !== appId) throw new Error("SPIDER_LEDGER_SCOPE_MISMATCH");
+    const scopedInput = { ...input, appId };
     const stub = env.SPIDER_LEDGER.get(env.SPIDER_LEDGER.idFromName(name));
     const response = await stub.fetch("https://spider-ledger.internal" + path, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(scopedInput),
