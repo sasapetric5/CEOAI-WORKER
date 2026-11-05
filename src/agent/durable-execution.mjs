@@ -104,7 +104,10 @@ export function createDurableExecutionEngine({ store, executeStep, now = () => D
     return saved;
   }
   async function pauseForApproval(state, step) {
-    const approvalId = "approval_" + state.id + "_" + step.id;
+    // Bounded opaque ID: deterministic and always within the public approval-ID limit.
+    let hash = 2166136261;
+    for (const char of state.id + ":" + step.id) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619) >>> 0;
+    const approvalId = "appr_" + state.id.slice(0, 24) + "_" + step.id.slice(0, 24) + "_" + hash.toString(16).padStart(8, "0");
     const next = { ...state, status: "paused_approval", pendingApproval: {
       id: approvalId, stepId: step.id, requestedAt: now(), decision: "pending",
     }, updatedAt: now(), revision: state.revision + 1 };
