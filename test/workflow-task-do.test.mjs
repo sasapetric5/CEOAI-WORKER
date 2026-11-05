@@ -49,3 +49,44 @@ test("14 rejects delete with stale revision", async () => { const {namespace}=ma
 test("15 concurrent writes using one revision allow exactly one winner", async () => { const {instance}=makeDO(); const send=status=>instance.fetch(new Request("https://x/put",{method:"POST",body:JSON.stringify({id:"task_15",expectedRevision:-1,state:state("task_15",0,status)})})); const results=await Promise.all([send("ready"),send("running")]); assert.deepEqual(results.map(r=>r.status).sort(),[200,409]); });
 test("16 rejects extra checkpoint envelope fields", async () => { const {instance}=makeDO(); const r=await instance.fetch(new Request("https://x/put",{method:"POST",body:JSON.stringify({id:"task_16",expectedRevision:-1,state:state("task_16",0),admin:true})})); assert.equal(r.status,400); });
 test("17 rejects extra delete envelope fields", async () => { const {instance}=makeDO(); const r=await instance.fetch(new Request("https://x/delete",{method:"POST",body:JSON.stringify({id:"task_17",expectedRevision:0,force:true})})); assert.equal(r.status,400); });
+
+const OWNER_A = "owner_token_A_0123456789_abcdefgh";
+const OWNER_B = "owner_token_B_0123456789_abcdefgh";
+test("18 grants only one active lease for a task", async () => {
+  const {namespace}=makeDO(); const store=createCloudflareCheckpointStore(namespace);
+  const lease=await store.acquireLease("lease_18",OWNER_A,5000);
+  assert.equal(lease.fencingToken,1);
+  await assert.rejects(()=>store.acquireLease("lease_18",OWNER_B,5000),/TASK_LEASE_HELD/);
+});
+test("19 renew requires the current owner and fencing token", async () => {
+  const {namespace}=makeDO(); const store=createCloudflareCheckpointStore(namespace);
+  const lease=await store.acquireLease("lease_19",OWNER_A,5000);
+  const renewed=await store.renewLease("lease_19",OWNER_A,lease.fencingToken,10000);
+  assert.ok(renewed.expiresAt>lease.expiresAt);
+  await assert.rejects(()=>store.renewLease("lease_19",OWNER_B,lease.fencingToken,5000),/LEASE_NOT_OWNED/);
+});
+test("20 release requires exact owner and fencing token", async () => {
+  const {namespace}=makeDO(); const store=createCloudflareCheckpointStore(namespace);
+  const lease=await store.acquireLease("lease_20",OWNER_A,5000);
+  await assert.rejects(()=>store.releaseLease("lease_20",OWNER_B,lease.fencingToken),/LEASE_NOT_OWNED/);
+  assert.equal(await store.releaseLease("lease_20",OWNER_A,lease.fencingToken),true);
+});
+test("21 reacquisition increments the fencing token", async () => {
+  const {namespace}=makeDO(); const store=createCloudflareCheckpointStore(namespace);
+  const first=await store.acquireLease("lease_21",OWNER_A,5000);
+  await store.releaseLease("lease_21",OWNER_A,first.fencingToken);
+  const second=await store.acquireLease("lease_21",OWNER_B,5000);
+  assert.equal(second.fencingToken,first.fencingToken+1);
+});
+test("22 rejects invalid lease duration and weak owner token", async () => {
+  const {namespace}=makeDO(); const store=createCloudflareCheckpointStore(namespace);
+  await assert.rejects(()=>store.acquireLease("lease_22","weak",1000),/INVALID_LEASE_REQUEST/);
+});
+test("23 rejects a stale fencing token after lease replacement", async () => {
+  const {namespace}=makeDO(); const store=createCloudflareCheckpointStore(namespace);
+  const first=await store.acquireLease("lease_23",OWNER_A,5000);
+  await store.releaseLease("lease_23",OWNER_A,first.fencingToken);
+  const second=await store.acquireLease("lease_23",OWNER_B,5000);
+  await assert.rejects(()=>store.renewLease("lease_23",OWNER_A,first.fencingToken,5000),/LEASE_NOT_OWNED/);
+  assert.ok(second.fencingToken>first.fencingToken);
+});
