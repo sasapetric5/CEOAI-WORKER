@@ -105,3 +105,21 @@ test("rejects malformed nonce, signature and body buffer", async () => {
   }});
   assert.equal((await verifyHmacSignature(req, {}, makeEnv())).status,401);
 });
+
+test("rejects query-string tampering because the full request target is signed", async () => {
+  const nonce = "nonce_query_bind_123456789";
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const signature = await sign({ nonce, timestamp, requestPath: path });
+  const req = new Request("https://ceoai.test" + path + "?scope=admin", {
+    method: "POST",
+    headers: {
+      "X-App-Id": appId,
+      "X-Timestamp": timestamp,
+      "X-Nonce": nonce,
+      "X-Signature": signature,
+    },
+  });
+  const result = await verifyHmacSignature(req, body, makeEnv());
+  assert.equal(result.valid, false);
+  assert.equal(result.status, 401);
+});
