@@ -146,3 +146,20 @@ test("38 rejects checkpoint writes from an expired fencing lease", async () => {
     /STALE_EXECUTOR/,
   );
 });
+
+
+test("39 renews the lease for a step that runs longer than one heartbeat interval", async () => {
+  let signal;
+  const { engine } = fixture({
+    executeStep: async context => {
+      signal = context.signal;
+      await new Promise(resolve => setTimeout(resolve, 1800));
+      return { survivedHeartbeat: true };
+    },
+  });
+  await engine.create({ id: "task_39", steps: [{ id: "slow", kind: "task" }] });
+  const result = await engine.run("task_39", { leaseMs: 5000 });
+  assert.equal(result.status, "completed");
+  assert.ok(signal instanceof AbortSignal);
+  assert.equal(signal.aborted, false);
+});
