@@ -89,7 +89,9 @@ export function createToolRegistry({ tools = [], enabled = false, limits = {} } 
           grants.value.some(toolId => typeof toolId !== "string") || !grants.value.includes(id)) return error("TOOL_CAPABILITY_DENIED");
       const checked = registry.validate(id, input);
       if (!checked.ok) return checked;
-      const session = toolSessionState.get(context.session);
+      const sessionDescriptor = Object.getOwnPropertyDescriptor(context, "session");
+      if (!sessionDescriptor || !Object.hasOwn(sessionDescriptor, "value")) return error("INVALID_TOOL_SESSION");
+      const session = toolSessionState.get(sessionDescriptor.value);
       if (!session) return error("INVALID_TOOL_SESSION");
       if (session.used >= session.maxCalls) return error("TOOL_SESSION_CALL_LIMIT");
       const calls = session.perTool.get(id) || 0;
