@@ -27,8 +27,6 @@ test("EARN pack registers all five new skills without runtime seed additions", a
   assert.match(readme, /Runtime seed additions: 0/);
   assert.match(readme, /Tool grants: 0/);
   for (const id of skills) assert.ok(readme.includes(id));
-  const builtins = await readFile(new URL("../agent/builtin-skills.mjs", new URL("../../src/", import.meta.url)), "utf8").catch(async () => {
-    return readFile(new URL("../../../src/agent/builtin-skills.mjs", import.meta.url), "utf8");
-  });
+  const builtins = await readFile(new URL("../src/agent/builtin-skills.mjs", import.meta.url), "utf8");
   for (const id of skills) assert.ok(!builtins.includes(id), "unexpected runtime activation: " + id);
 });
