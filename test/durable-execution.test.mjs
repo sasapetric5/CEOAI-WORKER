@@ -36,7 +36,7 @@ test("19 supports explicit cancellation", async () => { const {engine}=fixture()
 test("20 does not rerun terminal tasks", async () => { const {engine,calls}=fixture(); await engine.create({id:"task_19",steps:[{id:"only",kind:"task"}]}); await engine.run("task_19"); await engine.run("task_19"); assert.equal(calls.length,1); });
 test("21 returns a stable not-found error", async () => { const {engine}=fixture(); assert.equal((await engine.get("missing")).code,"TASK_NOT_FOUND"); });
 test("22 validates checkpoint store dependency", () => { assert.throws(()=>createDurableExecutionEngine({}),/LEASE_IDEMPOTENCY_CHECKPOINT_STORE_REQUIRED/); });
-test("23 validates executor dependency", () => { const store=createMemoryCheckpointStore(); assert.throws(()=>createDurableExecutionEngine({store,executeStep:async()=>null}),/INVALID_DEPENDENCY/); });
+test("23 validates executor dependency", () => { assert.throws(()=>createDurableExecutionEngine({store:createMemoryCheckpointStore()}),/STEP_EXECUTOR_REQUIRED/); });
 test("24 isolates audit failures from execution", async () => { const {engine}=fixture({audit:{record(){throw Error("audit");}}}); await engine.create({id:"task_20",steps:[{id:"only",kind:"task"}]}); assert.equal((await engine.run("task_20")).status,"completed"); });
 test("25 persists state across engine instances sharing the store", async () => { const store=createMemoryCheckpointStore(); const first=fixture({store}); await first.engine.create({id:"task_21",steps}); await first.engine.run("task_21",{maxSteps:1}); const second=fixture({store}); const resumed=await second.engine.run("task_21",{maxSteps:2}); assert.equal(resumed.status,"completed"); assert.deepEqual(second.calls.map(c=>c.stepId),["research","report"]); });
 
