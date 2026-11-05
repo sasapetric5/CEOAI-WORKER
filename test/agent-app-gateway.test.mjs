@@ -14,7 +14,7 @@ function environment(extra={}){
   OPENROUTER_KEY:"test-openrouter-key",
   HMAC_ALLOWED_APPS:"CONTENTCRAFT-APP,AIFORCE-APP,RANKGEO-APP",
   APP_SECRET_CONTENTCRAFT_APP:secret,
-  KV_MEMORY:{async get(k){return memory.get(k)??null;},async put(k,v){memory.set(k,v);}},
+  KV_MEMORY:{async get(k){return memory.get(k)??null;},async put(k,v){memory.set(k,v);},async delete(k){memory.delete(k);}},
   RATE_LIMITER:{async limit({key}){return {success:true,key};}},
   SECURITY_DO:{idFromName(name){return name;},get(){return {async fetch(_url,options){const {appId,nonce}=JSON.parse(options.body),key=appId+":"+nonce;if(seen.has(key))return Response.json({error:"replay"},{status:409});seen.add(key);return Response.json({success:true});}};}},
   ...extra,
@@ -330,14 +330,14 @@ test("agent gateway validates conversation UUID and keeps requests stateless whe
   assert.equal((await invalid.json()).code,"INVALID_AGENT_REQUEST");
   const stateless=await worker.fetch(await signedRequest({task:"no persistent session"}),env);
   assert.equal(stateless.status,200);
-  assert.equal([...((await env.KV_MEMORY.get("unused"))===null?[]:[])].length,0);
  }finally{mock.restore();}
 });
 
 test("agent gateway fails closed when app memory storage is unavailable",async()=>{
  const mock=mockFreeModel();
  try{
-  const env=environment({KV_MEMORY:null});
+  const brokenKV={async get(){throw new Error("storage down");},async put(){},async delete(){}};
+  const env=environment({KV_MEMORY:brokenKV});
   const response=await worker.fetch(await signedRequest({
    task:"must not run without isolated memory",
    conversation_id:"123e4567-e89b-42d3-a456-426614174098"
