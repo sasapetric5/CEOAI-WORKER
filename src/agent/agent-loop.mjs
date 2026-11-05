@@ -59,7 +59,8 @@ export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, max
       if (!skill) return fail("SKILL_NOT_FOUND", 0, 0);
       if (typeof plan !== "function") return fail("PLANNER_REQUIRED", 0, 0);
       if (!Array.isArray(allowedToolIds) || allowedToolIds.some((id) => typeof id !== "string")) return fail("INVALID_CAPABILITIES", 0, 0);
-      if (!withinContextLimit(input)) return fail("INPUT_TOO_LARGE_OR_INVALID", 0, 0);
+      const safeInput = safeSnapshot(input);
+      if (safeInput === undefined || !withinContextLimit(safeInput)) return fail("INPUT_TOO_LARGE_OR_INVALID", 0, 0);
       let skillDocument = null;
       if (typeof skillRegistry.load === "function") {
         try { skillDocument = await skillRegistry.load(skillId); }
@@ -72,7 +73,7 @@ export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, max
       const failRun = (code, steps, calls) => { audit({ type: "run_failed", runId, code: /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? code : "AGENT_FAILED", step: steps, toolCalls: calls }); return { ...fail(code, steps, calls), budgetUsed: budgetData.used }; };
       const capabilities = new Set(allowedToolIds.filter((id) => skillRegistry.allows(skillId, id)));
       const toolSession = createToolSession({ maxCalls: maxToolCalls });
-      let current = input;
+      let current = safeInput;
       let toolCalls = 0;
       for (let step = 1; step <= maxSteps; step++) {
         let decision;
