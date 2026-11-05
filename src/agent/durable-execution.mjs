@@ -112,7 +112,7 @@ export function createDurableExecutionEngine({ store, executeStep, now = () => D
     if (saved.ok) emit({ type: "approval_required", taskId: state.id, stepId: step.id, revision: next.revision });
     return saved.ok ? { ok: true, status: next.status, state: saved.state } : saved;
   }
-  async function run(id, { maxSteps = 8, approved = false } = {}) {
+  async function run(id, { maxSteps = 8 } = {}) {
     if (!Number.isSafeInteger(maxSteps) || maxSteps < 1 || maxSteps > 16) return error("INVALID_RUN_BUDGET");
     let loaded = await load(id);
     if (!loaded.ok) return loaded;
@@ -126,9 +126,7 @@ export function createDurableExecutionEngine({ store, executeStep, now = () => D
     let executed = 0;
     while (state.cursor < state.steps.length && executed < maxSteps) {
       const step = state.steps[state.cursor];
-      if (step.kind === "approval" || step.requiresApproval === true) {
-        if (!approved) return pauseForApproval(state, step);
-      }
+      if (step.kind === "approval" || step.requiresApproval === true) return pauseForApproval(state, step);
       const prior = state.results.find(result => result.stepId === step.id);
       if (prior) {
         state = { ...state, cursor: state.cursor + 1, updatedAt: now(), revision: state.revision + 1 };
