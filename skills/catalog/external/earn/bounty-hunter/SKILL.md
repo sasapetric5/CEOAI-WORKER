@@ -1,7 +1,7 @@
 ---
 name: bounty-opportunity-scout
-description: Finds and evaluates public bounty and paid-task opportunities without claiming, applying, submitting, or spending.
-version: 1.0.0
+description: Finds and evaluates worldwide bounty and paid-task opportunities without claiming, applying, submitting, or spending.
+version: 1.0.1
 license: MIT
 category: EARN
 status: quarantined
@@ -12,11 +12,11 @@ source_ref: 83236787b3ba47dcfea6c80c7fc14bbee3ee96b8
 # Bounty Opportunity Scout
 
 ## Purpose
-Discover legitimate, relevant paid tasks and help the user decide whether an opportunity is worth pursuing. Research and decision support only; never operate as an autonomous bounty hunter.
+Discover legitimate, relevant paid tasks worldwide and help the user decide whether an opportunity is worth pursuing. Research and decision support only; never operate as an autonomous bounty hunter.
 
 ## Allowed discovery
-- Search public GitHub issues and repositories for bounty, reward, good-first-issue, and help-wanted labels.
-- Review public bounty-board listings and official program pages.
+- Search public GitHub issues and repositories for bounty, reward, good-first-issue, and help-wanted labels worldwide.
+- Review public bounty-board listings and official program pages across markets.
 - Review bug-bounty scope and rules only to determine whether a program exists and whether a target is explicitly authorized.
 - Use CEOAI's existing guarded Spider for public pages only. Respect robots.txt, rate limits, terms, and access controls.
 - Treat Upwork, Fiverr, and similar marketplaces as user-directed manual review. Do not scrape logged-in areas or automate applications. Flag paid Connects, platform fees, subscriptions, and eligibility restrictions.
@@ -26,17 +26,17 @@ For every opportunity, record:
 1. Source URL, publisher, discovery date, and whether the listing is still open.
 2. Task description, deliverables, acceptance criteria, deadline, and required skills.
 3. Advertised reward, currency, payment trigger, payout method, minimum withdrawal, fees, and proof of payment if available.
-4. Country eligibility, KYC requirements, account requirements, and whether Serbia is supported. If not confirmed by an official source, mark UNKNOWN.
+4. Any explicit country, residency, KYC, account, platform, or payout restrictions. Verify on official sources; otherwise mark UNKNOWN. These are listing-level checks and must not restrict worldwide discovery.
 5. Estimated work effort and uncertainty; do not promise completion time.
 6. Direct costs, platform fees, transaction/network fees, and paid prerequisites. Reject paid prerequisites that conflict with the user's free-only rule.
 7. Scam indicators: upfront fees, seed phrase/private-key requests, unknown wallet-connect demands, speculative token-only rewards, unclear payer, vague acceptance rules, suspicious downloads, or unverifiable claims.
 8. Competition/claim status and whether the task is already assigned.
 
 ## Decision rubric
-Score 0–5 and explain evidence for legitimacy, payout certainty, skill fit, scope clarity, effort versus likely net reward, geographic/payment eligibility, and safety. Missing critical facts are UNKNOWN, not positive scores. Do not convert token rewards into guaranteed fiat value. Separate advertised reward from expected net earnings. Reject upfront payment, wallet-signing requests, or secret disclosure.
+Score 0–5 and explain evidence for legitimacy, payout certainty, skill fit, scope clarity, effort versus likely net reward, listing-specific eligibility/payment support, and safety. Missing critical facts are UNKNOWN, not positive scores. Do not convert token rewards into guaranteed fiat value. Separate advertised reward from expected net earnings. Reject upfront payment, wallet-signing requests, or secret disclosure.
 
 ## Output
-Return a ranked shortlist with title, official source link, advertised reward, status/deadline, fit and effort estimate, payout/Serbia evidence or UNKNOWN, fees/prerequisites, risk flags, recommendation (REVIEW, PASS, REJECT), and a manual next step.
+Return a ranked worldwide shortlist with title, official source link, advertised reward, status/deadline, fit and effort estimate, explicit eligibility/payout restrictions or UNKNOWN, fees/prerequisites, risk flags, recommendation (REVIEW, PASS, REJECT), and a manual next step.
 
 ## Hard safety boundaries
 - Never claim, reserve, comment, apply, bid, submit a PR, message a client, create an account, or accept terms.
