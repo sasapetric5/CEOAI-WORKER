@@ -10,7 +10,7 @@ function safeSnapshot(value, seen = new WeakSet(), depth = 0) {
   if (!isArray && !plain(value)) return undefined;
   seen.add(value);
   const keys = Reflect.ownKeys(value);
-  if (keys.some(key => typeof key !== "string" || (isArray && key !== "length" && !/^(0|[1-9]\\d*)$/.test(key)))) return undefined;
+  if (keys.some(key => typeof key !== "string" || (isArray && key !== "length" && !/^(0|[1-9]\d*)$/.test(key)))) return undefined;
   const output = isArray ? [] : Object.create(null);
   for (const key of keys) {
     if (isArray && key === "length") continue;
