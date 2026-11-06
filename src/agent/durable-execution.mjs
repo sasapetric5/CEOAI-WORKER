@@ -26,6 +26,7 @@ function snapshot(value, seen = new WeakSet(), depth = 0) {
   if (!array && !plain(value)) return undefined;
   seen.add(value);
   const keys = Reflect.ownKeys(value);
+  if (array && (keys.length !== value.length + 1 || Array.from({ length: value.length }, (_, index) => Object.hasOwn(value, String(index))).some(present => !present))) return undefined;
   if (keys.some(key => typeof key !== "string" || (array && key !== "length" && !/^(0|[1-9]\d*)$/.test(key)))) return undefined;
   const out = array ? [] : Object.create(null);
   for (const key of keys) {
