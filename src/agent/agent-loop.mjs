@@ -112,7 +112,7 @@ export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, max
         audit({ type: "tool_reserved", runId, step, toolCalls });
         let result;
         try {
-          result = await toolRegistry.execute(decision.toolId, decision.arguments, { allowToolExecution: true, allowedToolIds: [...capabilities], session: toolSession }, { calls: toolCalls });
+          result = await toolRegistry.execute(decision.toolId, decision.arguments, { allowToolExecution: true, allowedToolIds: [...capabilities], session: toolSession, idempotencyKey: `${runId}:${step}:${decision.toolId}` }, { calls: toolCalls });
         } catch {
           audit({ type: "tool_failed", runId, code: "TOOL_EXECUTION_FAILED", step, toolCalls });
           return failRun("TOOL_EXECUTION_FAILED", step, toolCalls);
