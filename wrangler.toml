@@ -66,3 +66,12 @@ class_name = "WorkflowTaskDO"
 [[migrations]]
 tag = "v3-workflow-task-checkpoints"
 new_sqlite_classes = ["WorkflowTaskDO"]
+
+# Durable, app/caller-scoped capability quotas and one-time approvals.
+[[durable_objects.bindings]]
+name = "CAPABILITY_AUTHORITY"
+class_name = "CapabilityAuthorityDO"
+
+[[migrations]]
+tag = "v4-capability-authority"
+new_sqlite_classes = ["CapabilityAuthorityDO"]
