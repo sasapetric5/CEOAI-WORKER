@@ -83,7 +83,7 @@ export function createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoo
    try{
     result=await agentLoop.run({
      skillId:agent.skillId,input:runInput,allowToolExecution:true,allowedToolIds:effectiveTools,budget,runId:runId+":"+agent.id,
-     ...(capabilityRegistry?{authorizeTool:({toolId})=>capabilityRegistry.resolve({appId:capabilityContext.appId,callerId:capabilityContext.callerId,agentId:agent.id,skillId:agent.skillId,toolId,operation:capabilityContext.operation??"execute",resource:capabilityContext.resource??"",approval:capabilityContext.approvals?.[toolId]??null})}:{}),
+     ...(capabilityRegistry?{authorizeTool:({toolId})=>capabilityRegistry.durable?capabilityRegistry.authorize({appId:capabilityContext.appId,callerId:capabilityContext.callerId,agentId:agent.id,skillId:agent.skillId,toolId,operation:capabilityContext.operation??"execute",resource:capabilityContext.resource??"",approval:capabilityContext.approvals?.[toolId]??null}):capabilityRegistry.resolve({appId:capabilityContext.appId,callerId:capabilityContext.callerId,agentId:agent.id,skillId:agent.skillId,toolId,operation:capabilityContext.operation??"execute",resource:capabilityContext.resource??"",approval:capabilityContext.approvals?.[toolId]??null})}:{}),
      plan:context=>planAgent({agent,skill:{id:skill.id,version:skill.version,description:skill.description},context,task,input:safeInput,instructionTrust:"untrusted_reference_only"})
     });
    }catch{result={ok:false,code:"AGENT_INTERNAL_ERROR",steps:0,toolCalls:0};}
