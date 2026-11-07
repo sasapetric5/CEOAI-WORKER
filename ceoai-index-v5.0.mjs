@@ -1130,7 +1130,12 @@ const APP_AGENT_POLICIES = Object.freeze({
 
 function createRequestAgentSystem(env, maxAgents) {
   // This app gateway intentionally has no external-action tools in this integration stage.
-  const idempotentExecutor = createCloudflareIdempotentToolExecutor({ env });
+  // The durable executor is optional here because no tools are registered or enabled.
+  // When a future tool is enabled, its registry contract still requires an executor;
+  // the Cloudflare factory itself remains fail-closed if WORKFLOW_TASKS is absent.
+  const idempotentExecutor = env?.WORKFLOW_TASKS
+    ? createCloudflareIdempotentToolExecutor({ env })
+    : null;
   const toolRegistry = createToolRegistry({ tools: [], enabled: false, idempotentExecutor });
   return createBuiltinAgentSystem({
     toolRegistry,
