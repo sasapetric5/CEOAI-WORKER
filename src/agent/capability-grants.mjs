@@ -62,3 +62,30 @@ export async function loadVerifiedCapabilityGrants(env,{now=Date.now()}={}){
  }
  return grants;
 }
+
+const APPROVAL_FIELDS=["approvalId","appId","callerId","agentId","skillId","toolId","operation","resource","expiresAt"];
+function validateApproval(p,now){
+ if(!plain(p)||Object.keys(p).length!==APPROVAL_FIELDS.length||Object.keys(p).some(k=>!APPROVAL_FIELDS.includes(k)))return false;
+ return typeof p.approvalId==="string"&&/^[A-Za-z0-9_-]{16,128}$/.test(p.approvalId)&&
+  typeof p.appId==="string"&&APP.test(p.appId)&&typeof p.callerId==="string"&&PRINCIPAL.test(p.callerId)&&
+  typeof p.agentId==="string"&&ID.test(p.agentId)&&typeof p.skillId==="string"&&ID.test(p.skillId)&&
+  typeof p.toolId==="string"&&ID.test(p.toolId)&&typeof p.operation==="string"&&OP.test(p.operation)&&
+  typeof p.resource==="string"&&p.resource.length<=512&&Number.isSafeInteger(p.expiresAt)&&p.expiresAt>now&&p.expiresAt-now<=10*60*1000;
+}
+export async function signCapabilityApproval(payload,secret,{now=Date.now()}={}){
+ if(!validateApproval(payload,now))throw new TypeError("INVALID_CAPABILITY_APPROVAL");
+ const key=await keyFor(secret,["sign"]);
+ const data=new TextEncoder().encode("CEOAI-CAPABILITY-APPROVAL-V1\\n"+JSON.stringify(payload));
+ return Object.freeze({version:1,payload:JSON.parse(JSON.stringify(payload)),signature:encode(await crypto.subtle.sign("HMAC",key,data))});
+}
+export async function verifyCapabilityApproval(token,secret,expected,{now=Date.now()}={}){
+ if(!plain(token)||Object.keys(token).length!==3||token.version!==1||typeof token.signature!=="string"||!/^[A-Za-z0-9_-]{43}$/.test(token.signature)||!validateApproval(token.payload,now))return false;
+ const p=token.payload;
+ for(const key of APPROVAL_FIELDS.slice(1))if(p[key]!==expected?.[key])return false;
+ try{
+  const key=await keyFor(secret,["verify"]);
+  const signature=Uint8Array.from(atob(token.signature.replace(/-/g,"+").replace(/_/g,"/")+"="),c=>c.charCodeAt(0));
+  const data=new TextEncoder().encode("CEOAI-CAPABILITY-APPROVAL-V1\\n"+JSON.stringify(p));
+  return await crypto.subtle.verify("HMAC",key,signature,data);
+ }catch{return false;}
+}
