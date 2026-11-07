@@ -78,10 +78,13 @@ export function createCapabilityRegistry({grants=[],audit=null,now=()=>Date.now(
   const approvalRequired=found.some(g=>g.approvalRequired);
   let approvalId=null;
   if(approvalRequired){
-   if(!plain(approval)||typeof approval.approvalId!=="string"||!APPROVAL.test(approval.approvalId)||!verifyApproval)return {ok:false,code:"CAPABILITY_APPROVAL_REQUIRED"};
+   // Signed approval IDs live inside the signed payload. Never trust a caller-supplied
+   // top-level ID; verify every bound claim before forwarding the ID to the DO.
+   const signedApprovalId=plain(approval)&&plain(approval.payload)?approval.payload.approvalId:null;
+   if(typeof signedApprovalId!=="string"||!APPROVAL.test(signedApprovalId)||!verifyApproval)return {ok:false,code:"CAPABILITY_APPROVAL_REQUIRED"};
    let verified=false;try{verified=await verifyApproval(approval,{appId,callerId,agentId,skillId,toolId,operation,resource})===true;}catch{}
    if(!verified)return {ok:false,code:"CAPABILITY_APPROVAL_REQUIRED"};
-   approvalId=approval.approvalId;
+   approvalId=signedApprovalId;
   }
   let result;try{result=await authority.authorize({appId,callerId,agentId,skillId,toolId,operation,resource,maxCalls:Math.min(...found.map(g=>g.maxCalls)),approvalId});}
   catch{return {ok:false,code:"CAPABILITY_AUTHORITY_UNAVAILABLE"};}
