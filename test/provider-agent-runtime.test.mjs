@@ -18,12 +18,12 @@ test("provider runtime supports no-synthesis mode and bounded agent count",async
  assert.equal(result.ok,true);assert.equal(result.synthesis,null);
 });
 
-test("provider runtime forwards capability context unchanged to the supervisor",async()=>{
+test("provider runtime never forwards caller-supplied capability context",async()=>{
  let received;
- const guardedSystem={multiAgentSupervisor:{async run(args){received=args.capabilityContext;return {ok:true,output:"guarded"};}}};
+ const guardedSystem={multiAgentSupervisor:{async run(args){received=args;return {ok:true,output:"guarded"};}}};
  const runtime=createProviderAgentRuntime({system:guardedSystem,generateText:async()=>({ok:true,text:"unused"})});
- const capabilityContext={appId:"rankgeo",callerId:"user_1",resource:"site:example.com"};
+ const capabilityContext={appId:"rankgeo",callerId:"attacker",resource:"site:evil.example"};
  const result=await runtime.runTask({task:"guarded",allowToolExecution:true,capabilityContext});
  assert.equal(result.ok,true);
- assert.equal(received,capabilityContext);
+ assert.equal(Object.hasOwn(received,"capabilityContext"),false);
 });
