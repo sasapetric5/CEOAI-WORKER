@@ -27,16 +27,16 @@ export class CapabilityAuthorityDO {
    const usageKey="usage:"+quotaKey;
    const used=await txn.get(usageKey)||0;
    const priorAudit=await txn.get("audit")||[];
-   const record=(type,code=null)=>{const next=[...priorAudit,{at:Date.now(),type,code,appId:body.appId,callerId:body.callerId,agentId:body.agentId,skillId:body.skillId,toolId:body.toolId,operation:body.operation}].slice(-MAX_AUDIT);txn.put("audit",next);};
-   if(!Number.isSafeInteger(used)||used<0){record("denied","AUTHORITY_STATE_INVALID");return {ok:false,code:"AUTHORITY_STATE_INVALID"};}
-   if(used>=body.maxCalls){record("denied","CAPABILITY_QUOTA_EXCEEDED");return {ok:false,code:"CAPABILITY_QUOTA_EXCEEDED"};}
+   const record=async(type,code=null)=>{const next=[...priorAudit,{at:Date.now(),type,code,appId:body.appId,callerId:body.callerId,agentId:body.agentId,skillId:body.skillId,toolId:body.toolId,operation:body.operation}].slice(-MAX_AUDIT);await txn.put("audit",next);};
+   if(!Number.isSafeInteger(used)||used<0){await record("denied","AUTHORITY_STATE_INVALID");return {ok:false,code:"AUTHORITY_STATE_INVALID"};}
+   if(used>=body.maxCalls){await record("denied","CAPABILITY_QUOTA_EXCEEDED");return {ok:false,code:"CAPABILITY_QUOTA_EXCEEDED"};}
    if(body.approvalId!==null){
     const approvalKey="approval:"+body.approvalId;
-    if(await txn.get(approvalKey)){record("denied","CAPABILITY_APPROVAL_REPLAY");return {ok:false,code:"CAPABILITY_APPROVAL_REQUIRED"};}
+    if(await txn.get(approvalKey)){await record("denied","CAPABILITY_APPROVAL_REPLAY");return {ok:false,code:"CAPABILITY_APPROVAL_REQUIRED"};}
     await txn.put(approvalKey,{usedAt:Date.now(),quotaKey});
    }
    await txn.put(usageKey,used+1);
-   record("granted");
+   await record("granted");
    return {ok:true,toolId:body.toolId,operation:body.operation,remaining:body.maxCalls-used-1};
   });
   return json(result,result.ok?200:result.code==="CAPABILITY_QUOTA_EXCEEDED"||result.code==="CAPABILITY_APPROVAL_REQUIRED"?403:503);
