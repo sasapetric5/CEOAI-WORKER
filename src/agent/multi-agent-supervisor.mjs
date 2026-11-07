@@ -31,7 +31,7 @@ export function createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoo
  if(!agentLoop||typeof agentLoop.run!=="function")throw new TypeError("AGENT_LOOP_REQUIRED");
  if(capabilityRegistry!==null&&(typeof capabilityRegistry.resolve!=="function"||typeof capabilityRegistry.authorize!=="function"))throw new TypeError("INVALID_CAPABILITY_REGISTRY");
  if(typeof requireDurableAuthority!=="boolean")throw new TypeError("INVALID_DURABLE_AUTHORITY_POLICY");
- if(capabilityRegistry!==null&&(!plain(capabilityContext)||typeof capabilityContext.appId!=="string"||typeof capabilityContext.callerId!=="string"||(capabilityContext.resource!==undefined&&(typeof capabilityContext.resource!=="string"||capabilityContext.resource.length>512))||(capabilityContext.operation!==undefined&&(typeof capabilityContext.operation!=="string"||!/^[a-z][a-z0-9:_-]{0,63}$/.test(capabilityContext.operation))))throw new TypeError("INVALID_TRUSTED_CAPABILITY_CONTEXT");
+ if(capabilityRegistry!==null&&(!plain(capabilityContext)||typeof capabilityContext.appId!=="string"||typeof capabilityContext.callerId!=="string"||(capabilityContext.resource!==undefined&&(typeof capabilityContext.resource!=="string"||capabilityContext.resource.length>512))||(capabilityContext.operation!==undefined&&(typeof capabilityContext.operation!=="string"||!/^[a-z][a-z0-9:_-]{0,63}$/.test(capabilityContext.operation)))))throw new TypeError("INVALID_TRUSTED_CAPABILITY_CONTEXT");
  if(!Number.isSafeInteger(maxAgents)||maxAgents<1||maxAgents>5)throw new TypeError("INVALID_AGENT_LIMIT");
  if(!Number.isSafeInteger(maxToolCalls)||maxToolCalls<1||maxToolCalls>8)throw new TypeError("INVALID_SHARED_BUDGET");
  async function prepare({task,limit=maxAgents,agentIds}={}){
