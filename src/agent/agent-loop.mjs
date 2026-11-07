@@ -53,12 +53,13 @@ export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, max
   if (healthMonitor !== null && typeof healthMonitor.record !== "function") throw new TypeError("INVALID_HEALTH_MONITOR");
   const audit = (event) => { try { auditLog?.record(event); } catch { /* auditing must not change agent results */ } };
 
-  const runAgent = async ({ skillId, input, plan, allowToolExecution = false, allowedToolIds = [], budget, runId = crypto.randomUUID() } = {}) => {
+  const runAgent = async ({ skillId, input, plan, allowToolExecution = false, allowedToolIds = [], budget, runId = crypto.randomUUID(), authorizeTool = null } = {}) => {
       if (allowToolExecution !== true) return fail("EXECUTION_NOT_APPROVED", 0, 0);
       const skill = skillRegistry.get(skillId);
       if (!skill) return fail("SKILL_NOT_FOUND", 0, 0);
       if (typeof plan !== "function") return fail("PLANNER_REQUIRED", 0, 0);
       if (!Array.isArray(allowedToolIds) || allowedToolIds.some((id) => typeof id !== "string")) return fail("INVALID_CAPABILITIES", 0, 0);
+      if (authorizeTool !== null && typeof authorizeTool !== "function") return fail("INVALID_CAPABILITY_AUTHORIZER", 0, 0);
       const safeInput = safeSnapshot(input);
       if (safeInput === undefined || !withinContextLimit(safeInput)) return fail("INPUT_TOO_LARGE_OR_INVALID", 0, 0);
       let skillDocument = null;
@@ -107,6 +108,15 @@ export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, max
         if (toolCalls >= maxToolCalls) return failRun("AGENT_TOOL_CALL_LIMIT", step, toolCalls);
         if (budgetData.used >= budgetData.maxToolCalls) return failRun("AGENT_SHARED_BUDGET_EXHAUSTED", step, toolCalls);
         if (typeof decision.toolId !== "string" || !capabilities.has(decision.toolId) || !skillRegistry.allows(skillId, decision.toolId)) return failRun("TOOL_CAPABILITY_DENIED", step, toolCalls);
+        if (authorizeTool) {
+          let authorization;
+          try { authorization = await authorizeTool({ toolId: decision.toolId, skillId, runId, step, arguments: decision.arguments }); }
+          catch { authorization = { ok: false, code: "CAPABILITY_AUTHORIZATION_FAILED" }; }
+          if (authorization !== true && authorization?.ok !== true) {
+            const code = typeof authorization?.code === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(authorization.code) ? authorization.code : "CAPABILITY_NOT_GRANTED";
+            return failRun(code, step, toolCalls);
+          }
+        }
         // Reserve before awaiting: concurrent runs sharing this token cannot overspend.
         budgetData.used++;
         audit({ type: "tool_reserved", runId, step, toolCalls });
