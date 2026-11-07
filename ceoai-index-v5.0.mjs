@@ -1094,7 +1094,7 @@ async function compressHistory(env, oldSummary, oldMessages) {
  * Internal application entry point for the bounded specialist-agent system.
  * Not mapped to an HTTP route. The caller must explicitly approve execution.
  */
-export async function runCEOAIInternalAgentTask(env, { system, task, input = {}, limit = 3, agentIds, allowedToolIds = [], allowToolExecution = false, maxToolCalls = 4, maxModelCalls = 4, synthesize = true, intent = CAPABILITY.reasoning, runId = crypto.randomUUID() } = {}) {
+export async function runCEOAIInternalAgentTask(env, { system, task, input = {}, limit = 3, agentIds, allowedToolIds = [], allowToolExecution = false, maxToolCalls = 4, maxModelCalls = 4, synthesize = true, intent = CAPABILITY.reasoning, runId = crypto.randomUUID(), capabilityContext = null } = {}) {
   if (allowToolExecution !== true) return { ok: false, code: "EXECUTION_NOT_APPROVED", agents: [], results: [] };
   if (!env || env.AI_ENABLED !== "true") return { ok: false, code: "AI_DISABLED", agents: [], results: [] };
   if (!env.KV_MEMORY) return { ok: false, code: "MEMORY_BINDING_UNAVAILABLE", agents: [], results: [] };
@@ -1105,7 +1105,7 @@ export async function runCEOAIInternalAgentTask(env, { system, task, input = {},
       intent,
       generateText: (messages, requestedIntent) => runConfiguredProviderCompletion(env, messages, requestedIntent),
     });
-    return await runtime.runTask({ task, input, limit, agentIds, allowedToolIds, allowToolExecution: true, maxToolCalls, synthesize, runId });
+    return await runtime.runTask({ task, input, limit, agentIds, allowedToolIds, allowToolExecution: true, maxToolCalls, synthesize, runId, capabilityContext });
   } catch {
     return { ok: false, code: "AGENT_RUNTIME_UNAVAILABLE", agents: [], results: [] };
   }
