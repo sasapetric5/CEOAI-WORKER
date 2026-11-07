@@ -1765,6 +1765,8 @@ export { SecurityOrchestratorDO } from "./src/durable-objects/security-do.mjs";
 export { SpiderJobLedgerDO };
 
 export { WorkflowTaskDO } from "./src/durable-objects/workflow-task-do.mjs";
+export { CapabilityAuthorityDO } from "./src/durable-objects/capability-authority-do.mjs";
+export { createCloudflareCapabilityAuthority } from "./src/agent/cloudflare-capability-authority.mjs";
 
 export { createCloudflareDurableExecutionEngine } from "./src/agent/cloudflare-durable-runtime.mjs";
 
