@@ -32,7 +32,7 @@ function validSchema(s) {
   return true;
 }
 function publicDefinition(t) {
-  return Object.freeze({ id: t.id, description: t.description, inputSchema: structuredClone(t.inputSchema), limits: Object.freeze({ ...t.limits }) });
+  return Object.freeze({ id: t.id, description: t.description, inputSchema: structuredClone(t.inputSchema), limits: Object.freeze({ ...t.limits }), idempotencyMode: t.idempotencyMode });
 }
 function validLimits(limits) {
   for (const [key, value] of Object.entries(limits)) {
@@ -40,7 +40,7 @@ function validLimits(limits) {
   }
 }
 
-export function createToolRegistry({ tools = [], enabled = false, limits = {} } = {}) {
+export function createToolRegistry({ tools = [], enabled = false, limits = {}, idempotentExecutor = null } = {}) {\n  if (idempotentExecutor !== null && typeof idempotentExecutor.execute !== "function") throw new TypeError("INVALID_IDEMPOTENT_EXECUTOR");
   const baseLimits = { ...DEFAULT_TOOL_LIMITS, ...limits };
   validLimits(baseLimits);
   const definitions = new Map();
@@ -49,10 +49,10 @@ export function createToolRegistry({ tools = [], enabled = false, limits = {} } 
     if (definitions.has(t.id)) throw new TypeError("DUPLICATE_TOOL:" + t.id);
     if (typeof t.description !== "string" || !t.description.trim() || t.description.length > 240) throw new TypeError("INVALID_TOOL_DESCRIPTION:" + t.id);
     if (!validSchema(t.inputSchema)) throw new TypeError("INVALID_TOOL_SCHEMA:" + t.id);
-    if (typeof t.handler !== "function") throw new TypeError("INVALID_TOOL_HANDLER:" + t.id);
+    if (typeof t.handler !== "function") throw new TypeError("INVALID_TOOL_HANDLER:" + t.id);\n    const idempotencyMode = t.idempotencyMode ?? "none";\n    if (!["none", "downstream_key", "manual_reconciliation"].includes(idempotencyMode)) throw new TypeError("INVALID_TOOL_IDEMPOTENCY_MODE:" + t.id);\n    if (idempotencyMode !== "none" && !idempotentExecutor) throw new TypeError("IDEMPOTENT_EXECUTOR_REQUIRED:" + t.id);
     const toolLimits = { ...baseLimits, ...(t.limits || {}) };
     validLimits(toolLimits);
-    definitions.set(t.id, { id: t.id, description: t.description.trim(), inputSchema: structuredClone(t.inputSchema), handler: t.handler, limits: toolLimits });
+    definitions.set(t.id, { id: t.id, description: t.description.trim(), inputSchema: structuredClone(t.inputSchema), handler: t.handler, limits: toolLimits, idempotencyMode });
   }
   const registry = {
     version: TOOL_REGISTRY_VERSION,
@@ -111,7 +111,7 @@ export function createToolRegistry({ tools = [], enabled = false, limits = {} } 
       let timer;
       let timedOut = false;
       // Attach both handlers immediately. A late rejection remains observed after timeout.
-      const handlerPromise = Promise.resolve().then(() => t.handler(checked.value, { signal: controller.signal }));
+      const idempotencyDescriptor = Object.getOwnPropertyDescriptor(context, "idempotencyKey");\n      const idempotencyKey = idempotencyDescriptor && Object.hasOwn(idempotencyDescriptor, "value") ? idempotencyDescriptor.value : null;\n      if (t.idempotencyMode !== "none" && (typeof idempotencyKey !== "string" || !idempotencyKey)) return error("IDEMPOTENCY_KEY_REQUIRED");\n      const invokeHandler = ({ signal, idempotencyKey: forwardedKey = idempotencyKey } = {}) => t.handler(checked.value, { signal, ...(t.idempotencyMode === "none" ? {} : { idempotencyKey: forwardedKey }) });\n      const handlerPromise = Promise.resolve().then(() => t.idempotencyMode === "none"\n        ? invokeHandler({ signal: controller.signal })\n        : idempotentExecutor.execute({\n            idempotencyKey, toolId: id, arguments: checked.value, context: {},\n            execute: ({ signal, idempotencyKey: forwardedKey }) => invokeHandler({ signal: signal ?? controller.signal, idempotencyKey: forwardedKey }),\n          }).then(result => { if (!result || result.ok !== true) throw Object.assign(new Error(result?.code || "IDEMPOTENT_TOOL_FAILED"), { code: result?.code }); return result.result; }));
       handlerPromise.catch(() => {});
       const timeoutPromise = new Promise((_, reject) => {
         timer = setTimeout(() => {
