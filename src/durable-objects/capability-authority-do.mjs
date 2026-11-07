@@ -22,7 +22,7 @@ export class CapabilityAuthorityDO {
    typeof body.toolId!=="string"||!CAPABILITY.test(body.toolId)||typeof body.operation!=="string"||!OP.test(body.operation)||
    typeof body.resource!=="string"||body.resource.length>512||!Number.isSafeInteger(body.maxCalls)||body.maxCalls<1||body.maxCalls>10000||
    (body.approvalId!==null&&(typeof body.approvalId!=="string"||!APPROVAL.test(body.approvalId))))return json({ok:false,code:"INVALID_AUTHORITY_REQUEST"},400);
-  const quotaKey=[body.appId,body.callerId,body.agentId,body.skillId,body.toolId,body.operation,body.resource].join("|");
+  // Quotas aggregate across resource targets; callers cannot reset limits by changing URLs.\n  const quotaKey=[body.appId,body.callerId,body.agentId,body.skillId,body.toolId,body.operation].join("|");
   const result=await this.ctx.storage.transaction(async txn=>{
    const usageKey="usage:"+quotaKey;
    const used=await txn.get(usageKey)||0;
