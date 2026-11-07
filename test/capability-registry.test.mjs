@@ -74,7 +74,7 @@ test("approval verification failure is fail-closed",()=>{
 test("durable registry delegates quota consumption only after four-layer policy and approval verification",async()=>{
  const calls=[];
  const grants=base().map(g=>({...g,approvalRequired:g.subjectType==="skill"}));
- const registry=createCapabilityRegistry({grants,verifyApproval:()=>true,authority:{authorize:async request=>{calls.push(request);return {ok:true,remaining:0};}}});
+ const registry=createCapabilityRegistry({grants,verifyApproval:value=>value.signature==="trusted",authority:{authorize:async request=>{calls.push(request);return {ok:true,remaining:0};}}});
  assert.equal(registry.durable,true);
  assert.equal((await registry.authorize({...request,approval})).ok,true);
  assert.equal(calls.length,1);
