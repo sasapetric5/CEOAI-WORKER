@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createIdempotentToolExecutor } from "../src/agent/idempotent-tool-executor.mjs";
+import { createIdempotentToolExecutor, createCloudflareIdempotentToolExecutor } from "../src/agent/idempotent-tool-executor.mjs";
 import { createMemoryCheckpointStore } from "../src/agent/durable-execution.mjs";
 import { createToolRegistry, createToolSession } from "../src/agent/tool-registry.mjs";
 
@@ -54,4 +54,9 @@ test("tool registry forwards stable idempotency keys to downstream handlers", as
   assert.equal(result.ok, true);
   assert.deepEqual(result.result, { sent: true });
   assert.match(forwarded, /^tool_[a-f0-9]{64}:execute_tool$/);
+});
+
+
+test("Cloudflare executor requires the durable workflow binding", () => {
+  assert.throws(() => createCloudflareIdempotentToolExecutor({ env: {} }), /WORKFLOW_TASKS_BINDING_REQUIRED/);
 });
