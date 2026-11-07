@@ -203,3 +203,17 @@ test("supervisor enforces four-layer capability grants at the exact tool call", 
  assert.equal(allowedResult.ok,true);
  assert.equal(calls,1);
 });
+
+test("KV agent composition forwards capability registry into supervisor validation",async()=>{
+ const values=new Map(),kv={async put(k,v){values.set(k,v);},async get(k){return values.get(k)??null;}};
+ const toolRegistry=createToolRegistry({tools:[]});
+ await publishSkillCatalogToKV({kv,skills:BUILTIN_SKILLS,toolRegistry,approvedSkillIds:BUILTIN_SKILLS.map(skill=>skill.id)});
+ await assert.rejects(
+  createKVAgentSystem({
+   kv,toolRegistry,
+   agentLoopFactory:({toolRegistry,skillRegistry})=>createAgentLoop({toolRegistry,skillRegistry}),
+   capabilityRegistry:{}
+  }),
+  /INVALID_CAPABILITY_REGISTRY/
+ );
+});
