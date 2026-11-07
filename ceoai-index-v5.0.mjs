@@ -1094,7 +1094,7 @@ async function compressHistory(env, oldSummary, oldMessages) {
  * Internal application entry point for the bounded specialist-agent system.
  * Not mapped to an HTTP route. The caller must explicitly approve execution.
  */
-export async function runCEOAIInternalAgentTask(env, { system, task, input = {}, limit = 3, agentIds, allowedToolIds = [], allowToolExecution = false, maxToolCalls = 4, maxModelCalls = 4, synthesize = true, intent = CAPABILITY.reasoning } = {}) {
+export async function runCEOAIInternalAgentTask(env, { system, task, input = {}, limit = 3, agentIds, allowedToolIds = [], allowToolExecution = false, maxToolCalls = 4, maxModelCalls = 4, synthesize = true, intent = CAPABILITY.reasoning, runId = crypto.randomUUID() } = {}) {
   if (allowToolExecution !== true) return { ok: false, code: "EXECUTION_NOT_APPROVED", agents: [], results: [] };
   if (!env || env.AI_ENABLED !== "true") return { ok: false, code: "AI_DISABLED", agents: [], results: [] };
   if (!env.KV_MEMORY) return { ok: false, code: "MEMORY_BINDING_UNAVAILABLE", agents: [], results: [] };
@@ -1105,7 +1105,7 @@ export async function runCEOAIInternalAgentTask(env, { system, task, input = {},
       intent,
       generateText: (messages, requestedIntent) => runConfiguredProviderCompletion(env, messages, requestedIntent),
     });
-    return await runtime.runTask({ task, input, limit, agentIds, allowedToolIds, allowToolExecution: true, maxToolCalls, synthesize });
+    return await runtime.runTask({ task, input, limit, agentIds, allowedToolIds, allowToolExecution: true, maxToolCalls, synthesize, runId });
   } catch {
     return { ok: false, code: "AGENT_RUNTIME_UNAVAILABLE", agents: [], results: [] };
   }
@@ -1251,19 +1251,22 @@ export default {
       }
       let body;
       try { body = JSON.parse(rawBody); } catch { return json({ success: false, error: "Neispravan JSON.", code: "INVALID_JSON" }, 400); }
-      if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some(k => !["task", "input", "limit", "conversation_id"].includes(k))) {
+      if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some(k => !["task", "input", "limit", "conversation_id", "request_id"].includes(k))) {
         return json({ success: false, error: "Neispravna struktura zahteva.", code: "INVALID_REQUEST" }, 400);
       }
       const task = typeof body.task === "string" ? body.task.trim() : "";
       const input = body.input === undefined ? {} : body.input;
       const limit = body.limit === undefined ? policy.maxAgents : body.limit;
       const conversationId = body.conversation_id === undefined ? null : body.conversation_id;
+      const requestId = body.request_id === undefined ? null : body.request_id;
       let inputBytes = Infinity;
       try { inputBytes = new TextEncoder().encode(JSON.stringify(input)).byteLength; } catch {}
       if (!task || task.length > 2000 || !input || typeof input !== "object" || Array.isArray(input) ||
           inputBytes > 4000 || !Number.isSafeInteger(limit) || limit < 1 || limit > policy.maxAgents ||
           (conversationId !== null && (typeof conversationId !== "string" ||
-            !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(conversationId)))) {
+            !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(conversationId))) ||
+          (requestId !== null && (typeof requestId !== "string" ||
+            !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)))) {
         return json({ success: false, error: "Zadatak, ulazni podaci, sesija ili broj agenata nisu validni.", code: "INVALID_AGENT_REQUEST" }, 400);
       }
       // Namespace is bound only to auth.appId from verified HMAC. Missing conversation_id is stateless.
@@ -1339,7 +1342,7 @@ export default {
       const result = await runCEOAIInternalAgentTask(env, {
         system, task, input: agentInput, limit, agentIds: policy.allowedAgentIds, allowedToolIds: [], allowToolExecution: true,
         maxToolCalls: 1, maxModelCalls: policy.maxModelCalls, synthesize: true,
-        intent,
+        intent, runId: requestId ?? crypto.randomUUID(),
       });
       console.info("CEOAI_AGENT_APP", JSON.stringify({
         appId: auth.appId,
