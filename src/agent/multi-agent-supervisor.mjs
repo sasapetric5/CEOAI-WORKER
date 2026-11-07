@@ -60,7 +60,8 @@ export function createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoo
   return {ok:true,agents:selected.map(a=>({id:a.id,role:a.role,description:a.description,skillId:a.skillId,score:a.score??null,matchedTerms:a.matchedTerms??[],allowedToolIds:a.allowedToolIds, ...(a.universal===true?{universal:true}:{})}))};
  }
  async function run({task,input={},limit=maxAgents,agentIds,planAgent,allowedToolIds=[],allowToolExecution=false,synthesize=null,maxToolCalls:budgetLimit=maxToolCalls,runId=crypto.randomUUID()}={}){
-  if(allowToolExecution!==true)return {ok:false,code:"EXECUTION_NOT_APPROVED",agents:[],results:[]};\n  if(typeof runId!=="string"||! /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(runId))return {ok:false,code:"INVALID_AGENT_RUN_ID",agents:[],results:[]};
+  if(allowToolExecution!==true)return {ok:false,code:"EXECUTION_NOT_APPROVED",agents:[],results:[]};
+  if(typeof runId!=="string"||! /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(runId))return {ok:false,code:"INVALID_AGENT_RUN_ID",agents:[],results:[]};
   if(typeof planAgent!=="function")return {ok:false,code:"AGENT_PLANNER_REQUIRED",agents:[],results:[]};
   if(!Array.isArray(allowedToolIds)||allowedToolIds.some(id=>typeof id!=="string"))return {ok:false,code:"INVALID_CALLER_CAPABILITIES",agents:[],results:[]};
   if(synthesize!==null&&typeof synthesize!=="function")return {ok:false,code:"INVALID_SYNTHESIZER",agents:[],results:[]};
