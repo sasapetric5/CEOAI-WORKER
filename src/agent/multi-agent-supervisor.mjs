@@ -25,11 +25,12 @@ function safeSnapshot(value, seen = new WeakSet(), depth = 0) {
  return output;
 }
 const safeJson=value=>{try{const snapshot=safeSnapshot(value);if(snapshot===undefined)return null;const json=JSON.stringify(snapshot);return typeof json==="string"&&new TextEncoder().encode(json).byteLength<=MAX_CONTEXT_BYTES?json:null;}catch{return null;}};
-export function createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoop,capabilityRegistry=null,maxAgents=3,maxToolCalls=4}={}){
+export function createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoop,capabilityRegistry=null,capabilityContext=null,maxAgents=3,maxToolCalls=4}={}){
  if(!agentRegistry||typeof agentRegistry.search!=="function"||typeof agentRegistry.get!=="function")throw new TypeError("AGENT_REGISTRY_REQUIRED");
  if(!skillRegistry||typeof skillRegistry.get!=="function"||typeof skillRegistry.search!=="function")throw new TypeError("SKILL_REGISTRY_REQUIRED");
  if(!agentLoop||typeof agentLoop.run!=="function")throw new TypeError("AGENT_LOOP_REQUIRED");
  if(capabilityRegistry!==null&&typeof capabilityRegistry.resolve!=="function")throw new TypeError("INVALID_CAPABILITY_REGISTRY");
+ if(capabilityRegistry!==null&&(!plain(capabilityContext)||typeof capabilityContext.appId!=="string"||typeof capabilityContext.callerId!=="string"||(capabilityContext.resource!==undefined&&(typeof capabilityContext.resource!=="string"||capabilityContext.resource.length>512))||(capabilityContext.operation!==undefined&&(typeof capabilityContext.operation!=="string"||!/^[a-z][a-z0-9:_-]{0,63}$/.test(capabilityContext.operation))))throw new TypeError("INVALID_TRUSTED_CAPABILITY_CONTEXT");
  if(!Number.isSafeInteger(maxAgents)||maxAgents<1||maxAgents>5)throw new TypeError("INVALID_AGENT_LIMIT");
  if(!Number.isSafeInteger(maxToolCalls)||maxToolCalls<1||maxToolCalls>8)throw new TypeError("INVALID_SHARED_BUDGET");
  async function prepare({task,limit=maxAgents,agentIds}={}){
@@ -60,12 +61,11 @@ export function createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoo
   if(!selected.length)return {ok:false,code:"NO_RELEVANT_AGENT",agents:[]};
   return {ok:true,agents:selected.map(a=>({id:a.id,role:a.role,description:a.description,skillId:a.skillId,score:a.score??null,matchedTerms:a.matchedTerms??[],allowedToolIds:a.allowedToolIds, ...(a.universal===true?{universal:true}:{})}))};
  }
- async function run({task,input={},limit=maxAgents,agentIds,planAgent,allowedToolIds=[],allowToolExecution=false,synthesize=null,maxToolCalls:budgetLimit=maxToolCalls,runId=crypto.randomUUID(),capabilityContext=null}={}){
+ async function run({task,input={},limit=maxAgents,agentIds,planAgent,allowedToolIds=[],allowToolExecution=false,synthesize=null,maxToolCalls:budgetLimit=maxToolCalls,runId=crypto.randomUUID()}={}){
   if(allowToolExecution!==true)return {ok:false,code:"EXECUTION_NOT_APPROVED",agents:[],results:[]};
   if(typeof runId!=="string"||! /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(runId))return {ok:false,code:"INVALID_AGENT_RUN_ID",agents:[],results:[]};
   if(typeof planAgent!=="function")return {ok:false,code:"AGENT_PLANNER_REQUIRED",agents:[],results:[]};
   if(!Array.isArray(allowedToolIds)||allowedToolIds.some(id=>typeof id!=="string"))return {ok:false,code:"INVALID_CALLER_CAPABILITIES",agents:[],results:[]};
-  if(capabilityRegistry&&(!plain(capabilityContext)||typeof capabilityContext.appId!=="string"||typeof capabilityContext.callerId!=="string"||(capabilityContext.resource!==undefined&&(typeof capabilityContext.resource!=="string"||capabilityContext.resource.length>512))||(capabilityContext.operation!==undefined&&(typeof capabilityContext.operation!=="string"||!/^[a-z][a-z0-9:_-]{0,63}$/.test(capabilityContext.operation)))||(capabilityContext.approvals!==undefined&&!plain(capabilityContext.approvals))))return {ok:false,code:"INVALID_CAPABILITY_CONTEXT",agents:[],results:[]};
   if(synthesize!==null&&typeof synthesize!=="function")return {ok:false,code:"INVALID_SYNTHESIZER",agents:[],results:[]};
   if(!Number.isSafeInteger(budgetLimit)||budgetLimit<1||budgetLimit>maxToolCalls)return {ok:false,code:"INVALID_SHARED_BUDGET",agents:[],results:[]};
   const safeInput=safeSnapshot(input);
@@ -83,7 +83,7 @@ export function createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoo
    try{
     result=await agentLoop.run({
      skillId:agent.skillId,input:runInput,allowToolExecution:true,allowedToolIds:effectiveTools,budget,runId:runId+":"+agent.id,
-     ...(capabilityRegistry?{authorizeTool:({toolId})=>capabilityRegistry.durable?capabilityRegistry.authorize({appId:capabilityContext.appId,callerId:capabilityContext.callerId,agentId:agent.id,skillId:agent.skillId,toolId,operation:capabilityContext.operation??"execute",resource:capabilityContext.resource??"",approval:capabilityContext.approvals?.[toolId]??null}):capabilityRegistry.resolve({appId:capabilityContext.appId,callerId:capabilityContext.callerId,agentId:agent.id,skillId:agent.skillId,toolId,operation:capabilityContext.operation??"execute",resource:capabilityContext.resource??"",approval:capabilityContext.approvals?.[toolId]??null})}:{}),
+     ...(capabilityRegistry?{authorizeTool:({toolId})=>capabilityRegistry.durable?capabilityRegistry.authorize({appId:capabilityContext.appId,callerId:capabilityContext.callerId,agentId:agent.id,skillId:agent.skillId,toolId,operation:capabilityContext.operation??"execute",resource:capabilityContext.resource??"",approval:null}):capabilityRegistry.resolve({appId:capabilityContext.appId,callerId:capabilityContext.callerId,agentId:agent.id,skillId:agent.skillId,toolId,operation:capabilityContext.operation??"execute",resource:capabilityContext.resource??"",approval:capabilityContext.approvals?.[toolId]??null})}:{}),
      plan:context=>planAgent({agent,skill:{id:skill.id,version:skill.version,description:skill.description},context,task,input:safeInput,instructionTrust:"untrusted_reference_only"})
     });
    }catch{result={ok:false,code:"AGENT_INTERNAL_ERROR",steps:0,toolCalls:0};}
