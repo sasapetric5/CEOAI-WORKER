@@ -66,5 +66,28 @@ export function createCapabilityRegistry({grants=[],audit=null,now=()=>Date.now(
   }
   return {ok:true,allowedToolIds,denied};
  }
- return Object.freeze({version:"1.0.0",list(){return [...entries.values()].map(copy);},resolve,resolveTools,get size(){return entries.size;}});
+ async function authorize({authority,appId,callerId,agentId,skillId,toolId,operation="execute",resource="",approval=null}={}){
+  if(!authority||typeof authority.authorize!=="function")return {ok:false,code:"CAPABILITY_AUTHORITY_REQUIRED"};
+  if(typeof appId!=="string"||!APP.test(appId)||typeof callerId!=="string"||!PRINCIPAL.test(callerId)||
+   typeof agentId!=="string"||!ID.test(agentId)||typeof skillId!=="string"||!ID.test(skillId)||
+   typeof toolId!=="string"||!ID.test(toolId)||typeof operation!=="string"||!OP.test(operation)||
+   typeof resource!=="string"||resource.length>512)return {ok:false,code:"INVALID_CAPABILITY_REQUEST"};
+  const layers=[["app",appId],["caller",callerId],["agent",agentId],["skill",skillId]];
+  const found=layers.map(([type,id])=>grantFor(type,id,appId,toolId,operation,resource));
+  if(found.some(x=>!x))return {ok:false,code:"CAPABILITY_NOT_GRANTED"};
+  const approvalRequired=found.some(g=>g.approvalRequired);
+  let approvalId=null;
+  if(approvalRequired){
+   if(!plain(approval)||typeof approval.approvalId!=="string"||!APPROVAL.test(approval.approvalId)||!verifyApproval)return {ok:false,code:"CAPABILITY_APPROVAL_REQUIRED"};
+   let verified=false;try{verified=verifyApproval(approval,{appId,callerId,agentId,skillId,toolId,operation,resource})===true;}catch{}
+   if(!verified)return {ok:false,code:"CAPABILITY_APPROVAL_REQUIRED"};
+   approvalId=approval.approvalId;
+  }
+  let result;try{result=await authority.authorize({appId,callerId,agentId,skillId,toolId,operation,resource,maxCalls:Math.min(...found.map(g=>g.maxCalls)),approvalId});}
+  catch{return {ok:false,code:"CAPABILITY_AUTHORITY_UNAVAILABLE"};}
+  if(result?.ok!==true){try{audit?.record({type:"capability_denied",appId,callerId,agentId,skillId,toolId,operation,code:result?.code??"CAPABILITY_AUTHORITY_UNAVAILABLE"});}catch{}return result?.ok===false?result:{ok:false,code:"CAPABILITY_AUTHORITY_INVALID_RESPONSE"};}
+  try{audit?.record({type:"capability_granted",appId,callerId,agentId,skillId,toolId,operation,approvalRequired});}catch{}
+  return {...result,approvalRequired};
+ }
+ return Object.freeze({version:"1.0.0",list(){return [...entries.values()].map(copy);},resolve,authorize,resolveTools,get size(){return entries.size;}});
 }
