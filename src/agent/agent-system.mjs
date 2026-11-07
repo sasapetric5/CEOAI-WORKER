@@ -22,5 +22,5 @@ export async function createKVAgentSystem({
 }={}){
  const skills=await createKVSkillSystem({kv,toolRegistry,agentLoopFactory,maxSelectedSkills:3,capabilityPolicy,approvedSkillIds,categoryBySkillId,categoryCapabilityPolicy,indexKey,documentPrefix});
  if(!skills.agentLoop)throw new TypeError("AGENT_LOOP_FACTORY_REQUIRED");
- return attach(skills,{toolRegistry,maxAgents,maxToolCalls,mcpAuthorize,mcpAudit,mcpPageSize});
+ return attach(skills,{toolRegistry,maxAgents,maxToolCalls,capabilityRegistry,mcpAuthorize,mcpAudit,mcpPageSize});
 }
