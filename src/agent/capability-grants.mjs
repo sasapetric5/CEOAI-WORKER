@@ -81,7 +81,7 @@ export async function signCapabilityApproval(payload,secret,{now=Date.now()}={})
 export async function verifyCapabilityApproval(token,secret,expected,{now=Date.now()}={}){
  if(!plain(token)||Object.keys(token).length!==3||token.version!==1||typeof token.signature!=="string"||!/^[A-Za-z0-9_-]{43}$/.test(token.signature)||!validateApproval(token.payload,now))return false;
  const p=token.payload;
- for(const key of APPROVAL_FIELDS.slice(1))if(p[key]!==expected?.[key])return false;
+ for(const key of APPROVAL_FIELDS.slice(1,-1))if(p[key]!==expected?.[key])return false;
  try{
   const key=await keyFor(secret,["verify"]);
   const signature=Uint8Array.from(atob(token.signature.replace(/-/g,"+").replace(/_/g,"/")+"="),c=>c.charCodeAt(0));
