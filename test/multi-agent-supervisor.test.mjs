@@ -156,3 +156,21 @@ test("supervisor rejects accessor-backed synthesis output without invoking its g
  assert.equal(result.code,"INVALID_SYNTHESIS_OUTPUT");
  assert.equal(getterCalls,0);
 });
+
+
+test("supervisor preserves a caller-supplied run ID for retry-stable tool keys", async () => {
+ let receivedRunId;
+ const skill={id:"stable_skill",version:"1.0.0",description:"Stable run fixture",allowedToolIds:[]};
+ const agent={id:"stable_agent",role:"Stable agent",description:"Stable run test",skillId:"stable_skill",allowedToolIds:[],score:1,matchedTerms:[]};
+ const supervisor=createMultiAgentSupervisor({
+  agentRegistry:{search:()=>[agent],get:()=>agent},
+  skillRegistry:{get:()=>skill,search:()=>[{id:"stable_skill",score:1,matchedTerms:[]}]},
+  agentLoop:{run:async args=>{receivedRunId=args.runId;return {ok:true,output:"ok",steps:1,toolCalls:0};}}
+ });
+ const result=await supervisor.run({
+  task:"stable run test",runId:"client_task_123",allowToolExecution:true,
+  planAgent:async()=>({type:"final",output:"unused"})
+ });
+ assert.equal(result.ok,true);
+ assert.equal(receivedRunId,"client_task_123:stable_agent");
+});
