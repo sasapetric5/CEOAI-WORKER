@@ -2,6 +2,7 @@
 // One stable key maps to one Durable Object task and one effect-ledger entry.
 // Unknown outcomes are surfaced for reconciliation; they are never retried silently.
 import { createDurableExecutionEngine } from "./durable-execution.mjs";
+import { createCloudflareCheckpointStore } from "./cloudflare-checkpoint-store.mjs";
 
 const TOOL_ID = /^[a-z][a-z0-9_]{0,47}$/;
 const KEY = /^[A-Za-z0-9:._-]{1,256}$/;
@@ -131,4 +132,11 @@ export function createIdempotentToolExecutor({ store, now = () => Date.now(), au
   }
 
   return Object.freeze({ execute });
+}
+
+
+export function createCloudflareIdempotentToolExecutor({ env, now = () => Date.now(), audit = null } = {}) {
+  if (!env?.WORKFLOW_TASKS) throw new TypeError("WORKFLOW_TASKS_BINDING_REQUIRED");
+  const store = createCloudflareCheckpointStore(env.WORKFLOW_TASKS);
+  return createIdempotentToolExecutor({ store, now, audit });
 }
