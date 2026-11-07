@@ -89,5 +89,5 @@ export function createCapabilityRegistry({grants=[],audit=null,now=()=>Date.now(
   try{audit?.record({type:"capability_granted",appId,callerId,agentId,skillId,toolId,operation,approvalRequired});}catch{}
   return {...result,approvalRequired};
  }
- return Object.freeze({version:"1.0.0",list(){return [...entries.values()].map(copy);},resolve,authorize,resolveTools,get size(){return entries.size;}});
+ return Object.freeze({version:"1.0.0",durable:authority!==null,list(){return [...entries.values()].map(copy);},resolve,authorize,resolveTools,get size(){return entries.size;}});
 }
