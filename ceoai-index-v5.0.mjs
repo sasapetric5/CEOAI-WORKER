@@ -33,6 +33,8 @@ import { planResearchAcquisition, normalizeResearchUrl } from "./src/agent/resea
 import { enqueueSpiderCrawl, createSpiderQueueHandler, readSpiderResult } from "./src/integrations/spider-queue.mjs";
 import { SpiderJobLedgerDO } from "./src/durable-objects/spider-job-ledger-do.mjs";
 import { createAppMemoryStore } from "./src/v5-modules/app-memory.mjs";
+import { createCapabilityRegistry } from "./src/agent/capability-registry.mjs";
+import { createCloudflareCapabilityAuthority } from "./src/agent/cloudflare-capability-authority.mjs";
 const handleSpiderQueue = createSpiderQueueHandler();
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
@@ -1094,7 +1096,7 @@ async function compressHistory(env, oldSummary, oldMessages) {
  * Internal application entry point for the bounded specialist-agent system.
  * Not mapped to an HTTP route. The caller must explicitly approve execution.
  */
-export async function runCEOAIInternalAgentTask(env, { system, task, input = {}, limit = 3, agentIds, allowedToolIds = [], allowToolExecution = false, maxToolCalls = 4, maxModelCalls = 4, synthesize = true, intent = CAPABILITY.reasoning, runId = crypto.randomUUID(), capabilityContext = null } = {}) {
+export async function runCEOAIInternalAgentTask(env, { system, task, input = {}, limit = 3, agentIds, allowedToolIds = [], allowToolExecution = false, maxToolCalls = 4, maxModelCalls = 4, synthesize = true, intent = CAPABILITY.reasoning, runId = crypto.randomUUID() } = {}) {
   if (allowToolExecution !== true) return { ok: false, code: "EXECUTION_NOT_APPROVED", agents: [], results: [] };
   if (!env || env.AI_ENABLED !== "true") return { ok: false, code: "AI_DISABLED", agents: [], results: [] };
   if (!env.KV_MEMORY) return { ok: false, code: "MEMORY_BINDING_UNAVAILABLE", agents: [], results: [] };
@@ -1105,7 +1107,7 @@ export async function runCEOAIInternalAgentTask(env, { system, task, input = {},
       intent,
       generateText: (messages, requestedIntent) => runConfiguredProviderCompletion(env, messages, requestedIntent),
     });
-    return await runtime.runTask({ task, input, limit, agentIds, allowedToolIds, allowToolExecution: true, maxToolCalls, synthesize, runId, capabilityContext });
+    return await runtime.runTask({ task, input, limit, agentIds, allowedToolIds, allowToolExecution: true, maxToolCalls, synthesize, runId });
   } catch {
     return { ok: false, code: "AGENT_RUNTIME_UNAVAILABLE", agents: [], results: [] };
   }
@@ -1128,7 +1130,7 @@ const APP_AGENT_POLICIES = Object.freeze({
   }),
 });
 
-function createRequestAgentSystem(env, maxAgents) {
+function createRequestAgentSystem(env, maxAgents, capabilityContext) {
   // This app gateway intentionally has no external-action tools in this integration stage.
   // The durable executor is optional here because no tools are registered or enabled.
   // When a future tool is enabled, its registry contract still requires an executor;
@@ -1137,8 +1139,15 @@ function createRequestAgentSystem(env, maxAgents) {
     ? createCloudflareIdempotentToolExecutor({ env })
     : null;
   const toolRegistry = createToolRegistry({ tools: [], enabled: false, idempotentExecutor });
+  const authority = env?.CAPABILITY_AUTHORITY
+    ? createCloudflareCapabilityAuthority(env.CAPABILITY_AUTHORITY)
+    : null;
+  // No grants are provisioned yet: DCA is wired, but all tool execution remains denied.
+  const capabilityRegistry = createCapabilityRegistry({ grants: [], authority });
   return createBuiltinAgentSystem({
     toolRegistry,
+    capabilityRegistry,
+    capabilityContext,
     maxAgents,
     maxToolCalls: 1,
     agentLoopFactory: ({ toolRegistry, skillRegistry }) =>
@@ -1343,7 +1352,13 @@ export default {
           },
         };
       }
-      const system = createRequestAgentSystem(env, policy.maxAgents);
+      const system = createRequestAgentSystem(env, policy.maxAgents, {
+        // Derived only from the authenticated HMAC app identity; this is an app service principal, not an end-user identity.
+        appId: auth.appId.toLowerCase(),
+        callerId: "app_" + auth.appId.toLowerCase().replace(/[^a-z0-9_-]/g, "_"),
+        operation: "execute",
+        resource: "",
+      });
       const result = await runCEOAIInternalAgentTask(env, {
         system, task, input: agentInput, limit, agentIds: policy.allowedAgentIds, allowedToolIds: [], allowToolExecution: true,
         maxToolCalls: 1, maxModelCalls: policy.maxModelCalls, synthesize: true,
