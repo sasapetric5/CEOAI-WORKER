@@ -25,11 +25,12 @@ function safeSnapshot(value, seen = new WeakSet(), depth = 0) {
  return output;
 }
 const safeJson=value=>{try{const snapshot=safeSnapshot(value);if(snapshot===undefined)return null;const json=JSON.stringify(snapshot);return typeof json==="string"&&new TextEncoder().encode(json).byteLength<=MAX_CONTEXT_BYTES?json:null;}catch{return null;}};
-export function createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoop,capabilityRegistry=null,capabilityContext=null,maxAgents=3,maxToolCalls=4}={}){
+export function createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoop,capabilityRegistry=null,capabilityContext=null,requireDurableAuthority=false,maxAgents=3,maxToolCalls=4}={}){
  if(!agentRegistry||typeof agentRegistry.search!=="function"||typeof agentRegistry.get!=="function")throw new TypeError("AGENT_REGISTRY_REQUIRED");
  if(!skillRegistry||typeof skillRegistry.get!=="function"||typeof skillRegistry.search!=="function")throw new TypeError("SKILL_REGISTRY_REQUIRED");
  if(!agentLoop||typeof agentLoop.run!=="function")throw new TypeError("AGENT_LOOP_REQUIRED");
- if(capabilityRegistry!==null&&typeof capabilityRegistry.resolve!=="function")throw new TypeError("INVALID_CAPABILITY_REGISTRY");
+ if(capabilityRegistry!==null&&(typeof capabilityRegistry.resolve!=="function"||typeof capabilityRegistry.authorize!=="function"))throw new TypeError("INVALID_CAPABILITY_REGISTRY");
+ if(typeof requireDurableAuthority!=="boolean")throw new TypeError("INVALID_DURABLE_AUTHORITY_POLICY");
  if(capabilityRegistry!==null&&(!plain(capabilityContext)||typeof capabilityContext.appId!=="string"||typeof capabilityContext.callerId!=="string"||(capabilityContext.resource!==undefined&&(typeof capabilityContext.resource!=="string"||capabilityContext.resource.length>512))||(capabilityContext.operation!==undefined&&(typeof capabilityContext.operation!=="string"||!/^[a-z][a-z0-9:_-]{0,63}$/.test(capabilityContext.operation))))throw new TypeError("INVALID_TRUSTED_CAPABILITY_CONTEXT");
  if(!Number.isSafeInteger(maxAgents)||maxAgents<1||maxAgents>5)throw new TypeError("INVALID_AGENT_LIMIT");
  if(!Number.isSafeInteger(maxToolCalls)||maxToolCalls<1||maxToolCalls>8)throw new TypeError("INVALID_SHARED_BUDGET");
@@ -83,7 +84,7 @@ export function createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoo
    try{
     result=await agentLoop.run({
      skillId:agent.skillId,input:runInput,allowToolExecution:true,allowedToolIds:effectiveTools,budget,runId:runId+":"+agent.id,
-     ...(capabilityRegistry?{authorizeTool:({toolId})=>capabilityRegistry.durable?capabilityRegistry.authorize({appId:capabilityContext.appId,callerId:capabilityContext.callerId,agentId:agent.id,skillId:agent.skillId,toolId,operation:capabilityContext.operation??"execute",resource:capabilityContext.resource??"",approval:null}):capabilityRegistry.resolve({appId:capabilityContext.appId,callerId:capabilityContext.callerId,agentId:agent.id,skillId:agent.skillId,toolId,operation:capabilityContext.operation??"execute",resource:capabilityContext.resource??"",approval:capabilityContext.approvals?.[toolId]??null})}:{}),
+     ...(capabilityRegistry?{authorizeTool:({toolId})=>(requireDurableAuthority||capabilityRegistry.durable)?capabilityRegistry.authorize({appId:capabilityContext.appId,callerId:capabilityContext.callerId,agentId:agent.id,skillId:agent.skillId,toolId,operation:capabilityContext.operation??"execute",resource:capabilityContext.resource??"",approval:null}):capabilityRegistry.resolve({appId:capabilityContext.appId,callerId:capabilityContext.callerId,agentId:agent.id,skillId:agent.skillId,toolId,operation:capabilityContext.operation??"execute",resource:capabilityContext.resource??"",approval:capabilityContext.approvals?.[toolId]??null})}:{}),
      plan:context=>planAgent({agent,skill:{id:skill.id,version:skill.version,description:skill.description},context,task,input:safeInput,instructionTrust:"untrusted_reference_only"})
     });
    }catch{result={ok:false,code:"AGENT_INTERNAL_ERROR",steps:0,toolCalls:0};}
