@@ -35,6 +35,7 @@ import { SpiderJobLedgerDO } from "./src/durable-objects/spider-job-ledger-do.mj
 import { createAppMemoryStore } from "./src/v5-modules/app-memory.mjs";
 import { createCapabilityRegistry } from "./src/agent/capability-registry.mjs";
 import { createCloudflareCapabilityAuthority } from "./src/agent/cloudflare-capability-authority.mjs";
+import { loadVerifiedCapabilityGrants, verifyCapabilityApproval } from "./src/agent/capability-grants.mjs";
 const handleSpiderQueue = createSpiderQueueHandler();
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
@@ -1130,7 +1131,7 @@ const APP_AGENT_POLICIES = Object.freeze({
   }),
 });
 
-function createRequestAgentSystem(env, maxAgents, capabilityContext) {
+async function createRequestAgentSystem(env, maxAgents, capabilityContext) {
   // This app gateway intentionally has no external-action tools in this integration stage.
   // The durable executor is optional here because no tools are registered or enabled.
   // When a future tool is enabled, its registry contract still requires an executor;
@@ -1143,7 +1144,12 @@ function createRequestAgentSystem(env, maxAgents, capabilityContext) {
     ? createCloudflareCapabilityAuthority(env.CAPABILITY_AUTHORITY)
     : null;
   // No grants are provisioned yet: DCA is wired, but all tool execution remains denied.
-  const capabilityRegistry = createCapabilityRegistry({ grants: [], authority });
+  const grants = await loadVerifiedCapabilityGrants(env);
+  const capabilityRegistry = createCapabilityRegistry({
+    grants,
+    authority,
+    verifyApproval: (token, expected) => verifyCapabilityApproval(token, env.CAPABILITY_GRANT_SIGNING_KEY, expected),
+  });
   return createBuiltinAgentSystem({
     toolRegistry,
     capabilityRegistry,
@@ -1353,13 +1359,18 @@ export default {
           },
         };
       }
-      const system = createRequestAgentSystem(env, policy.maxAgents, {
+      let system;
+      try {
+        system = await createRequestAgentSystem(env, policy.maxAgents, {
         // Derived only from the authenticated HMAC app identity; this is an app service principal, not an end-user identity.
         appId: auth.appId.toLowerCase(),
         callerId: "app_" + auth.appId.toLowerCase().replace(/[^a-z0-9_-]/g, "_"),
         operation: "execute",
         resource: "",
-      });
+        });
+      } catch {
+        return json({ success: false, error: "Bezbednosna konfiguracija ovlašćenja nije validna.", code: "CAPABILITY_GRANT_CONFIGURATION_INVALID" }, 503);
+      }
       const result = await runCEOAIInternalAgentTask(env, {
         system, task, input: agentInput, limit, agentIds: policy.allowedAgentIds, allowedToolIds: [], allowToolExecution: true,
         maxToolCalls: 1, maxModelCalls: policy.maxModelCalls, synthesize: true,
