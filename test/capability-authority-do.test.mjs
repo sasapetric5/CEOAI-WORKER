@@ -39,3 +39,9 @@ test("malformed authority requests are rejected before network access",async()=>
  const {authority}=harness();
  assert.equal((await authority.authorize(request({appId:"../rankgeo"}))).code,"INVALID_AUTHORITY_REQUEST");
 });
+
+test("changing resource cannot reset the shared capability quota",async()=>{
+ const {authority}=harness();
+ assert.equal((await authority.authorize(request({resource:"site:one.example"}))).ok,true);
+ assert.equal((await authority.authorize(request({resource:"site:two.example"}))).code,"CAPABILITY_QUOTA_EXCEEDED");
+});
