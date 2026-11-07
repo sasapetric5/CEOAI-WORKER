@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { WorkflowTaskDO } from "../src/durable-objects/workflow-task-do.mjs";
 import { createCloudflareCheckpointStore } from "../src/agent/cloudflare-checkpoint-store.mjs";
 import { createCloudflareDurableExecutionEngine } from "../src/agent/cloudflare-durable-runtime.mjs";
+import { createCloudflareIdempotentToolExecutor } from "../src/agent/idempotent-tool-executor.mjs";
 
 function makeDO() {
   const data = new Map();
@@ -288,4 +289,27 @@ test("41 durable engine executes through Durable Object lease, fenced checkpoint
   const recovered = await engine.get("task_41");
   assert.equal(recovered.state.status, "completed");
   assert.equal(recovered.state.completedStepIds[0], "only");
+});
+
+
+test("42 idempotent tool executor replays a side effect through the real Durable Object adapter", async () => {
+  const { namespace } = makeDO();
+  const executor = createCloudflareIdempotentToolExecutor({ env: { WORKFLOW_TASKS: namespace } });
+  let calls = 0;
+  const request = {
+    idempotencyKey: "app-request-42:agent-1:send_message",
+    toolId: "send_message",
+    arguments: { message: "durable integration" },
+    execute: async ({ idempotencyKey }) => {
+      calls++;
+      return { accepted: true, downstreamKey: idempotencyKey };
+    },
+  };
+  const first = await executor.execute(request);
+  const second = await executor.execute(request);
+  assert.equal(first.ok, true);
+  assert.equal(second.ok, true);
+  assert.deepEqual(second.result, first.result);
+  assert.equal(second.replayed, true);
+  assert.equal(calls, 1);
 });
