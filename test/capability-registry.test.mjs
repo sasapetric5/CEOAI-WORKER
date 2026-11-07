@@ -70,3 +70,21 @@ test("approval verification failure is fail-closed",()=>{
  const r=createCapabilityRegistry({grants:base().map(g=>({...g,approvalRequired:true})),verifyApproval:()=>false});
  assert.equal(r.resolve({...request,approval}).code,"CAPABILITY_APPROVAL_REQUIRED");
 });
+
+test("durable registry delegates quota consumption only after four-layer policy and approval verification",async()=>{
+ const calls=[];
+ const grants=base().map(g=>({...g,approvalRequired:g.subjectType==="skill"}));
+ const registry=createCapabilityRegistry({grants,verifyApproval:()=>true,authority:{authorize:async request=>{calls.push(request);return {ok:true,remaining:0};}}});
+ assert.equal(registry.durable,true);
+ assert.equal((await registry.authorize({...request,approval})).ok,true);
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].maxCalls,3);
+ assert.equal(calls[0].approvalId,approval.approvalId);
+ assert.equal((await registry.authorize({...request,approval:{...approval,signature:"bad"}})).code,"CAPABILITY_APPROVAL_REQUIRED");
+ assert.equal(calls.length,1);
+});
+test("durable registry fails closed when its authority dependency is absent",async()=>{
+ const registry=createCapabilityRegistry({grants:base()});
+ assert.equal(registry.durable,false);
+ assert.equal((await registry.authorize(request)).code,"CAPABILITY_AUTHORITY_REQUIRED");
+});
