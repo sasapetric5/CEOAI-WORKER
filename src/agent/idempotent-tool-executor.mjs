@@ -19,7 +19,7 @@ function snapshot(value, seen = new WeakSet(), depth = 0) {
   const keys = Reflect.ownKeys(value);
   if (array && (keys.length !== value.length + 1 ||
       Array.from({ length: value.length }, (_, index) => Object.hasOwn(value, String(index))).some(present => !present))) return undefined;
-  if (keys.some(key => typeof key !== "string" || (array && key !== "length" && !/^(0|[1-9]\\d*)$/.test(key)))) return undefined;
+  if (keys.some(key => typeof key !== "string" || (array && key !== "length" && !/^(0|[1-9]\d*)$/.test(key)))) return undefined;
   const output = array ? [] : Object.create(null);
   for (const key of keys) {
     if (array && key === "length") continue;
@@ -110,7 +110,8 @@ export function createIdempotentToolExecutor({ store, now = () => Date.now(), au
       audit?.record({ type: wasCompleted ? "tool_effect_replayed" : "tool_effect_completed", taskId, toolId });
     } catch { /* audit must not alter execution */ }
     return {
-      ...result.state.results[0].value,
+      ok: true,
+      result: result.state.results[0].value,
       idempotencyKey: taskId + ":execute_tool",
       replayed: existed && wasCompleted,
       taskId,
