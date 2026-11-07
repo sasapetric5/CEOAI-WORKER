@@ -10,9 +10,9 @@ const SUBJECTS=new Set(["app","caller","agent","skill"]);
 const MAX_GRANTS=5000;
 const MAX_TTL=31*24*60*60*1000;
 const copy=g=>({subjectType:g.subjectType,subjectId:g.subjectId,appId:g.appId,capabilityId:g.capabilityId,operations:[...g.operations],resourceScopes:[...g.resourceScopes],maxCalls:g.maxCalls,expiresAt:g.expiresAt,approvalRequired:g.approvalRequired});
-export function createCapabilityRegistry({grants=[],audit=null,now=()=>Date.now(),verifyApproval=null}={}){
+export function createCapabilityRegistry({grants=[],audit=null,now=()=>Date.now(),verifyApproval=null,authority=null}={}){
  if(!Array.isArray(grants)||grants.length>MAX_GRANTS)throw new TypeError("INVALID_CAPABILITY_GRANTS");
- if(typeof now!=="function"||(audit!==null&&typeof audit.record!=="function")||(verifyApproval!==null&&typeof verifyApproval!=="function"))throw new TypeError("INVALID_CAPABILITY_DEPENDENCY");
+ if(typeof now!=="function"||(audit!==null&&typeof audit.record!=="function")||(verifyApproval!==null&&typeof verifyApproval!=="function")||(authority!==null&&typeof authority.authorize!=="function"))throw new TypeError("INVALID_CAPABILITY_DEPENDENCY");
  const usedApprovals=new Set();
  const entries=new Map();
  for(const raw of grants){
@@ -66,7 +66,7 @@ export function createCapabilityRegistry({grants=[],audit=null,now=()=>Date.now(
   }
   return {ok:true,allowedToolIds,denied};
  }
- async function authorize({authority,appId,callerId,agentId,skillId,toolId,operation="execute",resource="",approval=null}={}){
+ async function authorize({appId,callerId,agentId,skillId,toolId,operation="execute",resource="",approval=null}={}){
   if(!authority||typeof authority.authorize!=="function")return {ok:false,code:"CAPABILITY_AUTHORITY_REQUIRED"};
   if(typeof appId!=="string"||!APP.test(appId)||typeof callerId!=="string"||!PRINCIPAL.test(callerId)||
    typeof agentId!=="string"||!ID.test(agentId)||typeof skillId!=="string"||!ID.test(skillId)||
