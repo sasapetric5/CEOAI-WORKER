@@ -122,7 +122,7 @@ export function createToolRegistry({ tools = [], enabled = false, limits = {}, i
       const handlerPromise = Promise.resolve().then(() => t.idempotencyMode === "none"
         ? invokeHandler({ signal: controller.signal })
         : idempotentExecutor.execute({
-            idempotencyKey, toolId: id, arguments: checked.value, context: {},
+            idempotencyKey, toolId: id, arguments: checked.value, context: {}, signal: controller.signal,
             execute: ({ signal, idempotencyKey: forwardedKey }) => invokeHandler({ signal: signal ?? controller.signal, idempotencyKey: forwardedKey }),
           }).then(result => { if (!result || result.ok !== true) throw Object.assign(new Error(result?.code || "IDEMPOTENT_TOOL_FAILED"), { code: result?.code }); return result.result; }));
       handlerPromise.catch(() => {});
