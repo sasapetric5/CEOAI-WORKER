@@ -27,6 +27,7 @@ import { parseRetryAfterSeconds, providerFailureCooldown } from "./src/v5-module
 import { createProviderAgentRuntime } from "./src/agent/provider-agent-runtime.mjs";
 import { createToolRegistry } from "./src/agent/tool-registry.mjs";
 import { createAgentLoop } from "./src/agent/agent-loop.mjs";
+import { createCloudflareIdempotentToolExecutor } from "./src/agent/idempotent-tool-executor.mjs";
 import { createBuiltinAgentSystem } from "./src/agent/agent-system.mjs";
 import { planResearchAcquisition, normalizeResearchUrl } from "./src/agent/research-acquisition-policy.mjs";
 import { enqueueSpiderCrawl, createSpiderQueueHandler, readSpiderResult } from "./src/integrations/spider-queue.mjs";
@@ -1127,9 +1128,10 @@ const APP_AGENT_POLICIES = Object.freeze({
   }),
 });
 
-function createRequestAgentSystem(maxAgents) {
+function createRequestAgentSystem(env, maxAgents) {
   // This app gateway intentionally has no external-action tools in this integration stage.
-  const toolRegistry = createToolRegistry({ tools: [], enabled: false });
+  const idempotentExecutor = createCloudflareIdempotentToolExecutor({ env });
+  const toolRegistry = createToolRegistry({ tools: [], enabled: false, idempotentExecutor });
   return createBuiltinAgentSystem({
     toolRegistry,
     maxAgents,
@@ -1333,7 +1335,7 @@ export default {
           },
         };
       }
-      const system = createRequestAgentSystem(policy.maxAgents);
+      const system = createRequestAgentSystem(env, policy.maxAgents);
       const result = await runCEOAIInternalAgentTask(env, {
         system, task, input: agentInput, limit, agentIds: policy.allowedAgentIds, allowedToolIds: [], allowToolExecution: true,
         maxToolCalls: 1, maxModelCalls: policy.maxModelCalls, synthesize: true,
