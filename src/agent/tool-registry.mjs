@@ -40,7 +40,8 @@ function validLimits(limits) {
   }
 }
 
-export function createToolRegistry({ tools = [], enabled = false, limits = {}, idempotentExecutor = null } = {}) {\n  if (idempotentExecutor !== null && typeof idempotentExecutor.execute !== "function") throw new TypeError("INVALID_IDEMPOTENT_EXECUTOR");
+export function createToolRegistry({ tools = [], enabled = false, limits = {}, idempotentExecutor = null } = {}) {
+  if (idempotentExecutor !== null && typeof idempotentExecutor.execute !== "function") throw new TypeError("INVALID_IDEMPOTENT_EXECUTOR");
   const baseLimits = { ...DEFAULT_TOOL_LIMITS, ...limits };
   validLimits(baseLimits);
   const definitions = new Map();
@@ -49,7 +50,10 @@ export function createToolRegistry({ tools = [], enabled = false, limits = {}, i
     if (definitions.has(t.id)) throw new TypeError("DUPLICATE_TOOL:" + t.id);
     if (typeof t.description !== "string" || !t.description.trim() || t.description.length > 240) throw new TypeError("INVALID_TOOL_DESCRIPTION:" + t.id);
     if (!validSchema(t.inputSchema)) throw new TypeError("INVALID_TOOL_SCHEMA:" + t.id);
-    if (typeof t.handler !== "function") throw new TypeError("INVALID_TOOL_HANDLER:" + t.id);\n    const idempotencyMode = t.idempotencyMode ?? "none";\n    if (!["none", "downstream_key", "manual_reconciliation"].includes(idempotencyMode)) throw new TypeError("INVALID_TOOL_IDEMPOTENCY_MODE:" + t.id);\n    if (idempotencyMode !== "none" && !idempotentExecutor) throw new TypeError("IDEMPOTENT_EXECUTOR_REQUIRED:" + t.id);
+    if (typeof t.handler !== "function") throw new TypeError("INVALID_TOOL_HANDLER:" + t.id);
+    const idempotencyMode = t.idempotencyMode ?? "none";
+    if (!["none", "downstream_key", "manual_reconciliation"].includes(idempotencyMode)) throw new TypeError("INVALID_TOOL_IDEMPOTENCY_MODE:" + t.id);
+    if (idempotencyMode !== "none" && !idempotentExecutor) throw new TypeError("IDEMPOTENT_EXECUTOR_REQUIRED:" + t.id);
     const toolLimits = { ...baseLimits, ...(t.limits || {}) };
     validLimits(toolLimits);
     definitions.set(t.id, { id: t.id, description: t.description.trim(), inputSchema: structuredClone(t.inputSchema), handler: t.handler, limits: toolLimits, idempotencyMode });
@@ -111,7 +115,16 @@ export function createToolRegistry({ tools = [], enabled = false, limits = {}, i
       let timer;
       let timedOut = false;
       // Attach both handlers immediately. A late rejection remains observed after timeout.
-      const idempotencyDescriptor = Object.getOwnPropertyDescriptor(context, "idempotencyKey");\n      const idempotencyKey = idempotencyDescriptor && Object.hasOwn(idempotencyDescriptor, "value") ? idempotencyDescriptor.value : null;\n      if (t.idempotencyMode !== "none" && (typeof idempotencyKey !== "string" || !idempotencyKey)) return error("IDEMPOTENCY_KEY_REQUIRED");\n      const invokeHandler = ({ signal, idempotencyKey: forwardedKey = idempotencyKey } = {}) => t.handler(checked.value, { signal, ...(t.idempotencyMode === "none" ? {} : { idempotencyKey: forwardedKey }) });\n      const handlerPromise = Promise.resolve().then(() => t.idempotencyMode === "none"\n        ? invokeHandler({ signal: controller.signal })\n        : idempotentExecutor.execute({\n            idempotencyKey, toolId: id, arguments: checked.value, context: {},\n            execute: ({ signal, idempotencyKey: forwardedKey }) => invokeHandler({ signal: signal ?? controller.signal, idempotencyKey: forwardedKey }),\n          }).then(result => { if (!result || result.ok !== true) throw Object.assign(new Error(result?.code || "IDEMPOTENT_TOOL_FAILED"), { code: result?.code }); return result.result; }));
+      const idempotencyDescriptor = Object.getOwnPropertyDescriptor(context, "idempotencyKey");
+      const idempotencyKey = idempotencyDescriptor && Object.hasOwn(idempotencyDescriptor, "value") ? idempotencyDescriptor.value : null;
+      if (t.idempotencyMode !== "none" && (typeof idempotencyKey !== "string" || !idempotencyKey)) return error("IDEMPOTENCY_KEY_REQUIRED");
+      const invokeHandler = ({ signal, idempotencyKey: forwardedKey = idempotencyKey } = {}) => t.handler(checked.value, { signal, ...(t.idempotencyMode === "none" ? {} : { idempotencyKey: forwardedKey }) });
+      const handlerPromise = Promise.resolve().then(() => t.idempotencyMode === "none"
+        ? invokeHandler({ signal: controller.signal })
+        : idempotentExecutor.execute({
+            idempotencyKey, toolId: id, arguments: checked.value, context: {},
+            execute: ({ signal, idempotencyKey: forwardedKey }) => invokeHandler({ signal: signal ?? controller.signal, idempotencyKey: forwardedKey }),
+          }).then(result => { if (!result || result.ok !== true) throw Object.assign(new Error(result?.code || "IDEMPOTENT_TOOL_FAILED"), { code: result?.code }); return result.result; }));
       handlerPromise.catch(() => {});
       const timeoutPromise = new Promise((_, reject) => {
         timer = setTimeout(() => {
@@ -129,7 +142,8 @@ export function createToolRegistry({ tools = [], enabled = false, limits = {}, i
         if (new TextEncoder().encode(json).byteLength > t.limits.maxOutputBytes) return error("TOOL_OUTPUT_TOO_LARGE");
         return { ok: true, result: JSON.parse(json), calls: calls + 1, sessionCalls: session.used };
       } catch (e) {
-        return error(timedOut || e?.message === "TOOL_TIMEOUT" ? "TOOL_TIMEOUT" : "TOOL_EXECUTION_FAILED");
+        const code = typeof e?.code === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(e.code) ? e.code : null;
+        return error(timedOut || e?.message === "TOOL_TIMEOUT" ? "TOOL_TIMEOUT" : code || "TOOL_EXECUTION_FAILED");
       } finally {
         if (timer) clearTimeout(timer);
         if (!controller.signal.aborted && timedOut) controller.abort();
