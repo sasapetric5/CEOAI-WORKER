@@ -10,13 +10,13 @@ function attach(skillSystem,{toolRegistry,maxAgents,maxToolCalls,capabilityRegis
  const mcpResources=mcpAuthorize===null?null:createSkillMCPResources({skillRegistry:skillSystem.registry,authorize:mcpAuthorize,audit:mcpAudit,maxPageSize:mcpPageSize});
  return Object.freeze({...skillSystem,agents,multiAgentSupervisor:supervisor,mcpResources});
 }
-export function createBuiltinAgentSystem({toolRegistry,agentLoopFactory,maxAgents=3,maxToolCalls=4,capabilityRegistry=null,capabilityContext=null,mcpAuthorize=null,mcpAudit=null,mcpPageSize=20}={}){
+export function createBuiltinAgentSystem({toolRegistry,agentLoopFactory,maxAgents=3,maxToolCalls=4,capabilityRegistry=null,capabilityContext=null,requireDurableAuthority=false,mcpAuthorize=null,mcpAudit=null,mcpPageSize=20}={}){
  const skills=createBuiltinSkillSystem({toolRegistry,agentLoopFactory,maxSelectedSkills:3});
  if(!skills.agentLoop)throw new TypeError("AGENT_LOOP_FACTORY_REQUIRED");
  return attach(skills,{toolRegistry,maxAgents,maxToolCalls,capabilityRegistry,capabilityContext,mcpAuthorize,mcpAudit,mcpPageSize});
 }
 export async function createKVAgentSystem({
- kv,toolRegistry,agentLoopFactory,maxAgents=3,maxToolCalls=4,capabilityRegistry=null,capabilityContext=null,capabilityPolicy={},
+ kv,toolRegistry,agentLoopFactory,maxAgents=3,maxToolCalls=4,capabilityRegistry=null,capabilityContext=null,requireDurableAuthority=false,capabilityPolicy={},
  approvedSkillIds,categoryBySkillId={},categoryCapabilityPolicy={},indexKey,documentPrefix,
  mcpAuthorize=null,mcpAudit=null,mcpPageSize=20
 }={}){
