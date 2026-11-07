@@ -1148,6 +1148,7 @@ function createRequestAgentSystem(env, maxAgents, capabilityContext) {
     toolRegistry,
     capabilityRegistry,
     capabilityContext,
+    requireDurableAuthority: true,
     maxAgents,
     maxToolCalls: 1,
     agentLoopFactory: ({ toolRegistry, skillRegistry }) =>
