@@ -57,7 +57,7 @@ export function createIdempotentToolExecutor({ store, now = () => Date.now(), au
   if (!store || required.some(name => typeof store[name] !== "function")) throw new TypeError("DURABLE_EFFECT_STORE_REQUIRED");
   if (typeof now !== "function" || (audit !== null && typeof audit.record !== "function")) throw new TypeError("INVALID_IDEMPOTENCY_DEPENDENCY");
 
-  async function execute({ idempotencyKey, toolId, arguments: toolArguments = {}, context = {}, execute: executeTool } = {}) {
+  async function execute({ idempotencyKey, toolId, arguments: toolArguments = {}, context = {}, signal: callerSignal = null, execute: executeTool } = {}) {
     if (typeof idempotencyKey !== "string" || !KEY.test(idempotencyKey) ||
         typeof toolId !== "string" || !TOOL_ID.test(toolId) || typeof executeTool !== "function") {
       return { ok: false, code: "INVALID_IDEMPOTENT_TOOL_REQUEST" };
@@ -72,13 +72,25 @@ export function createIdempotentToolExecutor({ store, now = () => Date.now(), au
 
     const engine = createDurableExecutionEngine({
       store, now, audit,
-      executeStep: async ({ idempotencyKey: durableEffectKey, signal }) => executeTool({
-        toolId: safePayload.toolId,
-        arguments: safePayload.arguments,
-        context: safePayload.context,
-        idempotencyKey: durableEffectKey,
-        signal,
-      }),
+      executeStep: async ({ idempotencyKey: durableEffectKey, signal: leaseSignal }) => {
+        const controller = new AbortController();
+        const abort = () => controller.abort();
+        callerSignal?.addEventListener("abort", abort, { once: true });
+        leaseSignal?.addEventListener("abort", abort, { once: true });
+        if (callerSignal?.aborted || leaseSignal?.aborted) controller.abort();
+        try {
+          return await executeTool({
+            toolId: safePayload.toolId,
+            arguments: safePayload.arguments,
+            context: safePayload.context,
+            idempotencyKey: durableEffectKey,
+            signal: controller.signal,
+          });
+        } finally {
+          callerSignal?.removeEventListener("abort", abort);
+          leaseSignal?.removeEventListener("abort", abort);
+        }
+      },
     });
     const steps = [{ id: "execute_tool", kind: "task", input: safePayload }];
     const created = await engine.create({ id: taskId, input: safePayload, steps });
