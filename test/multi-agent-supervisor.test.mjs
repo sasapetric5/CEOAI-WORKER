@@ -174,3 +174,32 @@ test("supervisor preserves a caller-supplied run ID for retry-stable tool keys",
  assert.equal(result.ok,true);
  assert.equal(receivedRunId,"client_task_123:stable_agent");
 });
+
+test("supervisor enforces four-layer capability grants at the exact tool call", async () => {
+ const {createCapabilityRegistry}=await import("../src/agent/capability-registry.mjs");
+ let calls=0;
+ const toolRegistry=createToolRegistry({enabled:true,tools:[{
+  id:"lookup",description:"Capability-protected lookup",
+  inputSchema:{type:"object",properties:{term:{type:"string",maxLength:40}},required:["term"],additionalProperties:false},
+  handler:async({term})=>{calls++;return {term};}
+ }]});
+ const skillRegistry=createSkillRegistry({toolRegistry,skills:[{
+  id:"capability_skill",version:"1.0.0",description:"Capability fixture",allowedToolIds:["lookup"],content:"Use lookup."
+ }]});
+ const agents=[{id:"capability_agent",version:"1.0.0",role:"Capability agent",description:"Tests authority intersection.",skillIds:["capability_skill"],keywords:["capability"],allowedToolIds:["lookup"]}];
+ const agentRegistry=createAgentRegistry({agents,skillRegistry,toolRegistry});
+ const agentLoop=createAgentLoop({toolRegistry,skillRegistry,maxSteps:2,maxToolCalls:1});
+ const grants=["app","caller","agent","skill"].map(subjectType=>({
+  subjectType,subjectId:({app:"rankgeo",caller:"user_1",agent:"capability_agent",skill:"capability_skill"})[subjectType],
+  appId:"rankgeo",capabilityId:"lookup",operations:["execute"],resourceScopes:[],maxCalls:1,expiresAt:0,approvalRequired:false
+ }));
+ const planAgent=async({context})=>context.step===1?{type:"tool",toolId:"lookup",arguments:{term:"proof"}}:{type:"final",output:"done"};
+ const denied=createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoop,capabilityRegistry:createCapabilityRegistry({grants:grants.filter(g=>g.subjectType!=="caller")}),maxAgents:1,maxToolCalls:1});
+ const deniedResult=await denied.run({task:"capability audit",allowedToolIds:["lookup"],allowToolExecution:true,capabilityContext:{appId:"rankgeo",callerId:"user_1"},planAgent});
+ assert.equal(deniedResult.results[0].code,"CAPABILITY_NOT_GRANTED");
+ assert.equal(calls,0);
+ const allowed=createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoop,capabilityRegistry:createCapabilityRegistry({grants}),maxAgents:1,maxToolCalls:1});
+ const allowedResult=await allowed.run({task:"capability audit",allowedToolIds:["lookup"],allowToolExecution:true,capabilityContext:{appId:"rankgeo",callerId:"user_1"},planAgent});
+ assert.equal(allowedResult.ok,true);
+ assert.equal(calls,1);
+});
