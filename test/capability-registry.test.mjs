@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createCapabilityRegistry } from "../src/agent/capability-registry.mjs";
+import { signCapabilityApproval, verifyCapabilityApproval } from "../src/agent/capability-grants.mjs";
 const grant=(subjectType,subjectId,extra={})=>({subjectType,subjectId,appId:"rankgeo",capabilityId:"web_search",operations:["execute"],resourceScopes:[],maxCalls:3,expiresAt:0,approvalRequired:false,...extra});
 const base=()=>[grant("app","rankgeo"),grant("caller","user_1"),grant("agent","seo_agent"),grant("skill","seo_audit")];
 const request={appId:"rankgeo",callerId:"user_1",agentId:"seo_agent",skillId:"seo_audit",toolId:"web_search"};
@@ -87,4 +88,25 @@ test("durable registry fails closed when its authority dependency is absent",asy
  const registry=createCapabilityRegistry({grants:base()});
  assert.equal(registry.durable,false);
  assert.equal((await registry.authorize(request)).code,"CAPABILITY_AUTHORITY_REQUIRED");
+});
+
+test("durable authorization awaits server-signed approval and binds it to the exact tool call",async()=>{
+ const secret="dedicated-server-signing-key-32-bytes";
+ const now=Date.now();
+ const signed=await signCapabilityApproval({
+  approvalId:"approval_server_1234567890",appId:"rankgeo",callerId:"user_1",
+  agentId:"seo_agent",skillId:"seo_audit",toolId:"web_search",operation:"execute",
+  resource:"site:example.com",expiresAt:now+60000
+ },secret,{now});
+ const calls=[];
+ const registry=createCapabilityRegistry({
+  grants:base().map(g=>({...g,approvalRequired:true})),
+  verifyApproval:(token,expected)=>verifyCapabilityApproval(token,secret,expected),
+  authority:{authorize:async request=>{calls.push(request);return {ok:true,remaining:0};}}
+ });
+ assert.equal((await registry.authorize({...request,resource:"site:example.com",approval:signed})).ok,true);
+ assert.equal(calls.length,1);
+ assert.equal(calls[0].approvalId,"approval_server_1234567890");
+ assert.equal((await registry.authorize({...request,resource:"site:evil.example",approval:signed})).code,"CAPABILITY_APPROVAL_REQUIRED");
+ assert.equal(calls.length,1);
 });
