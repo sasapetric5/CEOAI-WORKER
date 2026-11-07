@@ -13,7 +13,7 @@ function attach(skillSystem,{toolRegistry,maxAgents,maxToolCalls,capabilityRegis
 export function createBuiltinAgentSystem({toolRegistry,agentLoopFactory,maxAgents=3,maxToolCalls=4,capabilityRegistry=null,capabilityContext=null,requireDurableAuthority=false,mcpAuthorize=null,mcpAudit=null,mcpPageSize=20}={}){
  const skills=createBuiltinSkillSystem({toolRegistry,agentLoopFactory,maxSelectedSkills:3});
  if(!skills.agentLoop)throw new TypeError("AGENT_LOOP_FACTORY_REQUIRED");
- return attach(skills,{toolRegistry,maxAgents,maxToolCalls,capabilityRegistry,capabilityContext,mcpAuthorize,mcpAudit,mcpPageSize});
+ return attach(skills,{toolRegistry,maxAgents,maxToolCalls,capabilityRegistry,capabilityContext,requireDurableAuthority,mcpAuthorize,mcpAudit,mcpPageSize});
 }
 export async function createKVAgentSystem({
  kv,toolRegistry,agentLoopFactory,maxAgents=3,maxToolCalls=4,capabilityRegistry=null,capabilityContext=null,requireDurableAuthority=false,capabilityPolicy={},
