@@ -47,7 +47,7 @@ export function createCapabilityRegistry({grants=[],audit=null,now=()=>Date.now(
   if(!grant||(grant.expiresAt!==0&&grant.expiresAt<=now())||!grant.operations.includes(operation))return null;
   if(!grant.resourceScopes.length){
    if(!allowUnscopedGrants)return null;
-  }else if(!grant.resourceScopes.some(scope=>{const base=scope.endsWith("/*")?scope.slice(0,-2):scope;return resource===base||resource.startsWith(base+"/");}))return null;
+  }else if(!grant.resourceScopes.some(scope=>scope.endsWith("/*")?(()=>{const base=scope.slice(0,-2);return resource===base||resource.startsWith(base+"/");})():resource===scope))return null;
   return grant;
  }
  const validRequest=({appId,callerId,agentId,skillId,toolId,operation,resource})=>

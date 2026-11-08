@@ -41,10 +41,13 @@ test("quota is the strictest limit across all four layers",()=>{
  const r=createCapabilityRegistry({grants:base().map((g,i)=>({...g,maxCalls:i===2?1:3}))});
  assert.equal(r.resolve(request).ok,true);assert.equal(r.resolve(request).code,"CAPABILITY_QUOTA_EXCEEDED");
 });
-test("resource scopes restrict access to exact resource and descendants",()=>{
- const r=createCapabilityRegistry({grants:base().map(g=>({...g,resourceScopes:["site:example.com"]}))});
- assert.equal(r.resolve({...request,resource:"site:example.com/page"}).ok,true);
- assert.equal(r.resolve({...request,resource:"site:evil.com"}).code,"CAPABILITY_NOT_GRANTED");
+test("resource scopes are exact unless a descendant wildcard is explicitly granted",()=>{
+ const exact=createCapabilityRegistry({grants:base().map(g=>({...g,resourceScopes:["site:example.com"]}))});
+ assert.equal(exact.resolve({...request,resource:"site:example.com"}).ok,true);
+ assert.equal(exact.resolve({...request,resource:"site:example.com/page"}).code,"CAPABILITY_NOT_GRANTED");
+ const descendants=createCapabilityRegistry({grants:base().map(g=>({...g,resourceScopes:["site:example.com/*"]}))});
+ assert.equal(descendants.resolve({...request,resource:"site:example.com/page"}).ok,true);
+ assert.equal(descendants.resolve({...request,resource:"site:example.com.evil/page"}).code,"CAPABILITY_NOT_GRANTED");
 });
 test("resolveTools returns only the policy intersection",()=>{
  const r=createCapabilityRegistry({grants:base()});
