@@ -83,6 +83,7 @@ test("durable registry delegates quota consumption only after four-layer policy 
  assert.equal(calls[0].maxCalls,3);
  assert.equal(calls[0].approvalId,durableApproval.payload.approvalId);
  assert.equal((await registry.authorize({...request,approval:{...durableApproval,signature:"bad"}})).code,"CAPABILITY_APPROVAL_REQUIRED");
+ assert.equal((await registry.authorize({...request,resource:"site:example.com",argumentsDigest:"b".repeat(64),approval:signed})).code,"CAPABILITY_APPROVAL_REQUIRED");
  assert.equal(calls.length,1);
 });
 test("durable registry fails closed when its authority dependency is absent",async()=>{
@@ -97,7 +98,7 @@ test("durable authorization awaits server-signed approval and binds it to the ex
  const signed=await signCapabilityApproval({
   approvalId:"approval_server_1234567890",appId:"rankgeo",callerId:"user_1",
   agentId:"seo_agent",skillId:"seo_audit",toolId:"web_search",operation:"execute",
-  resource:"site:example.com",expiresAt:now+60000
+  resource:"site:example.com",argumentsDigest:"a".repeat(64),expiresAt:now+60000
  },secret,{now});
  const calls=[];
  const registry=createCapabilityRegistry({
@@ -105,9 +106,9 @@ test("durable authorization awaits server-signed approval and binds it to the ex
   verifyApproval:(token,expected)=>verifyCapabilityApproval(token,secret,expected),
   authority:{authorize:async request=>{calls.push(request);return {ok:true,remaining:0};}}
  });
- assert.equal((await registry.authorize({...request,resource:"site:example.com",approval:signed})).ok,true);
+ assert.equal((await registry.authorize({...request,resource:"site:example.com",argumentsDigest:"a".repeat(64),approval:signed})).ok,true);
  assert.equal(calls.length,1);
  assert.equal(calls[0].approvalId,"approval_server_1234567890");
- assert.equal((await registry.authorize({...request,resource:"site:evil.example",approval:signed})).code,"CAPABILITY_APPROVAL_REQUIRED");
+ assert.equal((await registry.authorize({...request,resource:"site:evil.example",argumentsDigest:"a".repeat(64),approval:signed})).code,"CAPABILITY_APPROVAL_REQUIRED");
  assert.equal(calls.length,1);
 });
