@@ -191,7 +191,7 @@ test("supervisor enforces four-layer capability grants at the exact tool call", 
  const agentLoop=createAgentLoop({toolRegistry,skillRegistry,maxSteps:2,maxToolCalls:1});
  const grants=["app","caller","agent","skill"].map(subjectType=>({
   subjectType,subjectId:({app:"rankgeo",caller:"user_1",agent:"capability_agent",skill:"capability_skill"})[subjectType],
-  appId:"rankgeo",capabilityId:"lookup",operations:["execute"],resourceScopes:[],maxCalls:1,expiresAt:0,approvalRequired:false
+  appId:"rankgeo",capabilityId:"lookup",operations:["execute"],resourceScopes:["*"],maxCalls:1,expiresAt:0,approvalRequired:false
  }));
  const planAgent=async({context})=>context.step===1?{type:"tool",toolId:"lookup",arguments:{term:"proof"}}:{type:"final",output:"done"};
  const denied=createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoop,capabilityRegistry:createCapabilityRegistry({grants:grants.filter(g=>g.subjectType!=="caller")}),capabilityContext:{appId:"rankgeo",callerId:"user_1"},maxAgents:1,maxToolCalls:1});
