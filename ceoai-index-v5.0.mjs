@@ -314,37 +314,34 @@ const CAPABILITY = {
   complex: "complex",
 };
 
+const CYRILLIC_TO_LATIN = {
+  а:"a",б:"b",в:"v",г:"g",д:"d",ђ:"dj",е:"e",ж:"z",з:"z",и:"i",ј:"j",к:"k",л:"l",љ:"lj",
+  м:"m",н:"n",њ:"nj",о:"o",п:"p",р:"r",с:"s",т:"t",ћ:"c",у:"u",ф:"f",х:"h",ц:"c",ч:"c",џ:"dz",ш:"s",
+};
+function normalizeIntentText(value) {
+  return [...String(value ?? "").toLowerCase()]
+    .map(ch => CYRILLIC_TO_LATIN[ch] ?? ch)
+    .join("")
+    .replace(/đ/g, "dj")
+    .normalize("NFD")
+    .replace(/\p{M}+/gu, "");
+}
 function chooseIntent(prompt) {
-  const p = String(prompt || "").toLowerCase();
-  const hasUrl = /https?:\/\/[^\s]+/i.test(p);
-  const researchSignals = /\b(pretraži|pretrazi|istrazi|istraži|search|google|nađi izvor|nadj i izvor|koji sajt|šta kaže|sta kaze|pročitaj link|procitaj link|sumiraj stranicu|pregledaj url)\b/i;
-  const codingSignals = /\b(refaktor|debug|otkloni|ispravi|implementir|kod|programir|repozitorij|worker|api|typescript|javascript|python|bug|stack.?trace|compile|lint)\w*\b/i;
-  const reasoningSignals = /\b(analizir|strategij|planiraj|uporedi|arhitekt|bezbednos|security|optimiz|proceni|design|trade.?off)\w*\b/i;
-  const multiStepSignals = /\b(korak|faza|prvo|zatim|testovi|testiraj|integracij|migracij|deploy|produkcij)\w*\b|(?<![\p{L}])(?:прво|друго|треће|затим|након|потом|коначно)(?![\p{L}])/iu;
-  const hasCode = /```|\b(function|const|let|class|import|export|async|await)\b/.test(p);
-  const sequenceWords = p.match(/(?:\b(zatim|nakon|potom|takođe|takodje|prvo|drugo|treće|trece|konačno|konacno)\b|(?<![\p{L}])(?:прво|друго|треће|затим|након|потом|коначно)(?![\p{L}]))/gu) || [];
-  const hasMultiStep = new Set(sequenceWords).size >= 2;
-
-  if (hasUrl || researchSignals.test(p)) return CAPABILITY.research;
-  if (codingSignals.test(p) || hasCode) return CAPABILITY.coding;
-  if (reasoningSignals.test(p) || (multiStepSignals.test(p) && hasMultiStep)) return CAPABILITY.reasoning;
+  const raw = String(prompt ?? "");
+  const p = normalizeIntentText(raw);
+  const hasUrl = /https?:\/\/\S+/i.test(raw);
+  const hasCode = raw.includes("```") || /\b(?:const|let|var|function|class|import|export|async|await)\b/.test(raw);
+  const hasMultiStep = new Set(p.match(/\b(zatim|nakon|potom|takodje|prvo|drugo|trece|konacno)\b/g) || []).size >= 2;
+  if (hasUrl || /\b(pretraz\w*|istraz\w*|search|google|nadji izvor\w*|pronadji|koji sajt|sta kaze|procitaj link|sumiraj stranic\w*|pregledaj url)\b/.test(p)) return CAPABILITY.research;
+  if (/\b(refaktor\w*|debug\w*|implementir\w*|programir\w*|repozitorij\w*|worker|api|typescript|javascript|python|bug|stack.?trace|compile\w*|lint\w*)\b/.test(p) ||
+      /\b(?:otkloni|ispravi)\s+(?:bag|gresk|error)\w*/.test(p) ||
+      /\b(?:napisi|napisite|pregledaj|ovaj|moj|taj|ceo|sledeci|dati)\s+kod\b/.test(p) ||
+      /\bkod\s+(?:ne radi|baca|pada|ima gresku|u\s+(?:js|python|javascript|typescript))/.test(p) || hasCode) return CAPABILITY.coding;
+  if (/\b(analizir\w*|strategij\w*|planiraj\w*|uporedi\w*|arhitekt\w*|bezbednost\w*|security|optimiz\w*|proceni\w*|design|trade.?off)\b/.test(p) ||
+      (/\b(korak|faza|prvo|zatim|testovi|testiraj|integracij\w*|migracij\w*|deploy|produkcij\w*)\b/.test(p) && hasMultiStep)) return CAPABILITY.reasoning;
   if (hasMultiStep) return CAPABILITY.complex;
   return CAPABILITY.fast;
 }
-
-// Higher score = better fit for the detected intent. Scores are relative within the configured provider pool.
-const PROVIDER_CAPABILITIES = {
-  "glm-flash":   { fast: 3, coding: 2, reasoning: 2, research: 1, complex: 2 },
-  "gemini":      { fast: 3, coding: 2, reasoning: 3, research: 2, complex: 3 },
-  "openrouter":  { fast: 2, coding: 2, reasoning: 2, research: 2, complex: 3 },
-  "deepseek":    { fast: 2, coding: 4, reasoning: 3, research: 1, complex: 3 },
-  "mistral":     { fast: 2, coding: 3, reasoning: 2, research: 1, complex: 2 },
-  "xai":         { fast: 2, coding: 3, reasoning: 4, research: 2, complex: 4 },
-  "nvidia":      { fast: 2, coding: 4, reasoning: 3, research: 1, complex: 3 },
-  "huggingface": { fast: 2, coding: 2, reasoning: 2, research: 1, complex: 2 },
-  "workers-ai":  { fast: 2, coding: 1, reasoning: 1, research: 1, complex: 1 },
-};
-
 function scoreProviderForIntent(providerName, intent) {
   const caps = PROVIDER_CAPABILITIES[providerName] || { fast: 1, coding: 1, reasoning: 1, research: 1, complex: 1 };
   return caps[intent] || caps.fast || 1;
@@ -491,7 +488,10 @@ async function executeModel(provider, messages, timeoutMs = PROVIDER_TIMEOUT_MS)
     if (!contents.length || contents[contents.length - 1].role !== "user") {
       throw new Error("Gemini zahtev nema završnu korisničku poruku");
     }
-    const payload = { contents };
+    const payload = {
+      contents,
+      generationConfig: { maxOutputTokens: 1800, temperature: 0.3 },
+    };
     if (systemText) payload.systemInstruction = { parts: [{ text: systemText }] };
     response = await withTimeoutFetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(provider.model)}:generateContent`,
@@ -569,7 +569,8 @@ async function fetchUrlWithJina(env, url) {
 // provider is unavailable, or provider is in quota cooldown.
 
 async function isInCooldown(env, id) {
-  try { return Boolean(await env.KV_MEMORY.get(`cooldown:${id}`)); } catch { return true; }
+  // Search sources are best-effort: storage failure must not disable all research.
+  try { return Boolean(await env.KV_MEMORY.get(`cooldown:${id}`)); } catch { return false; }
 }
 
 async function markCooldown(env, id, ttl) {
