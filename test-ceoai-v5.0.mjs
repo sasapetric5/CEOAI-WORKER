@@ -688,7 +688,7 @@ try {
   const nvResponse = await worker.fetch(apiRequest(nvCookie, JSON.stringify({prompt:"Napisи TypeScript klasu sa testovima"})), nvEnv);
   assert.equal(nvResponse.status, 200);
   assert.equal((await nvResponse.json()).reply, "NVIDIA preuzeo");
-  assert.ok(nvCalls.some(u => u.includes("nvidia.com")), "configured NVIDIA must be attempted without a free-confirmation flag");
+  assert.ok(nvCalls.some(u => u.includes("nvidia.com")), "explicitly confirmed NVIDIA free tier may be attempted");
 } finally { globalThis.fetch = originalFetchNv; }
 
 // V5-6: research intent with URL attempts Jina Reader (mocked).
