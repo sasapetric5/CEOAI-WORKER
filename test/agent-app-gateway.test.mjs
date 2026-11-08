@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {webcrypto} from "node:crypto";
-import worker,{runConfiguredProviderCompletion} from "../ceoai-index-v5.0.mjs";
+import worker from "../ceoai-index-v5.0.mjs";
 if(!globalThis.crypto)globalThis.crypto=webcrypto;
 const secret="test-contentcraft-agent-secret-at-least-32-bytes";
 const appId="CONTENTCRAFT-APP";
@@ -49,19 +49,12 @@ function mockFreeModel(){
 test("agent provider refuses keyed but unconfirmed paid providers",async()=>{
  const old=globalThis.fetch;let calls=0;globalThis.fetch=async()=>{calls++;throw new Error("must not call provider");};
  try{
-  const env={AI_ENABLED:"true",DEEPSEEK_KEY:"test-deepseek-key",KV_MEMORY:{async get(){return null;},async put(){}}};
-  const result=await runConfiguredProviderCompletion(env,[{role:"user",content:"hello"}],"reasoning");
-  assert.deepEqual(result,{ok:false,code:"NO_FREE_PROVIDER_CONFIRMED"});
+  const env=environment({OPENROUTER_FREE_CONFIRMED:"false",DEEPSEEK_KEY:"test-deepseek-key"});
+  const response=await worker.fetch(await signedRequest({task:"regression testing and verification" }),env);
+  assert.equal(response.status,503);
+  assert.equal((await response.json()).code,"NO_FREE_PROVIDER_CONFIRMED");
   assert.equal(calls,0);
  }finally{globalThis.fetch=old;}
-});
-test("agent provider uses only an explicitly confirmed OpenRouter free model",async()=>{
- const mock=mockFreeModel();
- try{
-  const env={...environment(),OPENROUTER_FREE_CONFIRMED:"true"};
-  const result=await runConfiguredProviderCompletion(env,[{role:"user",content:"hello"}],"reasoning");
-  assert.equal(result.ok,true);assert.equal(result.providerId,"openrouter-1");assert.equal(mock.calls,1);
- }finally{mock.restore();}
 });
 test("HMAC app gateway invokes specialist system with no exposed tool permissions",async()=>{
  const mock=mockFreeModel();
@@ -130,26 +123,20 @@ test("agent gateway allows only POST",async()=>{
 });
 
 test("mixed configured providers never call any provider without explicit free confirmation",async()=>{
- const old=globalThis.fetch;let calls=0;
- globalThis.fetch=async()=>{calls++;throw new Error("unconfirmed provider must never be called");};
+ const old=globalThis.fetch;let calls=0;globalThis.fetch=async()=>{calls++;throw new Error("unconfirmed provider must never be called");};
  try{
-  const env={
-   AI_ENABLED:"true",KV_MEMORY:{async get(){return null;},async put(){}},
-   ZAI_GLM_FLASH_KEY_1:"test-glm-key",
-   GEMINI_API_KEY_PRIMARY:"test-gemini-key",
-   OPENROUTER_KEY:"test-openrouter-key",
-   DEEPSEEK_API_KEY:"test-deepseek-key",
-   MISTRAL_API_KEY:"test-mistral-key",
-   XAI_API_KEY:"test-xai-key",
-   NVIDIA_API_KEY:"test-nvidia-key",
-   HF_TOKEN:"test-hf-token",
-  };
-  const result=await runConfiguredProviderCompletion(env,[{role:"user",content:"bounded test"}],"reasoning");
-  assert.deepEqual(result,{ok:false,code:"NO_FREE_PROVIDER_CONFIRMED"});
+  const env=environment({
+   OPENROUTER_FREE_CONFIRMED:"false",
+   ZAI_GLM_FLASH_KEY_1:"test-glm-key",GEMINI_API_KEY_PRIMARY:"test-gemini-key",
+   DEEPSEEK_API_KEY:"test-deepseek-key",MISTRAL_API_KEY:"test-mistral-key",
+   XAI_KEY:"test-xai-key",NVIDIA_KEY:"test-nvidia-key",HF_TOKEN:"test-hf-token",
+  });
+  const response=await worker.fetch(await signedRequest({task:"regression testing and verification"}),env);
+  assert.equal(response.status,503);
+  assert.equal((await response.json()).code,"NO_FREE_PROVIDER_CONFIRMED");
   assert.equal(calls,0);
  }finally{globalThis.fetch=old;}
 });
-
 
 test("agent gateway rejects malformed HMAC signature before model call",async()=>{
  const mock=mockFreeModel();
