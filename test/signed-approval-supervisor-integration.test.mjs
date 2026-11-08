@@ -4,6 +4,10 @@ import {generateApprovalKeyPair,signCapabilityApprovalEd25519,createApprovalVeri
 import {createCapabilityApprovalProvider} from "../src/agent/capability-approval-provider.mjs";
 import {createCapabilityRegistry} from "../src/agent/capability-registry.mjs";
 import {createMultiAgentSupervisor} from "../src/agent/multi-agent-supervisor.mjs";
+import {createToolRegistry} from "../src/agent/tool-registry.mjs";
+import {createAgentLoop} from "../src/agent/agent-loop.mjs";
+import {createIdempotentToolExecutor} from "../src/agent/idempotent-tool-executor.mjs";
+import {createMemoryCheckpointStore} from "../src/agent/durable-execution.mjs";
 const NOW=1_800_000_000_000;
 const context={appId:"rankgeo",callerId:"app_rankgeo",agentId:"approval_agent",skillId:"approval_skill",toolId:"lookup",operation:"execute",resource:"site:example.com"};
 const args={query:"exact target"};
@@ -46,4 +50,49 @@ test("signed approval cannot authorize a changed resource or changed arguments",
  const request={...context,argumentsDigest:f.digest,effectKey:"approval_agent:1:lookup"};
  assert.ok(await (async()=>Boolean(await (await import("../src/agent/capability-approval-provider.mjs")).createCapabilityApprovalProvider([f.token])({...request,resource:"site:evil.example"}))===false)());
  assert.equal(f.authorityCalls.length,0);
+});
+
+test("signed approval, four grants and durable idempotent executor form one end-to-end tool path",async()=>{
+ const keys=await generateApprovalKeyPair();
+ const runId="run_approval_001";
+ const effectKey=runId+":approval_agent:1:lookup";
+ const digest=await hashCapabilityArguments(args);
+ const payload={approvalId:"approval_e2e_123456789",...context,argumentsDigest:digest,expiresAt:NOW+5*60_000};
+ const token=await signCapabilityApprovalEd25519(payload,keys.privateKey,{now:NOW});
+ const provider=createCapabilityApprovalProvider([token]);
+ const effectLedger=new Map();
+ const authority={authorize:async request=>{
+  const fingerprint=JSON.stringify(request);
+  const prior=effectLedger.get(request.effectKey);
+  if(prior&&prior!==fingerprint)return {ok:false,code:"IDEMPOTENCY_KEY_CONFLICT"};
+  effectLedger.set(request.effectKey,fingerprint);
+  return {ok:true,remaining:1,replayed:Boolean(prior)};
+ }};
+ const capabilityRegistry=createCapabilityRegistry({
+  grants:[grant("app","rankgeo"),grant("caller","app_rankgeo"),grant("agent","approval_agent"),grant("skill","approval_skill")],
+  now:()=>NOW,authority,verifyApproval:createApprovalVerifier({CAPABILITY_APPROVAL_PUBLIC_KEY:keys.publicKey},{now:NOW})
+ });
+ const executor=createIdempotentToolExecutor({store:createMemoryCheckpointStore()});
+ let externalEffects=0;
+ const toolRegistry=createToolRegistry({enabled:true,idempotentExecutor:executor,tools:[{
+  id:"lookup",description:"Idempotent protected lookup",idempotencyMode:"downstream_key",
+  inputSchema:{type:"object",properties:{query:{type:"string",maxLength:80}},required:["query"],additionalProperties:false},
+  handler:async()=>{externalEffects++;return {found:true};}
+ }]});
+ const skillRegistry={get:()=>({id:"approval_skill",version:"1.0.0",description:"Approved lookup",allowedToolIds:["lookup"]}),allows:(_skillId,toolId)=>toolId==="lookup",search:()=>[{id:"approval_skill",score:1,matchedTerms:[]}]};
+ const agentLoop=createAgentLoop({toolRegistry,skillRegistry,maxSteps:2,maxToolCalls:1});
+ const agent={id:"approval_agent",role:"Approval agent",description:"Signed and idempotent execution",skillId:"approval_skill",allowedToolIds:["lookup"],score:1,matchedTerms:[]};
+ const supervisor=createMultiAgentSupervisor({
+  agentRegistry:{search:()=>[agent],get:()=>agent},skillRegistry,agentLoop,
+  capabilityRegistry,capabilityContext:{appId:context.appId,callerId:context.callerId,resource:context.resource},
+  approvalProvider:provider,requireDurableAuthority:true,maxAgents:1,maxToolCalls:1
+ });
+ const run=()=>supervisor.run({task:"approved lookup",allowedToolIds:["lookup"],allowToolExecution:true,runId,planAgent:async({context:ctx})=>ctx.step===1?{type:"tool",toolId:"lookup",arguments:args}:{type:"final",output:"complete"}});
+ const first=await run();
+ const replay=await run();
+ assert.equal(first.ok,true);
+ assert.equal(replay.ok,true);
+ assert.equal(externalEffects,1,"the tool side effect must execute exactly once");
+ assert.equal(effectLedger.size,1,"the stable effect key is authorized only once");
+ assert.equal(effectLedger.has(effectKey),true);
 });
