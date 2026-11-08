@@ -1228,6 +1228,9 @@ export async function runCEOAIInternalAgentTask(env, { system, task, input = {},
   if (allowToolExecution !== true && !noToolRunApproved) return { ok: false, code: "EXECUTION_NOT_APPROVED", agents: [], results: [] };
   if (!env || env.AI_ENABLED !== "true") return { ok: false, code: "AI_DISABLED", agents: [], results: [] };
   if (!env.KV_MEMORY) return { ok: false, code: "MEMORY_BINDING_UNAVAILABLE", agents: [], results: [] };
+  const configuredPool = buildProviderPool(env);
+  if (!configuredPool.length) return { ok: false, code: hasConfiguredProviderCredentials(env) ? "NO_FREE_PROVIDER_CONFIRMED" : "NO_PROVIDER_CONFIGURED", agents: [], results: [] };
+  if (!configuredPool.some(candidate => isAgentFreeProvider(candidate, env))) return { ok: false, code: "NO_FREE_PROVIDER_CONFIRMED", agents: [], results: [] };
   try {
     const runtime = createProviderAgentRuntime({
       system,
