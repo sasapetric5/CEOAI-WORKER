@@ -1420,6 +1420,8 @@ export default {
       if (!Array.isArray(approvalTokens) || approvalTokens.length > 8) {
         return json({ success: false, error: "Potpisana odobrenja nisu u validnom formatu.", code: "INVALID_APPROVALS" }, 400);
       }
+      try { createCapabilityApprovalProvider(approvalTokens); }
+      catch { return json({ success: false, error: "Potpisana odobrenja nisu u validnom formatu.", code: "INVALID_APPROVALS" }, 400); }
       let inputBytes = Infinity;
       try { inputBytes = new TextEncoder().encode(JSON.stringify(input)).byteLength; } catch {}
       if (!task || task.length > 2000 || !input || typeof input !== "object" || Array.isArray(input) ||
