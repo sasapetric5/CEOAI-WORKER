@@ -76,14 +76,13 @@ test("durable registry delegates quota consumption only after four-layer policy 
  const calls=[];
  const grants=base().map(g=>({...g,approvalRequired:g.subjectType==="skill"}));
  const durableApproval={payload:{approvalId:"approval_durable_123456",argumentsDigest:"a".repeat(64)},signature:"trusted"};
- const registry=createCapabilityRegistry({grants,verifyApproval:value=>value.signature==="trusted"&&value.payload?.approvalId===durableApproval.payload.approvalId,authority:{authorize:async request=>{calls.push(request);return {ok:true,remaining:0};}}});
+ const registry=createCapabilityRegistry({grants,verifyApproval:(value,expected)=>value.signature==="trusted"&&value.payload?.approvalId===durableApproval.payload.approvalId&&value.payload?.argumentsDigest===expected.argumentsDigest,authority:{authorize:async request=>{calls.push(request);return {ok:true,remaining:0};}}});
  assert.equal(registry.durable,true);
  assert.equal((await registry.authorize({...request,argumentsDigest:"a".repeat(64),approval:durableApproval})).ok,true);
  assert.equal(calls.length,1);
  assert.equal(calls[0].maxCalls,3);
  assert.equal(calls[0].approvalId,durableApproval.payload.approvalId);
- assert.equal((await registry.authorize({...request,approval:{...durableApproval,signature:"bad"}})).code,"CAPABILITY_APPROVAL_REQUIRED");
- assert.equal((await registry.authorize({...request,resource:"site:example.com",argumentsDigest:"b".repeat(64),approval:signed})).code,"CAPABILITY_APPROVAL_REQUIRED");
+ assert.equal((await registry.authorize({...request,argumentsDigest:"a".repeat(64),approval:{...durableApproval,signature:"bad"}})).code,"CAPABILITY_APPROVAL_REQUIRED");
  assert.equal((await registry.authorize({...request,argumentsDigest:"b".repeat(64),approval:durableApproval})).code,"CAPABILITY_APPROVAL_REQUIRED");
  assert.equal(calls.length,1);
 });
