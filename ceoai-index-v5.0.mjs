@@ -1548,6 +1548,23 @@ export default {
         } catch {
           return new Response("Session service unavailable.", { status: 503, headers: { "Cache-Control": "no-store" } });
         }
+        // Enforce a global atomic daily session-write budget before consuming a KV write.
+        if (!env.SECURITY_DO || typeof env.SECURITY_DO.idFromName !== "function" || typeof env.SECURITY_DO.get !== "function") {
+          return new Response("Session service unavailable.", { status: 503, headers: { "Cache-Control": "no-store" } });
+        }
+        let sessionQuota;
+        try {
+          const quotaStub = env.SECURITY_DO.get(env.SECURITY_DO.idFromName("session-global"));
+          const quotaResponse = await quotaStub.fetch("https://do/session/claim", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ date: new Date().toISOString().slice(0, 10), now: Date.now() }),
+          });
+          if (!quotaResponse.ok) return new Response("Session capacity unavailable.", { status: quotaResponse.status === 429 ? 429 : 503, headers: { "Cache-Control": "no-store", ...(quotaResponse.status === 429 ? { "Retry-After": "86400" } : {}) } });
+          sessionQuota = await quotaResponse.json();
+          if (sessionQuota?.allowed !== true) return new Response("Daily session capacity reached.", { status: 429, headers: { "Cache-Control": "no-store", "Retry-After": "86400" } });
+        } catch {
+          return new Response("Session service unavailable.", { status: 503, headers: { "Cache-Control": "no-store" } });
+        }
         sessionId = crypto.randomUUID();
         try {
           await env.KV_MEMORY.put(`session:${sessionId}`, "1", { expirationTtl: SESSION_TTL });

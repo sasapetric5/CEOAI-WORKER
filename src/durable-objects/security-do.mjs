@@ -9,6 +9,24 @@ export class SecurityOrchestratorDO {
 
   async fetch(request) {
     const url = new URL(request.url);
+    if (url.pathname === "/session/claim" && request.method === "POST") {
+      let input;
+      try { input = await request.json(); } catch { return Response.json({ error: "invalid_request" }, { status: 400 }); }
+      const { date, now } = input || {};
+      if (typeof date !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(date) ||
+          !Number.isSafeInteger(now) || Object.keys(input || {}).some(key => !["date", "now"].includes(key))) {
+        return Response.json({ error: "invalid_request" }, { status: 400 });
+      }
+      const result = await this.ctx.storage.transaction(async txn => {
+        const current = await txn.get("session-quota");
+        const state = current?.date === date ? current : { date, count: 0 };
+        if (state.count >= 1000) return { allowed: false, count: state.count, limit: 1000 };
+        const next = { date, count: state.count + 1 };
+        await txn.put("session-quota", next);
+        return { allowed: true, count: next.count, limit: 1000 };
+      });
+      return Response.json(result, { status: result.allowed ? 200 : 429, headers: { "Cache-Control": "no-store" } });
+    }
     if (url.pathname !== "/nonce/check" || request.method !== "POST") {
       return new Response("Not Found", { status: 404 });
     }

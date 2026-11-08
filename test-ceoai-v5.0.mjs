@@ -14,6 +14,22 @@ class MemoryKV {
 const makeEnv = (overrides = {}) => ({
   KV_MEMORY: new MemoryKV(),
   RATE_LIMITER: { async limit() { return { success: true }; } },
+  SECURITY_DO: {
+    idFromName(name) { return name; },
+    get(name) {
+      const key = "session-quota:" + name;
+      if (!this.stores) this.stores = new Map();
+      if (!this.stores.has(key)) this.stores.set(key, { date: "", count: 0 });
+      const store = this.stores.get(key);
+      return { async fetch(_url, init) {
+        const body = JSON.parse(init.body);
+        if (body.date !== store.date) { store.date = body.date; store.count = 0; }
+        if (store.count >= 1000) return Response.json({ allowed: false }, { status: 429 });
+        store.count++;
+        return Response.json({ allowed: true, count: store.count, limit: 1000 });
+      } };
+    }
+  },
   // Legacy integration tests exercise provider routing with an explicitly approved test-only free-tier fixture.
   GEMINI_FREE_CONFIRMED: "true",
   // OpenRouter calls are allowed in tests only when the free-tier fixture is explicitly enabled.

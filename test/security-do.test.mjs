@@ -56,6 +56,17 @@ test("Durable Object returns 404 for unsupported routes", async () => {
   assert.equal(response.status, 404);
 });
 
+test("session quota is atomic, capped at 1000 per day, and resets on the next UTC day", async () => {
+  const durable = new SecurityOrchestratorDO({ storage: makeStore() });
+  const claim = (date) => durable.fetch(new Request("https://do/session/claim", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ date, now: Date.now() }),
+  }));
+  for (let i = 0; i < 1000; i++) assert.equal((await claim("2026-11-08")).status, 200);
+  assert.equal((await claim("2026-11-08")).status, 429);
+  assert.equal((await claim("2026-11-09")).status, 200);
+});
+
 test("Durable Object permits nonce reuse only after the replay retention window expires", async () => {
   const storage = makeStore();
   const durable = new SecurityOrchestratorDO({ storage });
