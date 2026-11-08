@@ -51,6 +51,38 @@ let warnedInvalidOpenRouterModel = false;
 // Best-effort per-isolate guard: concurrent requests skip an already-running provider attempt.
 // KV cooldown remains the cross-request persistence layer; this Set is not distributed coordination.
 const inFlightProviders = new Set();
+function redactSensitiveValue(value, env, maxBytes = 4000) {
+  const seen = new WeakSet();
+  function visit(input, depth = 0) {
+    if (input === null || typeof input === "boolean" || typeof input === "number") return input;
+    if (typeof input === "string") return redactSensitiveText(input, env, Math.min(4000, input.length));
+    if (typeof input !== "object" || depth > 12 || seen.has(input)) throw new TypeError("INVALID_AGENT_INPUT");
+    if (Array.isArray(input)) {
+      if (input.length > 128) throw new TypeError("INVALID_AGENT_INPUT");
+      seen.add(input);
+      const out = input.map(item => visit(item, depth + 1));
+      seen.delete(input);
+      return out;
+    }
+    const proto = Object.getPrototypeOf(input);
+    if (proto !== Object.prototype && proto !== null) throw new TypeError("INVALID_AGENT_INPUT");
+    const keys = Reflect.ownKeys(input);
+    if (keys.length > 128 || keys.some(key => typeof key !== "string")) throw new TypeError("INVALID_AGENT_INPUT");
+    seen.add(input);
+    const out = Object.create(null);
+    for (const key of keys) {
+      const descriptor = Object.getOwnPropertyDescriptor(input, key);
+      if (!descriptor || !Object.hasOwn(descriptor, "value") || !descriptor.enumerable) throw new TypeError("INVALID_AGENT_INPUT");
+      out[key] = visit(descriptor.value, depth + 1);
+    }
+    seen.delete(input);
+    return out;
+  }
+  const safe = visit(value);
+  if (new TextEncoder().encode(JSON.stringify(safe)).byteLength > maxBytes) throw new TypeError("AGENT_INPUT_TOO_LARGE");
+  return safe;
+}
+
 
 const HTML_PAGE = `<!doctype html>
 <html lang="sr">
@@ -1327,7 +1359,9 @@ export default {
         }
       }
       const intent = chooseIntent(safeTask);
-      let agentInput = redactSensitiveValue(input, env, 4000);
+      let agentInput;
+      try { agentInput = redactSensitiveValue(input, env, 4000); }
+      catch { return json({ success: false, error: "Ulazni podaci sadrže neispravne ili prevelike vrednosti.", code: "INVALID_AGENT_INPUT" }, 400); }
       let researchUsed = false;
       let researchSource = null;
       if (intent === CAPABILITY.research) {
