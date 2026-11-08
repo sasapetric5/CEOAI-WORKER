@@ -1437,10 +1437,10 @@ export default {
           }
           if (typeof enriched?.text === "string" && enriched.text.trim()) {
             agentInput = {
-              ...input,
+              ...agentInput,
               researchContext: {
                 source: typeof enriched.source === "string" ? enriched.source.slice(0, 40) : "unknown",
-                content: enriched.text.slice(0, 6000),
+                content: redactSensitiveText(enriched.text, env, 6000),
                 trust: "untrusted_reference",
               },
             };
@@ -1457,8 +1457,8 @@ export default {
           ...agentInput,
           conversationMemory: {
             trust: "untrusted_conversation_context",
-            summary: savedMemory.summary.slice(0, 2000),
-            history: savedMemory.history.slice(-8).map(item => ({ role: item.role, content: item.content.slice(0, 1200) })),
+            summary: redactSensitiveText(savedMemory.summary, env, 2000),
+            history: savedMemory.history.slice(-8).map(item => ({ role: item.role, content: redactSensitiveText(item.content, env, 1200) })),
           },
         };
       }
@@ -1493,20 +1493,21 @@ export default {
         const unavailable = ["AI_DISABLED", "NO_PROVIDER_CONFIGURED", "NO_FREE_PROVIDER_CONFIRMED", "PROVIDER_QUOTA_EXHAUSTED", "PROVIDER_COOLDOWN", "PROVIDER_COOLDOWN_STORAGE_UNAVAILABLE", "PROVIDERS_UNAVAILABLE"].includes(result.code);
         return json({ success: false, error: unavailable ? "Trenutno nema dostupnog potvrđenog besplatnog AI provajdera." : "Agentski zadatak nije uspeo.", code: result.code || "AGENT_FAILED" }, unavailable ? 503 : 422);
       }
+      const safeOutput = redactSensitiveText(String(result.output || ""), env, 8000);
       if (memoryStore) {
         try {
           const nextHistory = [...savedMemory.history,
             { role: "user", content: safeTask },
-            { role: "assistant", content: redactSensitiveText(String(result.output || ""), env, 8000) },
+            { role: "assistant", content: safeOutput },
           ].slice(-16);
-          await memoryStore.write(conversationId, { history: nextHistory, summary: savedMemory.summary });
+          await memoryStore.write(conversationId, { history: nextHistory, summary: redactSensitiveText(savedMemory.summary, env, 4000) });
         } catch {
           return json({ success: false, error: "Odgovor je obrađen, ali memorija aplikacije nije mogla biti sačuvana.", code: "APP_MEMORY_WRITE_FAILED" }, 503);
         }
       }
       return json({
         success: true,
-        reply: result.output,
+        reply: safeOutput,
         agents: result.agents,
         partial: result.partial === true,
         modelUsage: result.modelUsage,
