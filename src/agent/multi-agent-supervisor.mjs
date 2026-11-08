@@ -90,10 +90,9 @@ export function createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoo
       const request={appId:capabilityContext.appId,callerId:capabilityContext.callerId,agentId:agent.id,skillId:agent.skillId,toolId,operation:capabilityContext.operation??"execute",resource:capabilityContext.resource??""};
       if(requireDurableAuthority||capabilityRegistry.durable){
        let argumentsDigest;try{argumentsDigest=await hashCapabilityArguments(toolArguments);}catch{return {ok:false,code:"INVALID_CAPABILITY_ARGUMENTS"};}
-       const effectKey=String(toolRunId)+":"+step+":"+toolId;
        let approval=null;
-       if(approvalProvider){try{approval=await approvalProvider(Object.freeze({...request,argumentsDigest,effectKey,runId:toolRunId,step}));}catch{return {ok:false,code:"CAPABILITY_APPROVAL_REQUIRED"};}}
-       return capabilityRegistry.authorize({...request,argumentsDigest,approval,effectKey});
+       if(approvalProvider){try{approval=await approvalProvider(Object.freeze({...request,argumentsDigest,runId:toolRunId,step}));}catch{return {ok:false,code:"CAPABILITY_APPROVAL_REQUIRED"};}}
+       return capabilityRegistry.authorize({...request,argumentsDigest,approval});
       }
       return capabilityRegistry.resolve({...request,approval:capabilityContext.approvals?.[toolId]??null});
      }}:{}),

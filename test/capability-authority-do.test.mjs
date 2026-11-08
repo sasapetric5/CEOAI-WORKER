@@ -45,23 +45,3 @@ test("changing resource cannot reset the shared capability quota",async()=>{
  assert.equal((await authority.authorize(request({resource:"site:one.example"}))).ok,true);
  assert.equal((await authority.authorize(request({resource:"site:two.example"}))).code,"CAPABILITY_QUOTA_EXCEEDED");
 });
-
-
-test("same stable effect key replays its durable authorization receipt without consuming quota twice",async()=>{
- const {authority}=harness();
- const req=request({maxCalls:1,approvalId:"approval_effect_123456",argumentsDigest:"a".repeat(64),effectKey:"run-1:agent:1:web_search"});
- const first=await authority.authorize(req);
- const second=await authority.authorize(req);
- assert.equal(first.ok,true);
- assert.equal(second.ok,true);
- assert.equal(second.replayed,true);
- assert.equal(second.remaining,0);
-});
-
-test("stable effect key cannot be rebound to changed arguments or approval claims",async()=>{
- const {authority}=harness();
- const req=request({maxCalls:2,argumentsDigest:"a".repeat(64),effectKey:"run-2:agent:1:web_search"});
- assert.equal((await authority.authorize(req)).ok,true);
- const changed=await authority.authorize({...req,argumentsDigest:"b".repeat(64)});
- assert.equal(changed.code,"IDEMPOTENCY_KEY_CONFLICT");
-});

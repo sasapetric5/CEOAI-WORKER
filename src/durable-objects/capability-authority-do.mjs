@@ -28,6 +28,8 @@ export class CapabilityAuthorityDO {
   const quotaKey=[body.appId,body.callerId,body.agentId,body.skillId,body.toolId,body.operation].join("|");
   const result=await this.ctx.storage.transaction(async txn=>{
    const usageKey="usage:"+quotaKey;
+   const priorAudit=await txn.get("audit")||[];
+   const record=async(type,code=null)=>{const next=[...priorAudit,{at:Date.now(),type,code,appId:body.appId,callerId:body.callerId,agentId:body.agentId,skillId:body.skillId,toolId:body.toolId,operation:body.operation}].slice(-MAX_AUDIT);await txn.put("audit",next);};
    const effectKey=body.effectKey??null;
    const fingerprint=JSON.stringify({appId:body.appId,callerId:body.callerId,agentId:body.agentId,skillId:body.skillId,toolId:body.toolId,operation:body.operation,resource:body.resource,maxCalls:body.maxCalls,approvalId:body.approvalId,argumentsDigest:body.argumentsDigest??null});
    const effectStorageKey=effectKey===null?null:"effect:"+effectKey;
@@ -39,8 +41,6 @@ export class CapabilityAuthorityDO {
     }
    }
    const used=await txn.get(usageKey)||0;
-   const priorAudit=await txn.get("audit")||[];
-   const record=async(type,code=null)=>{const next=[...priorAudit,{at:Date.now(),type,code,appId:body.appId,callerId:body.callerId,agentId:body.agentId,skillId:body.skillId,toolId:body.toolId,operation:body.operation}].slice(-MAX_AUDIT);await txn.put("audit",next);};
    if(!Number.isSafeInteger(used)||used<0){await record("denied","AUTHORITY_STATE_INVALID");return {ok:false,code:"AUTHORITY_STATE_INVALID"};}
    if(used>=body.maxCalls){await record("denied","CAPABILITY_QUOTA_EXCEEDED");return {ok:false,code:"CAPABILITY_QUOTA_EXCEEDED"};}
    if(body.approvalId!==null){

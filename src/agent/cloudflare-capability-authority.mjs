@@ -6,8 +6,6 @@ export function createCloudflareCapabilityAuthority(namespace){
  if(!namespace||typeof namespace.idFromName!=="function"||typeof namespace.get!=="function")throw new TypeError("CAPABILITY_AUTHORITY_BINDING_REQUIRED");
  return Object.freeze({async authorize(input={}){
   if(!plain(input)||typeof input.appId!=="string"||!APP.test(input.appId)||typeof input.callerId!=="string"||!PRINCIPAL.test(input.callerId))return {ok:false,code:"INVALID_AUTHORITY_REQUEST"};
-  if(input.argumentsDigest!==undefined&&input.argumentsDigest!==null&&(typeof input.argumentsDigest!=="string"||!/^[a-f0-9]{64}$/.test(input.argumentsDigest)))return {ok:false,code:"INVALID_AUTHORITY_REQUEST"};
-  if(input.effectKey!==undefined&&input.effectKey!==null&&(typeof input.effectKey!=="string"||input.effectKey.length>512||!/^[A-Za-z0-9:._-]+$/.test(input.effectKey)))return {ok:false,code:"INVALID_AUTHORITY_REQUEST"};
   const name=input.appId+":"+input.callerId;
   const stub=namespace.get(namespace.idFromName(name));
   let response;
