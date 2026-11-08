@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {signCapabilityGrant,verifyCapabilityGrant,loadVerifiedCapabilityGrants,signCapabilityApproval,verifyCapabilityApproval} from "../src/agent/capability-grants.mjs";
+import {signCapabilityGrant,verifyCapabilityGrant,loadVerifiedCapabilityGrants,signCapabilityApproval,verifyCapabilityApproval,hashCapabilityArguments} from "../src/agent/capability-grants.mjs";
 const secret="server-only-capability-signing-key-32-bytes-min";
 const grant={subjectType:"app",subjectId:"rankgeo",appId:"rankgeo",capabilityId:"web_search",operations:["execute"],resourceScopes:["site:example.com"],maxCalls:3,expiresAt:2000000,approvalRequired:true};
 test("server signs and verifies a bounded capability grant",async()=>{
@@ -27,12 +27,23 @@ test("grant loader rejects any invalid token in the configured set",async()=>{
  const token=await signCapabilityGrant(grant,secret,{now:1000000});
  await assert.rejects(loadVerifiedCapabilityGrants({CAPABILITY_GRANT_SIGNING_KEY:secret,CAPABILITY_GRANTS_JSON:JSON.stringify([token,{...token,signature:"A".repeat(43)}])},{now:1000000}));
 });
-const approval={approvalId:"approval_123456789012",appId:"rankgeo",callerId:"caller_1",agentId:"seo_agent",skillId:"seo_audit",toolId:"web_search",operation:"execute",resource:"site:example.com",expiresAt:1005000};
+const approval={approvalId:"approval_123456789012",appId:"rankgeo",callerId:"caller_1",agentId:"seo_agent",skillId:"seo_audit",toolId:"web_search",operation:"execute",resource:"site:example.com",argumentsDigest:"a".repeat(64),expiresAt:1005000};
 test("server-signed approval is bound to every execution dimension",async()=>{
  const token=await signCapabilityApproval(approval,secret,{now:1000000});
- const expected={appId:"rankgeo",callerId:"caller_1",agentId:"seo_agent",skillId:"seo_audit",toolId:"web_search",operation:"execute",resource:"site:example.com"};
+ const expected={appId:"rankgeo",callerId:"caller_1",agentId:"seo_agent",skillId:"seo_audit",toolId:"web_search",operation:"execute",resource:"site:example.com",argumentsDigest:"a".repeat(64)};
  assert.equal(await verifyCapabilityApproval(token,secret,expected,{now:1000000}),true);
  assert.equal(await verifyCapabilityApproval(token,secret,{...expected,callerId:"attacker"},{now:1000000}),false);
  assert.equal(await verifyCapabilityApproval(token,secret,{...expected,resource:"site:evil.example"},{now:1000000}),false);
+ assert.equal(await verifyCapabilityApproval(token,secret,{...expected,argumentsDigest:"b".repeat(64)},{now:1000000}),false);
  assert.equal(await verifyCapabilityApproval(token,secret,expected,{now:1005000}),false);
+});
+
+test("tool argument digest is canonical, stable and rejects unsafe structures",async()=>{
+ const first=await hashCapabilityArguments({z:2,a:{b:true,c:["x",1]}});
+ const reordered=await hashCapabilityArguments({a:{c:["x",1],b:true},z:2});
+ const changed=await hashCapabilityArguments({a:{c:["x",2],b:true},z:2});
+ assert.equal(first,reordered);
+ assert.notEqual(first,changed);
+ const cyclic={};cyclic.self=cyclic;
+ await assert.rejects(hashCapabilityArguments(cyclic),/INVALID_CAPABILITY_ARGUMENTS/);
 });
