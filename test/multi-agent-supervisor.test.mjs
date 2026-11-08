@@ -236,3 +236,27 @@ test("production supervisor requires durable authority and ignores caller-suppli
  assert.equal(result.results[0].code,"CAPABILITY_AUTHORITY_REQUIRED");
  assert.equal(calls,0);
 });
+
+test("trusted approval provider receives exact canonical tool-argument digest before durable authorization",async()=>{
+ let providerRequest=null,authorizationRequest=null;
+ const skill={id:"approval_skill",version:"1.0.0",description:"Approval test skill",allowedToolIds:["lookup"]};
+ const agent={id:"approval_agent",role:"Approval agent",description:"Approval flow fixture",skillId:"approval_skill",allowedToolIds:["lookup"],score:1,matchedTerms:[]};
+ const supervisor=createMultiAgentSupervisor({
+  agentRegistry:{search:()=>[agent],get:()=>agent},
+  skillRegistry:{get:()=>skill,search:()=>[{id:skill.id,score:1,matchedTerms:[]}]},
+  agentLoop:{run:async args=>{
+   const authorization=await args.authorizeTool({toolId:"lookup",arguments:{query:"exact target"},runId:args.runId,step:1});
+   return authorization?.ok?{ok:true,output:"approved",steps:1,toolCalls:1}:{ok:false,code:authorization?.code||"DENIED",steps:1,toolCalls:0};
+  }},
+  capabilityRegistry:{durable:true,resolve:()=>({ok:false,code:"LEGACY_PATH_FORBIDDEN"}),authorize:async request=>{authorizationRequest=request;return {ok:true,remaining:0};}},
+  capabilityContext:{appId:"rankgeo",callerId:"app_rankgeo"},
+  approvalProvider:async request=>{providerRequest=request;return {payload:{approvalId:"approval_server_123456"},signature:"server-signed-fixture"};},
+  requireDurableAuthority:true,maxAgents:1,maxToolCalls:1
+ });
+ const result=await supervisor.run({task:"approval flow test",allowedToolIds:["lookup"],allowToolExecution:true,planAgent:async()=>({type:"final",output:"unused"})});
+ assert.equal(result.ok,true);
+ assert.equal(providerRequest.toolId,"lookup");
+ assert.match(providerRequest.argumentsDigest,/^[a-f0-9]{64}$/);
+ assert.equal(authorizationRequest.argumentsDigest,providerRequest.argumentsDigest);
+ assert.equal(authorizationRequest.approval.payload.approvalId,"approval_server_123456");
+});
