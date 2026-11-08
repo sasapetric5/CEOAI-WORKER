@@ -84,6 +84,16 @@ test("agent gateway rejects app IDs outside its explicit application policy",asy
   assert.equal(response.status,403);assert.equal((await response.json()).code,"APP_NOT_ENABLED");assert.equal(mock.calls,0);
  }finally{mock.restore();}
 });
+test("agent gateway rejects malformed signed approval tokens before model invocation",async()=>{
+ const mock=mockFreeModel();
+ try{
+  const response=await worker.fetch(await signedRequest({task:"security review",approvals:[{version:1,payload:{},signature:"legacy"}]}),environment());
+  assert.equal(response.status,400);
+  assert.equal((await response.json()).code,"INVALID_APPROVALS");
+  assert.equal(mock.calls,0);
+ }finally{mock.restore();}
+});
+
 test("agent gateway rejects unknown request fields and oversized input",async()=>{
  const mock=mockFreeModel();
  try{
