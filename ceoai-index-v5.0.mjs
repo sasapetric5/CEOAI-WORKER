@@ -358,7 +358,7 @@ function validMistralModel(value) {
 }
 
 function buildProviderPool(env) {
-  const freeOnly = env.CEOAI_FREE_ONLY !== "false";
+  const freeOnly = true;
   const configuredComplexModel = typeof env.OPENROUTER_COMPLEX_MODEL === "string"
     ? env.OPENROUTER_COMPLEX_MODEL.trim() : "";
   if (configuredComplexModel && !(typeof (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY) === "string" && (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY).trim()) && !warnedOpenRouterModelWithoutKey) {
@@ -373,8 +373,10 @@ function buildProviderPool(env) {
     ? env.ZAI_GLM_FLASH_MODEL.trim() : "glm-4.5-flash";
   const mistralModel = typeof env.MISTRAL_MODEL === "string" && validMistralModel(env.MISTRAL_MODEL)
     ? env.MISTRAL_MODEL.trim() : "open-mistral-nemo";
+  const geminiModel = typeof env.GEMINI_MODEL === "string" && /^[A-Za-z0-9._-]{1,120}$/.test(env.GEMINI_MODEL.trim())
+    ? env.GEMINI_MODEL.trim() : "gemini-flash-latest";
   const xaiModel = typeof env.XAI_MODEL === "string" && /^[A-Za-z0-9._-]{1,80}$/.test(env.XAI_MODEL.trim())
-    ? env.XAI_MODEL.trim() : "grok-beta";
+    ? env.XAI_MODEL.trim() : "";
   const nvidiaModel = typeof env.NVIDIA_MODEL === "string" && /^[A-Za-z0-9._\/-]{1,120}$/.test(env.NVIDIA_MODEL.trim())
     ? env.NVIDIA_MODEL.trim() : "meta/llama-3.1-8b-instruct";
   const hfModel = typeof env.HF_MODEL === "string" && /^[A-Za-z0-9._\/-]{1,120}$/.test(env.HF_MODEL.trim())
@@ -383,12 +385,12 @@ function buildProviderPool(env) {
   // Configured owner-supplied credentials activate provider candidates. Runtime quota/provider errors trigger cooldown and fallback.
   const pool = [
     // Cloudflare Workers AI joins the pool when its binding and enable switch are present.
-    { id: "workers-ai-1", provider: "workers-ai", model: MODEL, key: "", enabled: Boolean(env.AI) && env.WORKERS_AI_ENABLED === "true", env, tier: "fast" },
+    { id: "workers-ai-1", provider: "workers-ai", model: typeof env.WORKERS_AI_MODEL === "string" && /^@?[A-Za-z0-9][A-Za-z0-9._:\/-]{0,199}$/.test(env.WORKERS_AI_MODEL.trim()) ? env.WORKERS_AI_MODEL.trim() : MODEL, key: "", enabled: Boolean(env.AI) && env.WORKERS_AI_ENABLED === "true", env, tier: "fast" },
     { id: "glm-flash-1", provider: "glm-flash", model: glmFlashModel, key: env.ZAI_GLM_FLASH_KEY_1, tier: "fast" },
     { id: "glm-flash-2", provider: "glm-flash", model: glmFlashModel, key: env.ZAI_GLM_FLASH_KEY_2, tier: "fast" },
-    { id: "gemini-1", provider: "gemini", model: "gemini-1.5-flash", key: (env.GEMINI_API_KEY_PRIMARY || env.GEMINI_KEY_1), tier: "fast" },
-    { id: "gemini-2", provider: "gemini", model: "gemini-1.5-flash", key: (env.GEMINI_API_KEY_SECONDARY || env.GEMINI_KEY_2), tier: "fast" },
-    { id: "gemini-3", provider: "gemini", model: "gemini-1.5-flash", key: (env.GEMINI_API_KEY_TERTIARY || env.GEMINI_KEY_3), tier: "fast" },
+    { id: "gemini-1", provider: "gemini", model: geminiModel, key: (env.GEMINI_API_KEY_PRIMARY || env.GEMINI_KEY_1), tier: "fast" },
+    { id: "gemini-2", provider: "gemini", model: geminiModel, key: (env.GEMINI_API_KEY_SECONDARY || env.GEMINI_KEY_2), tier: "fast" },
+    { id: "gemini-3", provider: "gemini", model: geminiModel, key: (env.GEMINI_API_KEY_TERTIARY || env.GEMINI_KEY_3), tier: "fast" },
     { id: "openrouter-1", provider: "openrouter", model: "meta-llama/llama-3-8b-instruct:free", key: (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY), tier: "fast" },
     ...(typeof (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY) === "string" && (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY).trim()
       ? [{ id: "deepseek-1", provider: "deepseek", model: "deepseek-chat", key: (env.DEEPSEEK_API_KEY || env.DEEPSEEK_KEY), tier: "complex" }]
@@ -400,7 +402,7 @@ function buildProviderPool(env) {
       ? [{ id: "mistral-1", provider: "mistral", model: mistralModel, key: (env.MISTRAL_API_KEY || env.MISTRAL_KEY), tier: "complex" }]
       : []),
     // xAI, NVIDIA, and Hugging Face join the pool when their owner-supplied credentials are present.
-    ...(typeof env.XAI_KEY === "string" && env.XAI_KEY.trim()
+    ...(typeof env.XAI_KEY === "string" && env.XAI_KEY.trim() && xaiModel
       ? [{ id: "xai-1", provider: "xai", model: xaiModel, key: env.XAI_KEY, tier: "complex" }]
       : []),
     ...(typeof env.NVIDIA_KEY === "string" && env.NVIDIA_KEY.trim()
@@ -409,7 +411,8 @@ function buildProviderPool(env) {
     ...(typeof env.HF_TOKEN === "string" && env.HF_TOKEN.trim()
       ? [{ id: "hf-1", provider: "huggingface", model: hfModel, key: env.HF_TOKEN, tier: "fast" }]
       : []),
-  ].filter(p => p.provider === "workers-ai" ? p.enabled : (typeof p.key === "string" && p.key.trim()));
+  ].filter(p => p.provider === "workers-ai" ? p.enabled : (typeof p.key === "string" && p.key.trim()))
+    .map(p => ({ ...p, key: typeof p.key === "string" ? p.key.trim() : p.key }));
   if (!freeOnly) return pool;
   // Chat and agent paths share the same explicit free-tier allowlist. Credentials alone never imply free usage.
   return pool.filter(candidate => {
