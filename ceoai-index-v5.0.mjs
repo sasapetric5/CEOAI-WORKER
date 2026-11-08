@@ -36,6 +36,7 @@ import { createAppMemoryStore } from "./src/v5-modules/app-memory.mjs";
 import { createCapabilityRegistry } from "./src/agent/capability-registry.mjs";
 import { createCloudflareCapabilityAuthority } from "./src/agent/cloudflare-capability-authority.mjs";
 import { createApprovalVerifier, loadVerifiedCapabilityGrants } from "./src/agent/capability-grants.mjs";
+import { createCapabilityApprovalProvider } from "./src/agent/capability-approval-provider.mjs";
 const handleSpiderQueue = createSpiderQueueHandler();
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
@@ -1263,7 +1264,7 @@ const APP_AGENT_POLICIES = Object.freeze({
   }),
 });
 
-async function createRequestAgentSystem(env, maxAgents, capabilityContext) {
+async function createRequestAgentSystem(env, maxAgents, capabilityContext, approvalTokens = []) {
   // This app gateway intentionally has no external-action tools in this integration stage.
   // The durable executor is optional here because no tools are registered or enabled.
   // When a future tool is enabled, its registry contract still requires an executor;
@@ -1277,6 +1278,7 @@ async function createRequestAgentSystem(env, maxAgents, capabilityContext) {
     : null;
   // No grants are provisioned yet: DCA is wired, but all tool execution remains denied.
   const grants = await loadVerifiedCapabilityGrants(env);
+  const approvalProvider = createCapabilityApprovalProvider(approvalTokens);
   const capabilityRegistry = createCapabilityRegistry({
     grants,
     authority,
@@ -1286,6 +1288,7 @@ async function createRequestAgentSystem(env, maxAgents, capabilityContext) {
     toolRegistry,
     capabilityRegistry,
     capabilityContext,
+    approvalProvider,
     requireDurableAuthority: true,
     maxAgents,
     maxToolCalls: 1,
@@ -1404,7 +1407,7 @@ export default {
       }
       let body;
       try { body = JSON.parse(rawBody); } catch { return json({ success: false, error: "Neispravan JSON.", code: "INVALID_JSON" }, 400); }
-      if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some(k => !["task", "input", "limit", "conversation_id", "request_id"].includes(k))) {
+      if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some(k => !["task", "input", "limit", "conversation_id", "request_id", "approvals"].includes(k))) {
         return json({ success: false, error: "Neispravna struktura zahteva.", code: "INVALID_REQUEST" }, 400);
       }
       const task = typeof body.task === "string" ? body.task.trim() : "";
@@ -1413,6 +1416,10 @@ export default {
       const limit = body.limit === undefined ? policy.maxAgents : body.limit;
       const conversationId = body.conversation_id === undefined ? null : body.conversation_id;
       const requestId = body.request_id === undefined ? null : body.request_id;
+      const approvalTokens = body.approvals === undefined ? [] : body.approvals;
+      if (!Array.isArray(approvalTokens) || approvalTokens.length > 8) {
+        return json({ success: false, error: "Potpisana odobrenja nisu u validnom formatu.", code: "INVALID_APPROVALS" }, 400);
+      }
       let inputBytes = Infinity;
       try { inputBytes = new TextEncoder().encode(JSON.stringify(input)).byteLength; } catch {}
       if (!task || task.length > 2000 || !input || typeof input !== "object" || Array.isArray(input) ||
@@ -1502,7 +1509,7 @@ export default {
         callerId: "app_" + auth.appId.toLowerCase().replace(/[^a-z0-9_-]/g, "_"),
         operation: "execute",
         resource: "",
-        });
+        }, approvalTokens);
       } catch {
         return json({ success: false, error: "Bezbednosna konfiguracija ovlašćenja nije validna.", code: "CAPABILITY_GRANT_CONFIGURATION_INVALID" }, 503);
       }
