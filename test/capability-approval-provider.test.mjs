@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {createCapabilityApprovalProvider} from "../src/agent/capability-approval-provider.mjs";
-const payload={approvalId:"approval_123456789012",appId:"rankgeo",callerId:"caller_1",agentId:"seo_agent",skillId:"seo_audit",toolId:"web_search",operation:"execute",resource:"site:example.com",argumentsDigest:"a".repeat(64),expiresAt:2000000};
+const payload={approvalId:"approval_123456789012",appId:"rankgeo",callerId:"caller_1",agentId:"seo_agent",skillId:"seo_audit",toolId:"web_search",operation:"execute",resource:"site:example.com",argumentsDigest:"a".repeat(64),effectKey:"run-1:seo_agent:1:web_search",expiresAt:2000000};
 const token={version:2,payload,signature:"A".repeat(86)};
 test("approval provider selects only an exact match across every signed call claim",async()=>{
  const provider=createCapabilityApprovalProvider([token]);
  assert.deepEqual(await provider({...payload,effectKey:"run:1:web_search"}),token);
- for(const key of ["appId","callerId","agentId","skillId","toolId","operation","resource","argumentsDigest"]){
+ for(const key of ["appId","callerId","agentId","skillId","toolId","operation","resource","argumentsDigest","effectKey"]){
   assert.equal(await provider({...payload,[key]:key==="argumentsDigest"?"b".repeat(64):"different"}),null,key);
  }
 });

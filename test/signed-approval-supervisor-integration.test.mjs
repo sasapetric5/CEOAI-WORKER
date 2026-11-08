@@ -15,9 +15,10 @@ const context={appId:"rankgeo",callerId:"app_rankgeo",agentId:"approval_agent",s
 const args={query:"exact target"};
 const grant=(subjectType,subjectId)=>({subjectType,subjectId,appId:"rankgeo",capabilityId:"lookup",operations:["execute"],resourceScopes:["site:example.com"],maxCalls:2,expiresAt:NOW+60_000,approvalRequired:true});
 async function fixture(){
+ const runId="run_signed_fixture";
  const keys=await generateApprovalKeyPair();
  const digest=await hashCapabilityArguments(args);
- const payload={approvalId:"approval_integration_123456",...context,argumentsDigest:digest,expiresAt:NOW+5*60_000};
+ const payload={approvalId:"approval_integration_123456",...context,argumentsDigest:digest,effectKey:runId+":approval_agent:1:lookup",expiresAt:NOW+5*60_000};
  const token=await signCapabilityApprovalEd25519(payload,keys.privateKey,{now:NOW});
  const provider=createCapabilityApprovalProvider([token]);
  const authorityCalls=[];
@@ -34,11 +35,11 @@ async function fixture(){
   capabilityRegistry:registry,capabilityContext:{appId:context.appId,callerId:context.callerId,resource:context.resource},
   approvalProvider:provider,requireDurableAuthority:true,maxAgents:1,maxToolCalls:1
  });
- return {supervisor,authorityCalls,token,digest};
+ return {supervisor,authorityCalls,token,digest,runId};
 }
 test("real Ed25519 approval flows through supervisor, registry and durable authority with exact argument digest",async()=>{
  const f=await fixture();
- const result=await f.supervisor.run({task:"signed approval test",allowedToolIds:["lookup"],allowToolExecution:true,planAgent:async()=>({type:"final",output:"unused"})});
+ const result=await f.supervisor.run({task:"signed approval test",allowedToolIds:["lookup"],allowToolExecution:true,runId:f.runId,planAgent:async()=>({type:"final",output:"unused"})});
  assert.equal(result.ok,true);
  assert.equal(f.authorityCalls.length,1);
  assert.equal(f.authorityCalls[0].approvalId,f.token.payload.approvalId);
@@ -49,7 +50,7 @@ test("signed approval cannot authorize a changed resource or changed arguments",
  const f=await fixture();
  const altered=f.supervisor;
  // The approval selector is independently exercised against the exact canonical call claims.
- const request={...context,argumentsDigest:f.digest,effectKey:"approval_agent:1:lookup"};
+ const request={...context,argumentsDigest:f.digest,effectKey:f.runId+":approval_agent:1:lookup"};
  assert.ok(await (async()=>Boolean(await (await import("../src/agent/capability-approval-provider.mjs")).createCapabilityApprovalProvider([f.token])({...request,resource:"site:evil.example"}))===false)());
  assert.equal(f.authorityCalls.length,0);
 });
@@ -59,7 +60,7 @@ test("signed approval, four grants and durable idempotent executor form one end-
  const runId="run_approval_001";
  const effectKey=runId+":approval_agent:1:lookup";
  const digest=await hashCapabilityArguments(args);
- const payload={approvalId:"approval_e2e_123456789",...context,argumentsDigest:digest,expiresAt:NOW+5*60_000};
+ const payload={approvalId:"approval_e2e_123456789",...context,argumentsDigest:digest,effectKey,expiresAt:NOW+5*60_000};
  const token=await signCapabilityApprovalEd25519(payload,keys.privateKey,{now:NOW});
  const provider=createCapabilityApprovalProvider([token]);
  const data=new Map();

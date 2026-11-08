@@ -4,7 +4,7 @@ import { createCapabilityRegistry } from "../src/agent/capability-registry.mjs";
 import { signCapabilityApproval, verifyCapabilityApproval } from "../src/agent/capability-grants.mjs";
 const grant=(subjectType,subjectId,extra={})=>({subjectType,subjectId,appId:"rankgeo",capabilityId:"web_search",operations:["execute"],resourceScopes:["site:example.com"],maxCalls:3,expiresAt:0,approvalRequired:false,...extra});
 const base=()=>[grant("app","rankgeo"),grant("caller","user_1"),grant("agent","seo_agent"),grant("skill","seo_audit")];
-const request={appId:"rankgeo",callerId:"user_1",agentId:"seo_agent",skillId:"seo_audit",toolId:"web_search",resource:"site:example.com"};
+const request={appId:"rankgeo",callerId:"user_1",agentId:"seo_agent",skillId:"seo_audit",toolId:"web_search",resource:"site:example.com",effectKey:"run-test:seo_agent:1:web_search"};
 const approval={approvalId:"approval_1234567890",signature:"trusted"};
 test("all four registry layers must grant the capability",()=>{
  const r=createCapabilityRegistry({grants:base()});
@@ -78,7 +78,7 @@ test("approval verification failure is fail-closed",()=>{
 test("durable registry delegates quota consumption only after four-layer policy and approval verification",async()=>{
  const calls=[];
  const grants=base().map(g=>({...g,approvalRequired:g.subjectType==="skill"}));
- const durableApproval={payload:{approvalId:"approval_durable_123456",argumentsDigest:"a".repeat(64)},signature:"trusted"};
+ const durableApproval={payload:{approvalId:"approval_durable_123456",argumentsDigest:"a".repeat(64),effectKey:request.effectKey},signature:"trusted"};
  const registry=createCapabilityRegistry({grants,verifyApproval:(value,expected)=>value.signature==="trusted"&&value.payload?.approvalId===durableApproval.payload.approvalId&&value.payload?.argumentsDigest===expected.argumentsDigest,authority:{authorize:async request=>{calls.push(request);return {ok:true,remaining:0};}}});
  assert.equal(registry.durable,true);
  assert.equal((await registry.authorize({...request,argumentsDigest:"a".repeat(64),approval:durableApproval})).ok,true);
@@ -101,7 +101,7 @@ test("durable authorization awaits server-signed approval and binds it to the ex
  const signed=await signCapabilityApproval({
   approvalId:"approval_server_1234567890",appId:"rankgeo",callerId:"user_1",
   agentId:"seo_agent",skillId:"seo_audit",toolId:"web_search",operation:"execute",
-  resource:"site:example.com",argumentsDigest:"a".repeat(64),expiresAt:now+60000
+  resource:"site:example.com",argumentsDigest:"a".repeat(64),effectKey:request.effectKey,expiresAt:now+60000
  },secret,{now});
  const calls=[];
  const registry=createCapabilityRegistry({

@@ -20,7 +20,7 @@ const layers = (o = {}) => [
   grant({ subjectType: "agent", subjectId: "quality_engineer", ...o }),
   grant({ subjectType: "skill", subjectId: "write_post", ...o }),
 ];
-const ctx = (o = {}) => ({ appId: "contentcraft-app", callerId: "app_contentcraft-app", agentId: "quality_engineer", skillId: "write_post", toolId: "publish_post", operation: "execute", resource: "blog/a", ...o });
+const ctx = (o = {}) => ({ appId: "contentcraft-app", callerId: "app_contentcraft-app", agentId: "quality_engineer", skillId: "write_post", toolId: "publish_post", operation: "execute", resource: "blog/a", effectKey: "run-1:quality_engineer:1:publish_post", ...o });
 
 test("grant: sign/verify roundtrip, forged signature rejected", async () => {
   const t = await signCapabilityGrant(grant(), SECRET, { now: NOW });
@@ -82,7 +82,7 @@ test("arguments digest is key-order independent and rejects non-plain values", a
 const approvalPayload = async (o = {}) => ({
   approvalId: "appr_" + "a".repeat(20), appId: "contentcraft-app", callerId: "app_contentcraft-app", agentId: "quality_engineer",
   skillId: "write_post", toolId: "publish_post", operation: "execute", resource: "blog/a",
-  argumentsDigest: await hashCapabilityArguments({ title: "x" }), expiresAt: NOW + 5 * 60_000, ...o,
+  argumentsDigest: await hashCapabilityArguments({ title: "x" }), effectKey: "run-1:quality_engineer:1:publish_post", expiresAt: NOW + 5 * 60_000, ...o,
 });
 const expectedFor = async (o = {}) => { const { approvalId, expiresAt, ...rest } = await approvalPayload(); return { ...rest, ...o }; };
 
@@ -93,6 +93,7 @@ test("approval V2 (Ed25519): valid, and bound to tool, arguments, resource, call
   const bad = [
     { toolId: "delete_post" }, { resource: "blog/b" }, { callerId: "app_other" }, { operation: "read" },
     { argumentsDigest: await hashCapabilityArguments({ title: "y" }) },
+    { effectKey: "run-2:quality_engineer:1:publish_post" },
   ];
   for (const o of bad) assert.equal(await verifyCapabilityApprovalEd25519(token, kp.publicKey, await expectedFor(o), { now: NOW }), false, JSON.stringify(Object.keys(o)));
   assert.equal(await verifyCapabilityApprovalEd25519(token, kp.publicKey, await expectedFor(), { now: NOW + 6 * 60_000 }), false, "expired");
@@ -169,6 +170,7 @@ test("registry.authorize: signed approval id, digest binding, audit on denial", 
   assert.equal(ok.ok, true);
   assert.equal(sent[0].approvalId, token.payload.approvalId, "the ID forwarded to the DO is the SIGNED one");
   assert.equal(sent[0].maxCalls, 5);
+  assert.equal(sent[0].effectKey, ctx().effectKey);
   assert.ok(events.filter((e) => e.type === "capability_denied").length >= 3, "denials are audited");
 });
 

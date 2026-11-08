@@ -27,10 +27,10 @@ test("grant loader rejects any invalid token in the configured set",async()=>{
  const token=await signCapabilityGrant(grant,secret,{now:1000000});
  await assert.rejects(loadVerifiedCapabilityGrants({CAPABILITY_GRANT_SIGNING_KEY:secret,CAPABILITY_GRANTS_JSON:JSON.stringify([token,{...token,signature:"A".repeat(43)}])},{now:1000000}));
 });
-const approval={approvalId:"approval_123456789012",appId:"rankgeo",callerId:"caller_1",agentId:"seo_agent",skillId:"seo_audit",toolId:"web_search",operation:"execute",resource:"site:example.com",argumentsDigest:"a".repeat(64),expiresAt:1005000};
+const approval={approvalId:"approval_123456789012",appId:"rankgeo",callerId:"caller_1",agentId:"seo_agent",skillId:"seo_audit",toolId:"web_search",operation:"execute",resource:"site:example.com",argumentsDigest:"a".repeat(64),effectKey:"run-1:seo_agent:1:web_search",expiresAt:1005000};
 test("server-signed approval is bound to every execution dimension",async()=>{
  const token=await signCapabilityApproval(approval,secret,{now:1000000});
- const expected={appId:"rankgeo",callerId:"caller_1",agentId:"seo_agent",skillId:"seo_audit",toolId:"web_search",operation:"execute",resource:"site:example.com",argumentsDigest:"a".repeat(64)};
+ const expected={appId:"rankgeo",callerId:"caller_1",agentId:"seo_agent",skillId:"seo_audit",toolId:"web_search",operation:"execute",resource:"site:example.com",argumentsDigest:"a".repeat(64),effectKey:"run-1:seo_agent:1:web_search"};
  assert.equal(await verifyCapabilityApproval(token,secret,expected,{now:1000000}),true);
  assert.equal(await verifyCapabilityApproval(token,secret,{...expected,callerId:"attacker"},{now:1000000}),false);
  assert.equal(await verifyCapabilityApproval(token,secret,{...expected,resource:"site:evil.example"},{now:1000000}),false);
