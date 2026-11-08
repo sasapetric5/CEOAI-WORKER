@@ -1347,9 +1347,9 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
       AI_ENABLED: "true",
       EXTERNAL_AI_ENABLED: "true",
       OPENROUTER_KEY: "test-key-no-limiter",
-      RATE_LIMITER: null,
     });
     const { cookie: noLimiterCookie } = await getSession(noLimiterEnv);
+    noLimiterEnv.RATE_LIMITER = null;
     const response = await worker.fetch(
       apiRequest(noLimiterCookie, JSON.stringify({ prompt: "Zdravo" })),
       noLimiterEnv
