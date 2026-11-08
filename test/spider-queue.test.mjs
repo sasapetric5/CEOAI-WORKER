@@ -298,6 +298,27 @@ test("malformed queue messages are retried for eventual DLQ inspection and never
 });
 
 
+test("combined Spider quota enforces global cap and preserves duplicate claims", async () => {
+  const ns = makeLedgerNamespace();
+  const stub = ns.get("quota:global:2026-11-08");
+  const call = (appId, jobId) => stub.fetch(new Request("https://ledger.test/quota/claim-combined", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ appId: "GLOBAL", quotaAppId: appId, date: "2026-11-08", id: jobId, appLimit: appId === "CONTENTCRAFT-APP" ? 3 : 2, globalLimit: 5, now: now() }),
+  })).then(response => response.json());
+  const jobs = [["CONTENTCRAFT-APP","123e4567-e89b-42d3-a456-426614174030"],["AIFORCE-APP","223e4567-e89b-42d3-a456-426614174030"],["RANKGEO-APP","323e4567-e89b-42d3-a456-426614174030"],["CONTENTCRAFT-APP","123e4567-e89b-42d3-a456-426614174031"],["AIFORCE-APP","223e4567-e89b-42d3-a456-426614174031"]];
+  for (const [app, job] of jobs) assert.equal((await call(app, job)).allowed, true);
+  const blocked = await call("RANKGEO-APP", "323e4567-e89b-42d3-a456-426614174031");
+  assert.equal(blocked.allowed, false);
+  assert.equal(blocked.reason, "GLOBAL_DAILY_LIMIT_REACHED");
+  const duplicate = await call("CONTENTCRAFT-APP", jobs[0][1]);
+  assert.equal(duplicate.allowed, true);
+  assert.equal(duplicate.duplicate, true);
+  const quota = ns.contexts.get("quota:global:2026-11-08").storage.values.get("quota");
+  assert.equal(quota.count, 5);
+  assert.equal(quota.appCounts["CONTENTCRAFT-APP"], 2);
+  assert.equal(quota.appCounts["AIFORCE-APP"], 2);
+  assert.equal(quota.appCounts["RANKGEO-APP"], 1);
+});
 test("daily Browser Run budget is shared across separate app consumers", async () => {
   const sharedLedger = makeLedgerNamespace();
   let starts = 0;
