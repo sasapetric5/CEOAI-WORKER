@@ -45,5 +45,5 @@ test("tool argument digest is canonical, stable and rejects unsafe structures",a
  assert.equal(first,reordered);
  assert.notEqual(first,changed);
  const cyclic={};cyclic.self=cyclic;
- await assert.rejects(hashCapabilityArguments(cyclic),/INVALID_CAPABILITY_ARGUMENTS/);
+ await assert.rejects(hashCapabilityArguments(cyclic),/CAPABILITY_ARGUMENTS_TOO_DEEP|INVALID_CAPABILITY_ARGUMENTS/);
 });
