@@ -82,7 +82,7 @@ export function createCapabilityRegistry({grants=[],audit=null,now=()=>Date.now(
    // top-level ID; verify every bound claim before forwarding the ID to the DO.
    const signedApprovalId=plain(approval)&&plain(approval.payload)?approval.payload.approvalId:null;
    if(typeof signedApprovalId!=="string"||!APPROVAL.test(signedApprovalId)||typeof argumentsDigest!=="string"||!/^[a-f0-9]{64}$/.test(argumentsDigest)||!verifyApproval)return {ok:false,code:"CAPABILITY_APPROVAL_REQUIRED"};
-   let verified=false;try{verified=await verifyApproval(approval,{appId,callerId,agentId,skillId,toolId,operation,resource})===true;}catch{}
+   let verified=false;try{verified=await verifyApproval(approval,{appId,callerId,agentId,skillId,toolId,operation,resource,argumentsDigest})===true;}catch{}
    if(!verified)return {ok:false,code:"CAPABILITY_APPROVAL_REQUIRED"};
    approvalId=signedApprovalId;
   }
