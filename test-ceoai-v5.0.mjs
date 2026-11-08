@@ -76,8 +76,9 @@ assert.ok(cookie);
 assert.equal((await worker.fetch(new Request('https://ceoai.dev/api/chat', { method:'POST', headers:{Origin:'http://localhost:8787','Content-Type':'application/json'}, body:'{}' }), env)).status, 403);
 
 // 8: strict rate-limit default fails closed if the native binding is missing.
-const noLimiterEnv = makeEnv({ RATE_LIMITER: undefined, AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true' });
+const noLimiterEnv = makeEnv({ AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true' });
 const { cookie: strictCookie } = await getSession(noLimiterEnv);
+noLimiterEnv.RATE_LIMITER = undefined;
 const strictResponse = await worker.fetch(apiRequest(strictCookie, JSON.stringify({prompt:'Zdravo'})), noLimiterEnv);
 assert.equal(strictResponse.status, 503);
 assert.match((await strictResponse.json()).error, /Zaštita od preopterećenja/);
