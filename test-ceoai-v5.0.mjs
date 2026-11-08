@@ -627,7 +627,7 @@ globalThis.fetch = async (url, options = {}) => {
 try {
   const xaiOnEnv = makeEnv({
     AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true",
-    XAI_KEY:"test-xai", XAI_FREE_CONFIRMED:"true",
+    XAI_KEY:"test-xai", XAI_MODEL:"grok-test-model", XAI_FREE_CONFIRMED:"true",
     GEMINI_KEY_1:"test-gemini",
   });
   const {cookie: xaiOnCookie} = await getSession(xaiOnEnv);
@@ -722,8 +722,9 @@ try {
 
 // V5-7: RATE_LIMITER still fail-closed (regression).
 {
-  const noLimiterEnv = makeEnv({ RATE_LIMITER: undefined, AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', GEMINI_KEY_1:'k' });
+  const noLimiterEnv = makeEnv({ AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', GEMINI_KEY_1:'k' });
   const { cookie: strictCookie2 } = await getSession(noLimiterEnv);
+  noLimiterEnv.RATE_LIMITER = undefined;
   const strictResponse2 = await worker.fetch(apiRequest(strictCookie2, JSON.stringify({prompt:'Zdravo'})), noLimiterEnv);
   assert.equal(strictResponse2.status, 503);
   assert.match((await strictResponse2.json()).error, /Zaštita od preopterećenja|RATE|preopterećenja|limit/i);
