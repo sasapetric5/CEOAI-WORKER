@@ -1164,7 +1164,9 @@ export async function runCEOAIInternalAgentTask(env, { system, task, input = {},
       intent,
       generateText: (messages, requestedIntent) => runConfiguredProviderCompletion(env, messages, requestedIntent),
     });
-    return await runtime.runTask({ task, input, limit, agentIds, allowedToolIds, allowToolExecution: allowToolExecution === true && allowedToolIds.length > 0, maxToolCalls, synthesize, runId });
+    // A no-tool agent task may run without execution approval; any non-empty tool allowlist requires explicit approval.
+    return await runtime.runTask({ task, input, limit, agentIds, allowedToolIds,
+      allowToolExecution: allowedToolIds.length === 0 || allowToolExecution === true, maxToolCalls, synthesize, runId });
   } catch {
     return { ok: false, code: "AGENT_RUNTIME_UNAVAILABLE", agents: [], results: [] };
   }

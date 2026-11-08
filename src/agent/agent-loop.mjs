@@ -54,7 +54,7 @@ export function createAgentLoop({ toolRegistry, skillRegistry, maxSteps = 4, max
   const audit = (event) => { try { auditLog?.record(event); } catch { /* auditing must not change agent results */ } };
 
   const runAgent = async ({ skillId, input, plan, allowToolExecution = false, allowedToolIds = [], budget, runId = crypto.randomUUID(), authorizeTool = null } = {}) => {
-      if (allowToolExecution !== true && Array.isArray(allowedToolIds) && allowedToolIds.length > 0) return fail("EXECUTION_NOT_APPROVED", 0, 0);
+      if (allowToolExecution !== true) return fail("EXECUTION_NOT_APPROVED", 0, 0);
       const skill = skillRegistry.get(skillId);
       if (!skill) return fail("SKILL_NOT_FOUND", 0, 0);
       if (typeof plan !== "function") return fail("PLANNER_REQUIRED", 0, 0);
