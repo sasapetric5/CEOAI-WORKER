@@ -63,14 +63,40 @@ export async function loadVerifiedCapabilityGrants(env,{now=Date.now()}={}){
  return grants;
 }
 
-const APPROVAL_FIELDS=["approvalId","appId","callerId","agentId","skillId","toolId","operation","resource","expiresAt"];
+const APPROVAL_FIELDS=["approvalId","appId","callerId","agentId","skillId","toolId","operation","resource","argumentsDigest","expiresAt"];
+
+function canonicalArguments(value,depth=0){
+ if(depth>16)throw new TypeError("CAPABILITY_ARGUMENTS_TOO_DEEP");
+ if(value===null||typeof value==="string"||typeof value==="boolean")return JSON.stringify(value);
+ if(typeof value==="number"){if(!Number.isFinite(value))throw new TypeError("INVALID_CAPABILITY_ARGUMENTS");return JSON.stringify(value);}
+ if(Array.isArray(value)){
+  const keys=Reflect.ownKeys(value);
+  if(keys.length!==value.length+1||Array.from({length:value.length},(_,i)=>Object.hasOwn(value,String(i))).some(x=>!x))throw new TypeError("INVALID_CAPABILITY_ARGUMENTS");
+  return "["+value.map(item=>canonicalArguments(item,depth+1)).join(",")+"]";
+ }
+ if(!plain(value))throw new TypeError("INVALID_CAPABILITY_ARGUMENTS");
+ const keys=Reflect.ownKeys(value);
+ if(keys.some(key=>typeof key!=="string"))throw new TypeError("INVALID_CAPABILITY_ARGUMENTS");
+ return "{"+keys.sort().map(key=>{
+  const descriptor=Object.getOwnPropertyDescriptor(value,key);
+  if(!descriptor||!descriptor.enumerable||!Object.hasOwn(descriptor,"value"))throw new TypeError("INVALID_CAPABILITY_ARGUMENTS");
+  return JSON.stringify(key)+":"+canonicalArguments(descriptor.value,depth+1);
+ }).join(",")+"}";
+}
+export async function hashCapabilityArguments(value){
+ const canonical=canonicalArguments(value);
+ if(new TextEncoder().encode(canonical).byteLength>8192)throw new TypeError("CAPABILITY_ARGUMENTS_TOO_LARGE");
+ const digest=new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(canonical)));
+ return [...digest].map(byte=>byte.toString(16).padStart(2,"0")).join("");
+}
+
 function validateApproval(p,now){
  if(!plain(p)||Object.keys(p).length!==APPROVAL_FIELDS.length||Object.keys(p).some(k=>!APPROVAL_FIELDS.includes(k)))return false;
  return typeof p.approvalId==="string"&&/^[A-Za-z0-9_-]{16,128}$/.test(p.approvalId)&&
   typeof p.appId==="string"&&APP.test(p.appId)&&typeof p.callerId==="string"&&PRINCIPAL.test(p.callerId)&&
   typeof p.agentId==="string"&&ID.test(p.agentId)&&typeof p.skillId==="string"&&ID.test(p.skillId)&&
   typeof p.toolId==="string"&&ID.test(p.toolId)&&typeof p.operation==="string"&&OP.test(p.operation)&&
-  typeof p.resource==="string"&&p.resource.length<=512&&Number.isSafeInteger(p.expiresAt)&&p.expiresAt>now&&p.expiresAt-now<=10*60*1000;
+  typeof p.resource==="string"&&p.resource.length<=512&&typeof p.argumentsDigest==="string"&&/^[a-f0-9]{64}$/.test(p.argumentsDigest)&&Number.isSafeInteger(p.expiresAt)&&p.expiresAt>now&&p.expiresAt-now<=10*60*1000;
 }
 export async function signCapabilityApproval(payload,secret,{now=Date.now()}={}){
  if(!validateApproval(payload,now))throw new TypeError("INVALID_CAPABILITY_APPROVAL");
