@@ -659,7 +659,17 @@ function isAgentFreeProvider(candidate, env) {
   return false;
 }
 
-export async function runConfiguredProviderCompletion(env, messages, intent = CAPABILITY.reasoning) {
+export function hasConfiguredProviderCredentials(env) {
+  if (env?.AI && env.WORKERS_AI_ENABLED === "true") return true;
+  return [
+    "ZAI_GLM_FLASH_KEY_1","ZAI_GLM_FLASH_KEY_2","GEMINI_API_KEY_PRIMARY","GEMINI_KEY_1",
+    "GEMINI_API_KEY_SECONDARY","GEMINI_KEY_2","GEMINI_API_KEY_TERTIARY","GEMINI_KEY_3",
+    "OPENROUTER_API_KEY","OPENROUTER_KEY","DEEPSEEK_API_KEY","DEEPSEEK_KEY",
+    "MISTRAL_API_KEY","MISTRAL_KEY","XAI_KEY","NVIDIA_KEY","HF_TOKEN",
+  ].some(name => typeof env?.[name] === "string" && env[name].trim().length > 0);
+}
+
+async function runConfiguredProviderCompletion(env, messages, intent = CAPABILITY.reasoning) {
   if (!env || env.AI_ENABLED !== "true") return { ok: false, code: "AI_DISABLED" };
   if (!Array.isArray(messages) || messages.length < 1 || messages.length > 12) return { ok: false, code: "INVALID_MODEL_MESSAGES" };
   let bytes = 0;
@@ -670,7 +680,7 @@ export async function runConfiguredProviderCompletion(env, messages, intent = CA
   }
   const configuredPool = buildProviderPool(env);
   const pool = configuredPool.filter(candidate => isAgentFreeProvider(candidate, env));
-  if (!pool.length) return { ok: false, code: configuredPool.length ? "NO_FREE_PROVIDER_CONFIRMED" : "NO_PROVIDER_CONFIGURED" };
+  if (!pool.length) return { ok: false, code: hasConfiguredProviderCredentials(env) ? "NO_FREE_PROVIDER_CONFIRMED" : "NO_PROVIDER_CONFIGURED" };
   let candidates = env.ZAI_GLM_FLASH_ONLY === "true" ? pool.filter(p => p.provider === "glm-flash") : pool.slice();
   candidates = candidates.map((p, idx) => ({ p, idx, score: scoreProviderForIntent(p.provider, intent) }))
     .sort((a, b) => b.score - a.score || a.idx - b.idx).map(x => x.p);
@@ -1195,8 +1205,9 @@ async function compressHistory(env, oldSummary, oldMessages) {
  * Internal application entry point for the bounded specialist-agent system.
  * Not mapped to an HTTP route. The caller must explicitly approve execution.
  */
-export async function runCEOAIInternalAgentTask(env, { system, task, input = {}, limit = 3, agentIds, allowedToolIds = [], allowToolExecution = false, maxToolCalls = 4, maxModelCalls = 4, synthesize = true, intent = CAPABILITY.reasoning, runId = crypto.randomUUID() } = {}) {
-  if (allowToolExecution !== true && Array.isArray(allowedToolIds) && allowedToolIds.length > 0) return { ok: false, code: "EXECUTION_NOT_APPROVED", agents: [], results: [] };
+export async function runCEOAIInternalAgentTask(env, { system, task, input = {}, limit = 3, agentIds, allowedToolIds = [], allowToolExecution = false, allowNoToolAgentRun = false, maxToolCalls = 4, maxModelCalls = 4, synthesize = true, intent = CAPABILITY.reasoning, runId = crypto.randomUUID() } = {}) {
+  const noToolRunApproved = allowNoToolAgentRun === true && Array.isArray(allowedToolIds) && allowedToolIds.length === 0;
+  if (allowToolExecution !== true && !noToolRunApproved) return { ok: false, code: "EXECUTION_NOT_APPROVED", agents: [], results: [] };
   if (!env || env.AI_ENABLED !== "true") return { ok: false, code: "AI_DISABLED", agents: [], results: [] };
   if (!env.KV_MEMORY) return { ok: false, code: "MEMORY_BINDING_UNAVAILABLE", agents: [], results: [] };
   try {
@@ -1208,7 +1219,7 @@ export async function runCEOAIInternalAgentTask(env, { system, task, input = {},
     });
     // A no-tool agent task may run without execution approval; any non-empty tool allowlist requires explicit approval.
     return await runtime.runTask({ task, input, limit, agentIds, allowedToolIds,
-      allowToolExecution: allowedToolIds.length === 0 || allowToolExecution === true, maxToolCalls, synthesize, runId });
+      allowToolExecution: noToolRunApproved || allowToolExecution === true, maxToolCalls, synthesize, runId });
   } catch {
     return { ok: false, code: "AGENT_RUNTIME_UNAVAILABLE", agents: [], results: [] };
   }
@@ -1475,7 +1486,7 @@ export default {
         return json({ success: false, error: "Bezbednosna konfiguracija ovlašćenja nije validna.", code: "CAPABILITY_GRANT_CONFIGURATION_INVALID" }, 503);
       }
       const result = await runCEOAIInternalAgentTask(env, {
-        system, task: safeTask, input: agentInput, limit, agentIds: policy.allowedAgentIds, allowedToolIds: [], allowToolExecution: false,
+        system, task: safeTask, input: agentInput, limit, agentIds: policy.allowedAgentIds, allowedToolIds: [], allowToolExecution: false, allowNoToolAgentRun: true,
         maxToolCalls: 1, maxModelCalls: policy.maxModelCalls, synthesize: true,
         intent, runId: requestId ?? crypto.randomUUID(),
       });

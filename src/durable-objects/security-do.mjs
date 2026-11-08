@@ -13,7 +13,7 @@ export class SecurityOrchestratorDO {
       let input;
       try { input = await request.json(); } catch { return Response.json({ error: "invalid_request" }, { status: 400 }); }
       const { date, now } = input || {};
-      if (typeof date !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(date) ||
+      if (typeof date !== "string" || !/^d{4}-d{2}-d{2}$/.test(date) ||
           !Number.isSafeInteger(now) || Object.keys(input || {}).some(key => !["date", "now"].includes(key))) {
         return Response.json({ error: "invalid_request" }, { status: 400 });
       }

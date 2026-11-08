@@ -40,7 +40,7 @@ test("chat fails closed when native RATE_LIMITER binding is missing", async () =
   const response = await worker.fetch(request(), env);
   assert.equal(response.status, 503);
   assert.match((await response.json()).error, /zaštita|preopterećenja/i);
-  assert.deepEqual(calls, [["get", "session:" + sessionId]]);
+  assert.deepEqual(calls, [], "rate limiter must run before session KV reads");
   assert.equal(calls.some(call => call[0] === "put"), false);
 });
 
