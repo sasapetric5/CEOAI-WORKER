@@ -876,21 +876,20 @@ assert.equal(workersAiResponse.status, 200);
 assert.equal((await workersAiResponse.json()).reply, "Workers AI odgovor iz testnog bindinga");
 assert.equal(workersAiCalls, 1);
 
-// V5-9e: Workers AI is enabled by its binding and enable switch; no free-confirmation flag is required.
+// V5-9e: Workers AI is blocked unless its free tier is explicitly confirmed.
 let unconfirmedWorkersAiCalls = 0;
 const unconfirmedWorkersAiEnv = makeEnv({
   AI_ENABLED: "true", EXTERNAL_AI_ENABLED: "true",
   WORKERS_AI_ENABLED: "true", WORKERS_AI_FREE_CONFIRMED: "false",
-  AI: { async run() { unconfirmedWorkersAiCalls += 1; return { response: "Workers AI bez dodatne potvrde" }; } },
+  AI: { async run() { unconfirmedWorkersAiCalls += 1; return { response: "must not execute" }; } },
 });
 const { cookie: unconfirmedWorkersAiCookie } = await getSession(unconfirmedWorkersAiEnv);
 const unconfirmedWorkersAiResponse = await worker.fetch(
   apiRequest(unconfirmedWorkersAiCookie, JSON.stringify({ prompt: "Zdravo" })),
   unconfirmedWorkersAiEnv
 );
-assert.equal(unconfirmedWorkersAiResponse.status, 200);
-assert.equal((await unconfirmedWorkersAiResponse.json()).reply, "Workers AI bez dodatne potvrde");
-assert.equal(unconfirmedWorkersAiCalls, 1);
+assert.equal(unconfirmedWorkersAiResponse.status, 503);
+assert.equal(unconfirmedWorkersAiCalls, 0);
 
 // V5-10: search failover — Tavily quota → Google CSE takes over.
 const originalFetchSearch = globalThis.fetch;
