@@ -8,6 +8,8 @@ import {createToolRegistry} from "../src/agent/tool-registry.mjs";
 import {createAgentLoop} from "../src/agent/agent-loop.mjs";
 import {createIdempotentToolExecutor} from "../src/agent/idempotent-tool-executor.mjs";
 import {createMemoryCheckpointStore} from "../src/agent/durable-execution.mjs";
+import {CapabilityAuthorityDO} from "../src/durable-objects/capability-authority-do.mjs";
+import {createCloudflareCapabilityAuthority} from "../src/agent/cloudflare-capability-authority.mjs";
 const NOW=1_800_000_000_000;
 const context={appId:"rankgeo",callerId:"app_rankgeo",agentId:"approval_agent",skillId:"approval_skill",toolId:"lookup",operation:"execute",resource:"site:example.com"};
 const args={query:"exact target"};
@@ -60,14 +62,16 @@ test("signed approval, four grants and durable idempotent executor form one end-
  const payload={approvalId:"approval_e2e_123456789",...context,argumentsDigest:digest,expiresAt:NOW+5*60_000};
  const token=await signCapabilityApprovalEd25519(payload,keys.privateKey,{now:NOW});
  const provider=createCapabilityApprovalProvider([token]);
- const effectLedger=new Map();
- const authority={authorize:async request=>{
-  const fingerprint=JSON.stringify(request);
-  const prior=effectLedger.get(request.effectKey);
-  if(prior&&prior!==fingerprint)return {ok:false,code:"IDEMPOTENCY_KEY_CONFLICT"};
-  effectLedger.set(request.effectKey,fingerprint);
-  return {ok:true,remaining:1,replayed:Boolean(prior)};
+ const data=new Map();
+ let transaction=Promise.resolve();
+ const storage={transaction:async fn=>{
+  let release;const previous=transaction;transaction=new Promise(resolve=>{release=resolve;});await previous;
+  try{return await fn({get:async key=>data.get(key),put:async(key,value)=>{data.set(key,structuredClone(value));}});}
+  finally{release();}
  }};
+ const durableObject=new CapabilityAuthorityDO({storage});
+ const namespace={idFromName:name=>name,get:()=>({fetch:(url,init)=>durableObject.fetch(new Request(url,init))})};
+ const authority=createCloudflareCapabilityAuthority(namespace);
  const capabilityRegistry=createCapabilityRegistry({
   grants:[grant("app","rankgeo"),grant("caller","app_rankgeo"),grant("agent","approval_agent"),grant("skill","approval_skill")],
   now:()=>NOW,authority,verifyApproval:createApprovalVerifier({CAPABILITY_APPROVAL_PUBLIC_KEY:keys.publicKey},{now:NOW})
@@ -93,6 +97,7 @@ test("signed approval, four grants and durable idempotent executor form one end-
  assert.equal(first.ok,true);
  assert.equal(replay.ok,true);
  assert.equal(externalEffects,1,"the tool side effect must execute exactly once");
- assert.equal(effectLedger.size,1,"the stable effect key is authorized only once");
- assert.equal(effectLedger.has(effectKey),true);
+ assert.equal(data.has("effect:"+effectKey),true,"the Durable Object stores the stable effect receipt");
+ assert.equal(data.has("approval:"+token.payload.approvalId),true,"the Durable Object consumes the signed approval");
+ assert.equal(data.get("usage:rankgeo|app_rankgeo|approval_agent|approval_skill|lookup|execute"),1);
 });
