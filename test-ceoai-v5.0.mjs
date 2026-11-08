@@ -1692,9 +1692,9 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
   const limiterEnv = makeEnv({
     AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true',
     GEMINI_API_KEY_PRIMARY:'test-gemini-rate-limit',
-    RATE_LIMITER: { async limit({key}) { limiterKeys.push(key); return {success:false}; } },
   });
   const {cookie: limiterCookie} = await getSession(limiterEnv);
+  limiterEnv.RATE_LIMITER = { async limit({key}) { limiterKeys.push(key); return {success:false}; } };
   globalThis.fetch = async () => { providerCalls++; throw new Error('Provider must not be called after rate-limit rejection'); };
   try {
     const first = await worker.fetch(apiRequest(limiterCookie, JSON.stringify({prompt:'Prvi zahtev'})), limiterEnv);
@@ -1714,9 +1714,9 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
   const brokenLimiterEnv = makeEnv({
     AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true',
     GEMINI_API_KEY_PRIMARY:'test-gemini-limiter-failure',
-    RATE_LIMITER: { async limit() { throw new Error('simulated limiter outage'); } },
   });
   const {cookie: brokenLimiterCookie} = await getSession(brokenLimiterEnv);
+  brokenLimiterEnv.RATE_LIMITER = { async limit() { throw new Error('simulated limiter outage'); } };
   globalThis.fetch = async () => { providerCalls++; throw new Error('Provider must not be called when limiter fails'); };
   try {
     const response = await worker.fetch(apiRequest(brokenLimiterCookie, JSON.stringify({prompt:'Test zaštite pri kvaru limitera'})), brokenLimiterEnv);
