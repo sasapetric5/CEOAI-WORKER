@@ -126,13 +126,11 @@ export function createSpiderQueueHandler({
     // One account-wide date bucket is shared by all app callers and queue consumers.
     // Claim quota before creating a start lease so a quota-ledger outage cannot strand a job.
     const quotaDate = utcDate(now());
-    const appQuota = await ledger("quota:app:" + message.appId + ":" + quotaDate, "/quota/claim", {
-      date: quotaDate, id: message.id, limit: APP_DAILY_JOB_LIMITS[message.appId], now: now(),
+    const quota = await ledger("quota:global:" + quotaDate, "/quota/claim-combined", {
+      quotaAppId: message.appId, date: quotaDate, id: message.id,
+      appLimit: APP_DAILY_JOB_LIMITS[message.appId], globalLimit: GLOBAL_DAILY_JOB_LIMIT, now: now(),
     });
-    const globalQuota = await ledger("quota:global:" + quotaDate, "/quota/claim", {
-      date: quotaDate, id: message.id, limit: GLOBAL_DAILY_JOB_LIMIT, now: now(),
-    });
-    if (!appQuota.allowed || !globalQuota.allowed) {
+    if (!quota.allowed) {
       const overLimit = await ledger("job:" + message.appId + ":" + message.id, "/job/claim-start", {
         id: message.id, url: message.url, pageLimit: message.pageLimit, depth: message.depth, now: now(),
       });
