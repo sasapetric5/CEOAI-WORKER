@@ -45,6 +45,21 @@ const prepared = await system.multiAgentSupervisor.prepare({
 
 To enable it through `createKVAgentSystem()`, provide an application-owned `mcpAuthorize(authContext, { method })` callback. Without that callback, `system.mcpResources` is `null`.
 
+
+## Signed capability approvals and durable tool execution
+
+When a reviewed tool is eventually registered and enabled, the production supervisor uses the four required grant layers: app, caller, agent, and skill. All four must grant the same tool capability, operation, and resource. Resource scopes are exact by default; descendant access requires an explicit boundary-aware `/*` scope.
+
+Approval-required calls use Ed25519 V2. The Worker stores only `CAPABILITY_APPROVAL_PUBLIC_KEY`; the owner keeps the private key offline. The signed payload binds the app, caller, agent, skill, tool, operation, resource, canonical argument digest, stable effect key, and short expiry. The effect key is the same stable key used by the tool executor. The approval ID is read only from the verified signed payload.
+
+`CapabilityAuthorityDO` atomically consumes a single-use approval, increments the durable capability quota, and records the effect receipt. Repeating the same effect key and identical claims replays the authorization receipt; rebinding that key to different claims is denied. `WorkflowTaskDO` and the idempotent executor use leases, fencing tokens, checkpoint revisions, and an effect ledger. An uncertain external outcome pauses for reconciliation and is never blindly repeated.
+
+The supervisor-to-tool integration is covered by `test/signed-approval-supervisor-integration.test.mjs`, including a real `CapabilityAuthorityDO` test harness and a durable idempotent tool executor. This is deterministic CI coverage, not a live Cloudflare production test.
+
+## Current activation gate
+
+The authenticated app gateway still constructs `tools: []` with `enabled: false` and supplies an empty tool allowlist. This is deliberate. The signed approval and durable execution path is tested as an isolated integration, but no app-facing external-action tool is active. Before enabling one, add and review its strict input schema, handler, downstream idempotency contract, four signed grant layers, and an approval request/confirmation flow that can bind the exact planned call before execution. The app-level caller principal is currently derived from the authenticated HMAC app identity; it is not a distinct end-user identity.
+
 ## Limits and security
 - Maximum three agents by default; hard limit five.
 - Sequential execution, shared budget, bounded context and existing per-agent step/tool limits.
@@ -60,9 +75,9 @@ The provider planner in `src/agent/provider-agent-planner.mjs` requests strict J
 The integration is internal-only. No new HTTP route is registered and the existing `/api/chat` handler is not redirected. Calls require `AI_ENABLED=true`, the existing `KV_MEMORY` binding and explicit `allowToolExecution: true`. Tool IDs default to an empty allowlist. AI model-call limits and tool-call limits are separate and bounded.
 
 ## HMAC application agent gateway
-The Worker exposes a separate `POST /v1/agents/run` route for `CONTENTCRAFT-APP` and `AIFORCE-APP`. It authenticates the exact request body and path with the existing HMAC verifier and mandatory SecurityOrchestratorDO nonce store. It also requires the existing RATE_LIMITER binding and fails closed if that binding is unavailable.
+The Worker exposes a separate `POST /v1/agents/run` route for `CONTENTCRAFT-APP`, `AIFORCE-APP`, and `RANKGEO-APP`. It authenticates the exact request body and path with the existing HMAC verifier and mandatory SecurityOrchestratorDO nonce store. It also requires the existing RATE_LIMITER binding and fails closed if that binding is unavailable.
 
-Per-app bounds: ContentCraft may select at most two agents and use at most three model calls per task; AI Force may select at most three agents and use at most four model calls. Request body is limited to 8 KiB, task text to 2,000 characters and JSON input to 4 KiB. Only `task`, `input`, and `limit` are accepted.
+Per-app bounds: ContentCraft may select at most two agents and use at most three model calls per task; AI Force may select at most three agents and use at most four model calls. Request body is limited to 8 KiB, task text to 2,000 characters and JSON input to 4 KiB. Only `task`, `input`, `limit`, `conversation_id`, `request_id`, and a bounded `approvals` array are accepted. Approval tokens must be structurally valid Ed25519 V2 tokens; malformed or duplicate tokens are rejected before model invocation.
 
 The gateway creates an empty, disabled tool registry. Therefore this first app integration is analysis/response only: no crawling, external requests, writes, publishing or other side effects. HMAC app identity does not itself grant tool capabilities.
 
