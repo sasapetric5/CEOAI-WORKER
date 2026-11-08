@@ -508,16 +508,20 @@ async function executeModel(provider, messages, timeoutMs = PROVIDER_TIMEOUT_MS)
 
 // Free-tier URL reader (Jina Reader). No API key required; rate-limited by Jina.
 // Only used when research intent includes a concrete HTTP(S) URL.
-async function fetchUrlWithJina(url) {
+async function fetchUrlWithJina(env, url) {
   const cleaned = normalizeResearchUrl(String(url || ""));
   if (!cleaned) return null;
+  if (await isInCooldown(env, "search-jina")) return null;
   const jinaUrl = `https://r.jina.ai/${cleaned}`;
   try {
     const response = await withTimeoutFetch(jinaUrl, {
       method: "GET",
       headers: { "Accept": "text/plain", "User-Agent": "CEOAI/5.0" },
     }, 15000);
-    if (!response.ok) return null;
+    if (!response.ok) {
+      if (response.status === 429 || response.status >= 500) await markCooldown(env, "search-jina", response.status === 429 ? QUOTA_COOLDOWN_TTL : COOLDOWN_TTL);
+      return null;
+    }
     const text = (await response.text()).slice(0, 12000);
     return text.trim() || null;
   } catch {
@@ -602,7 +606,10 @@ export async function runConfiguredProviderCompletion(env, messages, intent = CA
   for (const candidate of candidates) {
     const remaining = deadline - Date.now();
     if (remaining < 2000) break;
-    if (await isInCooldown(env, candidate.id)) { sawCooldown = true; continue; }
+    let cooling;
+    try { cooling = await isInCooldownStrict(env, candidate.id); }
+    catch { return { ok: false, code: "PROVIDER_COOLDOWN_STORAGE_UNAVAILABLE" }; }
+    if (cooling) { sawCooldown = true; continue; }
     if (inFlightProviders.has(candidate.id)) { sawCooldown = true; continue; }
     inFlightProviders.add(candidate.id);
     try {
@@ -612,10 +619,11 @@ export async function runConfiguredProviderCompletion(env, messages, intent = CA
       const status = Number(error?.status) || 0;
       const quota = isQuotaError(error);
       if (quota || status === 429) { sawRateLimit = true; if (quota) sawQuota = true; }
-      const cooldown = providerFailureCooldown({ status, quotaExhausted: quota, retryAfterSeconds: error?.retryAfterSeconds });
+      const gone = modelUnavailableCooldown(error);
+      const cooldown = gone || providerFailureCooldown({ status, quotaExhausted: quota, retryAfterSeconds: error?.retryAfterSeconds });
       if (cooldown) {
-        const ttl = quota ? quotaCooldownTTL(error) : cooldown.ttl;
-        try { await env.KV_MEMORY.put(`cooldown:${candidate.id}`, quota ? "quota" : "1", { expirationTtl: ttl }); } catch {}
+        const ttl = gone ? gone.ttl : quota ? quotaCooldownTTL(error) : cooldown.ttl;
+        try { await markCooldown(env, candidate.id, ttl); } catch { return { ok: false, code: "PROVIDER_COOLDOWN_STORAGE_UNAVAILABLE" }; }
       }
     } finally {
       inFlightProviders.delete(candidate.id);
@@ -753,7 +761,7 @@ async function fetchSearchFirecrawl(env, query) {
       body: JSON.stringify({ query: String(query).slice(0, 400), limit: 5 }),
     }, SEARCH_TIMEOUT_MS);
     if (!response.ok) {
-      const err = await readProviderError(response, "firecrawl");
+      const err = await readProviderError(response, "firecrawl", env);
       if (isQuotaError(err) || response.status === 429) {
         await markCooldown(env, "search-firecrawl", isQuotaError(err) ? QUOTA_COOLDOWN_TTL : COOLDOWN_TTL);
       }
@@ -963,7 +971,7 @@ async function enrichWithSearchFailover(env, prompt) {
   // 1) URL → Jina (no key)
   const urlMatch = String(prompt).match(/https?:\/\/[^\s<>"']+/i);
   if (urlMatch && env.JINA_READER_ENABLED !== "false" && !(await isInCooldown(env, "search-jina"))) {
-    const pageText = await fetchUrlWithJina(urlMatch[0]);
+    const pageText = await fetchUrlWithJina(env, urlMatch[0]);
     if (pageText) return { text: pageText.slice(0, 8000), source: "jina" };
   }
 
@@ -1292,6 +1300,7 @@ export default {
         return json({ success: false, error: "Neispravna struktura zahteva.", code: "INVALID_REQUEST" }, 400);
       }
       const task = typeof body.task === "string" ? body.task.trim() : "";
+      const safeTask = redactSensitiveText(task, env, 2000);
       const input = body.input === undefined ? {} : body.input;
       const limit = body.limit === undefined ? policy.maxAgents : body.limit;
       const conversationId = body.conversation_id === undefined ? null : body.conversation_id;
@@ -1317,8 +1326,8 @@ export default {
           return json({ success: false, error: "Memorija aplikacije trenutno nije dostupna.", code: "APP_MEMORY_UNAVAILABLE" }, 503);
         }
       }
-      const intent = chooseIntent(task);
-      let agentInput = input;
+      const intent = chooseIntent(safeTask);
+      let agentInput = redactSensitiveValue(input, env, 4000);
       let researchUsed = false;
       let researchSource = null;
       if (intent === CAPABILITY.research) {
@@ -1329,7 +1338,7 @@ export default {
           const jinaAvailable = env.JINA_READER_ENABLED !== "false" &&
             !(await isInCooldown(env, "search-jina"));
           const plan = planResearchAcquisition({
-            task,
+            task: safeTask,
             jinaAvailable,
             freeSearchAvailable: env.DUCKDUCKGO_ENABLED !== "false",
             // Public app agents do not receive Browser Run capability automatically.
@@ -1339,13 +1348,13 @@ export default {
           });
           let enriched = { text: "", source: null };
           if (plan.strategy === "jina_read") {
-            const pageText = await fetchUrlWithJina(plan.url);
+            const pageText = await fetchUrlWithJina(env, plan.url);
             if (pageText) enriched = { text: pageText, source: "jina-reader" };
           }
           // A failed or disabled direct read falls back to no-key web discovery.
           if (!enriched.text &&
               (plan.strategy === "duckduckgo_search" || plan.fallbackStrategy === "duckduckgo_search")) {
-            const text = await fetchSearchDuckDuckGo(env, plan.query || task);
+            const text = await fetchSearchDuckDuckGo(env, plan.query || safeTask);
             if (text) enriched = { text, source: "duckduckgo" };
           }
           if (typeof enriched?.text === "string" && enriched.text.trim()) {
@@ -1388,7 +1397,7 @@ export default {
         return json({ success: false, error: "Bezbednosna konfiguracija ovlašćenja nije validna.", code: "CAPABILITY_GRANT_CONFIGURATION_INVALID" }, 503);
       }
       const result = await runCEOAIInternalAgentTask(env, {
-        system, task, input: agentInput, limit, agentIds: policy.allowedAgentIds, allowedToolIds: [], allowToolExecution: true,
+        system, task: safeTask, input: agentInput, limit, agentIds: policy.allowedAgentIds, allowedToolIds: [], allowToolExecution: true,
         maxToolCalls: 1, maxModelCalls: policy.maxModelCalls, synthesize: true,
         intent, runId: requestId ?? crypto.randomUUID(),
       });
@@ -1409,8 +1418,8 @@ export default {
       if (memoryStore) {
         try {
           const nextHistory = [...savedMemory.history,
-            { role: "user", content: task },
-            { role: "assistant", content: String(result.output || "").slice(0, 8000) },
+            { role: "user", content: safeTask },
+            { role: "assistant", content: redactSensitiveText(String(result.output || ""), env, 8000) },
           ].slice(-16);
           await memoryStore.write(conversationId, { history: nextHistory, summary: savedMemory.summary });
         } catch {
@@ -1649,21 +1658,16 @@ export default {
 
       // Research enrichment with automatic search-provider failover (Jina → Tavily → Google CSE → Exa).
       // When one provider quota is exhausted, the next configured source takes over.
-      let researchContext = "";
       let researchSource = null;
+      let researchContext = "";
       if (intent === CAPABILITY.research) {
         const enriched = await enrichWithSearchFailover(env, safePrompt);
         if (enriched.text) {
           researchSource = enriched.source;
-          researchContext = `\n\n[ISTRAŽIVAČKI KONTEKST — izvor: ${enriched.source}, quota/rate-limited]\n${redactSensitiveText(enriched.text, env, 12_000)}`;
+          researchContext = researchSystemContent(researchSource, redactSensitiveText(enriched.text, env, 12_000));
         }
       }
-      if (researchContext) {
-        messages.push({
-          role: "system",
-          content: "Ispod je istraživački kontekst prikupljen preko konfigurisanih search/data provajdera. Koristi ga kao izvor činjenica; ne tvrdi da si sam posetio spoljne servise." + researchContext,
-        });
-      }
+      if (researchContext) messages.push({ role: "system", content: researchContext });
 
       const pool = buildProviderPool(env);
 
@@ -1737,7 +1741,8 @@ export default {
             console.debug(`Provider ${candidate.id} detail: ${redactSensitiveText(error.providerDetail, env).slice(0, 600)}`);
           }
           const quotaHit = isQuotaError(error);
-          const cooldown = providerFailureCooldown({
+          const gone = modelUnavailableCooldown(error);
+          const cooldown = gone || providerFailureCooldown({
             status: lastStatus,
             quotaExhausted: quotaHit,
             retryAfterSeconds: error?.retryAfterSeconds,
@@ -1750,9 +1755,11 @@ export default {
             // Preserve daily/monthly quota reset detection; otherwise honor bounded Retry-After.
             // providerFailureCooldown already applies the hard Retry-After ceiling.
             // Never re-introduce an untrusted raw hint after policy validation.
-            const ttl = quotaHit ? quotaCooldownTTL(error) : cooldown.ttl;
+            const ttl = gone ? gone.ttl : quotaHit ? quotaCooldownTTL(error) : cooldown.ttl;
             if (quotaHit) quotaRetryAfter = Math.max(quotaRetryAfter, ttl);
-            try { await env.KV_MEMORY.put(cooldownKey, quotaHit ? "quota" : "1", { expirationTtl: ttl }); } catch {}
+            try { await markCooldown(env, candidate.id, ttl); } catch {
+              return json({ success: false, error: "Servis privremenih ograničenja je nedostupan." }, 503, corsHeaders(origin));
+            }
             console.info("CEOAI_DIAG provider_failover", JSON.stringify({
               from: candidate.id,
               reason: quotaHit ? "quota_exhausted" : cooldown.reason,
