@@ -35,7 +35,7 @@ import { SpiderJobLedgerDO } from "./src/durable-objects/spider-job-ledger-do.mj
 import { createAppMemoryStore } from "./src/v5-modules/app-memory.mjs";
 import { createCapabilityRegistry } from "./src/agent/capability-registry.mjs";
 import { createCloudflareCapabilityAuthority } from "./src/agent/cloudflare-capability-authority.mjs";
-import { loadVerifiedCapabilityGrants, verifyCapabilityApproval } from "./src/agent/capability-grants.mjs";
+import { createApprovalVerifier, loadVerifiedCapabilityGrants } from "./src/agent/capability-grants.mjs";
 const handleSpiderQueue = createSpiderQueueHandler();
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
@@ -1280,7 +1280,7 @@ async function createRequestAgentSystem(env, maxAgents, capabilityContext) {
   const capabilityRegistry = createCapabilityRegistry({
     grants,
     authority,
-    verifyApproval: (token, expected) => verifyCapabilityApproval(token, env.CAPABILITY_GRANT_SIGNING_KEY, expected),
+    verifyApproval: createApprovalVerifier(env),
   });
   return createBuiltinAgentSystem({
     toolRegistry,

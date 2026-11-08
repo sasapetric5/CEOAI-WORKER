@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createCapabilityRegistry } from "../src/agent/capability-registry.mjs";
 import { signCapabilityApproval, verifyCapabilityApproval } from "../src/agent/capability-grants.mjs";
-const grant=(subjectType,subjectId,extra={})=>({subjectType,subjectId,appId:"rankgeo",capabilityId:"web_search",operations:["execute"],resourceScopes:[],maxCalls:3,expiresAt:0,approvalRequired:false,...extra});
+const grant=(subjectType,subjectId,extra={})=>({subjectType,subjectId,appId:"rankgeo",capabilityId:"web_search",operations:["execute"],resourceScopes:["*"],maxCalls:3,expiresAt:0,approvalRequired:false,...extra});
 const base=()=>[grant("app","rankgeo"),grant("caller","user_1"),grant("agent","seo_agent"),grant("skill","seo_audit")];
 const request={appId:"rankgeo",callerId:"user_1",agentId:"seo_agent",skillId:"seo_audit",toolId:"web_search"};
 const approval={approvalId:"approval_1234567890",signature:"trusted"};
