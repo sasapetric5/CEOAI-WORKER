@@ -189,15 +189,17 @@ export class SpiderJobLedgerDO {
       if (existing.appId !== "GLOBAL" || existing.date !== input.date) return { ok: false, code: "QUOTA_DATE_MISMATCH" };
       const appCounts = existing.appCounts && typeof existing.appCounts === "object" ? existing.appCounts : {};
       const appJobIds = existing.appJobIds && typeof existing.appJobIds === "object" ? existing.appJobIds : {};
-      const globalJobIds = Array.isArray(existing.jobIds) ? existing.jobIds.filter(key => String(key).includes(":")) : [];
+      const priorJobIds = Array.isArray(existing.jobIds) ? existing.jobIds : [];
+      const globalJobIds = priorJobIds.filter(key => String(key).includes(":"));
+      const legacyJobIds = priorJobIds.filter(key => !String(key).includes(":"));
       const ownIds = Array.isArray(appJobIds[input.quotaAppId]) ? appJobIds[input.quotaAppId] : [];
       const jobKey = input.quotaAppId + ":" + input.id;
-      if (globalJobIds.includes(jobKey) || ownIds.includes(input.id)) return { ok: true, allowed: true, duplicate: true, count: existing.count, appCount: appCounts[input.quotaAppId] || 0 };
+      if (legacyJobIds.includes(input.id) || globalJobIds.includes(jobKey) || ownIds.includes(input.id)) return { ok: true, allowed: true, duplicate: true, count: existing.count, appCount: appCounts[input.quotaAppId] || 0 };
       const globalCount = Number.isSafeInteger(existing.count) && existing.count >= 0 ? existing.count : 0;
       const appCount = Number.isSafeInteger(appCounts[input.quotaAppId]) && appCounts[input.quotaAppId] >= 0 ? appCounts[input.quotaAppId] : 0;
       if (globalCount >= input.globalLimit) return { ok: true, allowed: false, reason: "GLOBAL_DAILY_LIMIT_REACHED", count: globalCount, appCount };
       if (appCount >= input.appLimit) return { ok: true, allowed: false, reason: "APP_DAILY_LIMIT_REACHED", count: globalCount, appCount };
-      const next = { appId: "GLOBAL", date: input.date, count: globalCount + 1, jobIds: [...globalJobIds, jobKey],
+      const next = { appId: "GLOBAL", date: input.date, count: globalCount + 1, jobIds: [...legacyJobIds, ...globalJobIds, jobKey],
         appCounts: { ...appCounts, [input.quotaAppId]: appCount + 1 },
         appJobIds: { ...appJobIds, [input.quotaAppId]: [...ownIds, input.id] } };
       await txn.put("quota", next);
