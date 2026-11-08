@@ -4,14 +4,14 @@ import worker from "../ceoai-index-v5.0.mjs";
 
 const sessionId = "123e4567-e89b-42d3-a456-426614174000";
 
-function request() {
+function request(ip = "203.0.113.10") {
   return new Request("https://ceoai.dev/api/chat", {
     method: "POST",
     headers: {
       "Origin": "https://ceoai.dev",
       "Content-Type": "application/json",
       "Cookie": "ceoai_session=" + sessionId,
-      "CF-Connecting-IP": "203.0.113.10",
+      "CF-Connecting-IP": ip,
     },
     body: JSON.stringify({ prompt: "test request" }),
   });
@@ -54,6 +54,19 @@ test("chat rejects requests when native RATE_LIMITER denies the key", async () =
   assert.equal(response.status, 429);
   assert.equal(response.headers.get("Retry-After"), "60");
   assert.deepEqual(keys, ["203.0.113.10"]);
+});
+
+test("IPv6 privacy-address rotation shares one /64 rate-limit bucket", async () => {
+  const { env } = envWithSession();
+  const keys = [];
+  env.RATE_LIMITER = {
+    async limit(input) { keys.push(input.key); return { success: true }; },
+  };
+  const first = await worker.fetch(request("2001:db8:abcd:12::1"), env);
+  const second = await worker.fetch(request("2001:db8:abcd:12:ffff::2"), env);
+  assert.equal(first.status, 503); // the test has no valid session, but rate limiting runs first
+  assert.equal(second.status, 503);
+  assert.deepEqual(keys, ["ipv6-64:2001:0db8:abcd:0012", "ipv6-64:2001:0db8:abcd:0012"]);
 });
 
 test("chat fails closed when native RATE_LIMITER throws", async () => {

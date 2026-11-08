@@ -1099,7 +1099,25 @@ async function enrichWithSearchFailover(env, prompt) {
 }
 
 
+function normalizeClientIpForRateLimit(value) {
+  const ip = String(value || "").trim().toLowerCase();
+  if (!ip.includes(":")) return ip;
+  const address = ip.split("%", 1)[0];
+  if (address.includes(".")) return "ipv6-mapped:" + address;
+  const parts = address.split("::");
+  if (parts.length > 2) return ip;
+  const left = parts[0] ? parts[0].split(":") : [];
+  const right = parts.length === 2 && parts[1] ? parts[1].split(":") : [];
+  const missing = 8 - left.length - right.length;
+  if (missing < 0 || (parts.length === 1 && missing !== 0)) return ip;
+  const groups = [...left, ...Array(missing).fill("0"), ...right];
+  if (groups.length !== 8 || groups.some(group => !/^[0-9a-f]{1,4}$/.test(group))) return ip;
+  // Group IPv6 clients by /64 so privacy-address rotation cannot bypass per-client limits.
+  return "ipv6-64:" + groups.slice(0, 4).map(group => group.padStart(4, "0")).join(":");
+}
+
 async function enforceRateLimit(env, ip, now) {
+  ip = normalizeClientIpForRateLimit(ip);
   // If the native limiter is configured, treat it as authoritative and avoid duplicate KV work.
   if (env.RATE_LIMITER && typeof env.RATE_LIMITER.limit === "function") {
     const result = await env.RATE_LIMITER.limit({ key: ip });
@@ -1599,7 +1617,7 @@ export default {
           return new Response("Session service unavailable.", { status: 503, headers: { "Cache-Control": "no-store" } });
         }
         try {
-          const limited = await env.RATE_LIMITER.limit({ key: "session-create:" + clientIp });
+          const limited = await env.RATE_LIMITER.limit({ key: "session-create:" + normalizeClientIpForRateLimit(clientIp) });
           if (!limited?.success) return new Response("Too many requests.", { status: 429, headers: { "Retry-After": "60", "Cache-Control": "no-store" } });
         } catch {
           return new Response("Session service unavailable.", { status: 503, headers: { "Cache-Control": "no-store" } });
