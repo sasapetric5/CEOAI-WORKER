@@ -15,6 +15,7 @@ const ID=/^[a-z][a-z0-9_]{0,47}$/;
 const APP=/^[a-z][a-z0-9_-]{0,47}$/;
 const PRINCIPAL=/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 const APPROVAL=/^[A-Za-z0-9_-]{16,128}$/;
+const KEY=/^[A-Za-z0-9:._-]{1,256}$/;
 const OP=/^[a-z][a-z0-9:_-]{0,63}$/;
 const plain=v=>v!==null&&typeof v==="object"&&!Array.isArray(v)&&(Object.getPrototypeOf(v)===Object.prototype||Object.getPrototypeOf(v)===null);
 const SUBJECTS=new Set(["app","caller","agent","skill"]);

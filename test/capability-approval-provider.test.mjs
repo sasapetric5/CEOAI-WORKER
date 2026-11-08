@@ -5,7 +5,7 @@ const payload={approvalId:"approval_123456789012",appId:"rankgeo",callerId:"call
 const token={version:2,payload,signature:"A".repeat(86)};
 test("approval provider selects only an exact match across every signed call claim",async()=>{
  const provider=createCapabilityApprovalProvider([token]);
- assert.deepEqual(await provider({...payload,effectKey:"run:1:web_search"}),token);
+ assert.deepEqual(await provider({...payload,effectKey:payload.effectKey}),token);
  for(const key of ["appId","callerId","agentId","skillId","toolId","operation","resource","argumentsDigest","effectKey"]){
   assert.equal(await provider({...payload,[key]:key==="argumentsDigest"?"b".repeat(64):"different"}),null,key);
  }
