@@ -30,7 +30,7 @@ export class SpiderJobLedgerDO {
     if (!plain(input)) return fail("INVALID_REQUEST");
 
     try {
-      if ((path.startsWith("/job/") || path === "/quota/claim") && !APP_ID.test(input.appId || "")) return fail("INVALID_APP_ID");
+      if ((path.startsWith("/job/") || path === "/quota/claim" || path === "/quota/claim-combined") && !APP_ID.test(input.appId || "")) return fail("INVALID_APP_ID");
       if (path === "/job/claim-start") return await this.claimStart(input);
       if (path === "/job/get") return await this.getJob(input);
       if (path === "/job/mark-running") return await this.markRunning(input);
@@ -38,6 +38,7 @@ export class SpiderJobLedgerDO {
       if (path === "/job/mark-failed") return await this.markFailed(input);
       if (path === "/job/mark-complete") return await this.markComplete(input);
       if (path === "/quota/claim") return await this.claimQuota(input);
+      if (path === "/quota/claim-combined") return await this.claimCombinedQuota(input);
       return fail("NOT_FOUND", 404);
     } catch {
       return fail("LEDGER_UNAVAILABLE", 503);
@@ -174,6 +175,37 @@ export class SpiderJobLedgerDO {
     return json(result);
   }
 
+  async claimCombinedQuota(input) {
+    const appLimits = { "CONTENTCRAFT-APP": 3, "AIFORCE-APP": 2, "RANKGEO-APP": 2 };
+    if (input.appId !== "GLOBAL" || !Object.hasOwn(appLimits, input.quotaAppId) ||
+        typeof input.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(input.date) ||
+        !JOB_ID.test(input.id || "") || input.appLimit !== appLimits[input.quotaAppId] ||
+        input.globalLimit !== 5 || !Number.isSafeInteger(input.now) || input.now < 0 ||
+        Object.keys(input).some(key => !["appId", "quotaAppId", "date", "id", "appLimit", "globalLimit", "now"].includes(key))) {
+      return fail("INVALID_QUOTA_REQUEST");
+    }
+    const result = await this.ctx.storage.transaction(async txn => {
+      const existing = await txn.get("quota") || { appId: "GLOBAL", date: input.date, count: 0, jobIds: [] };
+      if (existing.appId !== "GLOBAL" || existing.date !== input.date) return { ok: false, code: "QUOTA_DATE_MISMATCH" };
+      const appCounts = existing.appCounts && typeof existing.appCounts === "object" ? existing.appCounts : {};
+      const appJobIds = existing.appJobIds && typeof existing.appJobIds === "object" ? existing.appJobIds : {};
+      const globalJobIds = Array.isArray(existing.jobIds) ? existing.jobIds.filter(key => String(key).includes(":")) : [];
+      const ownIds = Array.isArray(appJobIds[input.quotaAppId]) ? appJobIds[input.quotaAppId] : [];
+      const jobKey = input.quotaAppId + ":" + input.id;
+      if (globalJobIds.includes(jobKey) || ownIds.includes(input.id)) return { ok: true, allowed: true, duplicate: true, count: existing.count, appCount: appCounts[input.quotaAppId] || 0 };
+      const globalCount = Number.isSafeInteger(existing.count) && existing.count >= 0 ? existing.count : 0;
+      const appCount = Number.isSafeInteger(appCounts[input.quotaAppId]) && appCounts[input.quotaAppId] >= 0 ? appCounts[input.quotaAppId] : 0;
+      if (globalCount >= input.globalLimit) return { ok: true, allowed: false, reason: "GLOBAL_DAILY_LIMIT_REACHED", count: globalCount, appCount };
+      if (appCount >= input.appLimit) return { ok: true, allowed: false, reason: "APP_DAILY_LIMIT_REACHED", count: globalCount, appCount };
+      const next = { appId: "GLOBAL", date: input.date, count: globalCount + 1, jobIds: [...globalJobIds, jobKey],
+        appCounts: { ...appCounts, [input.quotaAppId]: appCount + 1 },
+        appJobIds: { ...appJobIds, [input.quotaAppId]: [...ownIds, input.id] } };
+      await txn.put("quota", next);
+      return { ok: true, allowed: true, duplicate: false, count: next.count, appCount: appCount + 1 };
+    });
+    if (result.ok) await this.ctx.storage.setAlarm(input.now + QUOTA_TTL_MS);
+    return json(result);
+  }
   async alarm() {
     await this.ctx.storage.deleteAll();
   }
