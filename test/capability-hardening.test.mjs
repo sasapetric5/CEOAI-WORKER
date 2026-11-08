@@ -134,7 +134,7 @@ test("registry: empty scopes no longer mean 'any resource'; legacy needs an expl
 });
 
 test("registry: scope matching and traversal resources", () => {
-  const r = createCapabilityRegistry({ grants: layers({ resourceScopes: ["blog/*", "docs"] }), now: () => NOW });
+  const r = createCapabilityRegistry({ grants: layers({ resourceScopes: ["blog/*", "docs/*"] }), now: () => NOW });
   assert.equal(r.resolve(ctx({ resource: "blog/x/y" })).ok, true);
   assert.equal(r.resolve(ctx({ resource: "docs" })).ok, true);
   assert.equal(r.resolve(ctx({ resource: "docs/a" })).ok, true);
