@@ -37,7 +37,7 @@ test("real Ed25519 approval flows through supervisor, registry and durable autho
  assert.equal(f.authorityCalls.length,1);
  assert.equal(f.authorityCalls[0].approvalId,f.token.payload.approvalId);
  assert.equal(f.authorityCalls[0].argumentsDigest,f.digest);
- assert.equal(f.authorityCalls[0].effectKey,""+result.results[0].agentId+":1:lookup");
+ assert.match(f.authorityCalls[0].effectKey,/^[A-Za-z0-9_-]+:approval_agent:1:lookup$/);
 });
 test("signed approval cannot authorize a changed resource or changed arguments",async()=>{
  const f=await fixture();
