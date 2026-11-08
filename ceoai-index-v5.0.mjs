@@ -326,6 +326,7 @@ function validMistralModel(value) {
 }
 
 function buildProviderPool(env) {
+  const freeOnly = env.CEOAI_FREE_ONLY !== "false";
   const configuredComplexModel = typeof env.OPENROUTER_COMPLEX_MODEL === "string"
     ? env.OPENROUTER_COMPLEX_MODEL.trim() : "";
   if (configuredComplexModel && !(typeof (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY) === "string" && (env.OPENROUTER_API_KEY || env.OPENROUTER_KEY).trim()) && !warnedOpenRouterModelWithoutKey) {
@@ -377,7 +378,22 @@ function buildProviderPool(env) {
       ? [{ id: "hf-1", provider: "huggingface", model: hfModel, key: env.HF_TOKEN, tier: "fast" }]
       : []),
   ].filter(p => p.provider === "workers-ai" ? p.enabled : (typeof p.key === "string" && p.key.trim()));
-  return pool;
+  if (!freeOnly) return pool;
+  // Chat and agent paths share the same explicit free-tier allowlist. Credentials alone never imply free usage.
+  return pool.filter(candidate => {
+    if (candidate.provider === "workers-ai") return env.WORKERS_AI_ENABLED === "true" && env.WORKERS_AI_FREE_CONFIRMED === "true";
+    if (candidate.provider === "gemini") return env.GEMINI_FREE_CONFIRMED === "true";
+    if (candidate.provider === "openrouter") return env.OPENROUTER_FREE_CONFIRMED === "true" &&
+      /:free$/i.test(candidate.model) && candidate.id !== "openrouter-complex";
+    if (candidate.provider === "glm-flash") return env.ZAI_GLM_FLASH_FREE_CONFIRMED === "true";
+    if (candidate.provider === "deepseek") return env.DEEPSEEK_FREE_CONFIRMED === "true";
+    if (candidate.provider === "mistral") return env.MISTRAL_FREE_CONFIRMED === "true";
+    if (candidate.provider === "xai") return env.XAI_FREE_CONFIRMED === "true";
+    if (candidate.provider === "nvidia") return env.NVIDIA_FREE_CONFIRMED === "true";
+    if (candidate.provider === "huggingface") return env.HF_FREE_CONFIRMED === "true";
+    return false;
+  });
+
 }
 
 async function withTimeoutFetch(url, options, timeoutMs = PROVIDER_TIMEOUT_MS) {
