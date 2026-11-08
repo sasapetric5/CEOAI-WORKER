@@ -9,7 +9,7 @@
 //    created per request, so these reset every request. Durable quotas and single-use approvals exist ONLY in authorize().
 //  - resolve() cannot honour approvals from an async verifier (a Promise is never === true): approval-required
 //    tools are always denied there. Use authorize().
-import { isSafeResource } from "./capability-grants.mjs";
+import { isSafeResource, isSafeResourceScope } from "./capability-grants.mjs";
 
 const ID=/^[a-z][a-z0-9_]{0,47}$/;
 const APP=/^[a-z][a-z0-9_-]{0,47}$/;
@@ -35,7 +35,7 @@ export function createCapabilityRegistry({grants=[],audit=null,now=()=>Date.now(
   if(!SUBJECTS.has(subjectType)||typeof subjectId!=="string"||!(subjectType==="app"?APP:subjectType==="caller"?PRINCIPAL:ID).test(subjectId))throw new TypeError("INVALID_CAPABILITY_SUBJECT");
   if(typeof appId!=="string"||!APP.test(appId)||typeof capabilityId!=="string"||!ID.test(capabilityId))throw new TypeError("INVALID_CAPABILITY_ID");
   if(!Array.isArray(operations)||!operations.length||operations.length>16||operations.some(x=>typeof x!=="string"||!OP.test(x))||new Set(operations).size!==operations.length)throw new TypeError("INVALID_CAPABILITY_OPERATIONS");
-  if(!Array.isArray(resourceScopes)||resourceScopes.length>32||resourceScopes.some(x=>typeof x!=="string"||!x.trim()||x.length>256)||new Set(resourceScopes).size!==resourceScopes.length)throw new TypeError("INVALID_CAPABILITY_SCOPES");
+  if(!Array.isArray(resourceScopes)||resourceScopes.length>32||resourceScopes.some(x=>!isSafeResourceScope(x))||new Set(resourceScopes).size!==resourceScopes.length)throw new TypeError("INVALID_CAPABILITY_SCOPES");
   if(!Number.isSafeInteger(maxCalls)||maxCalls<1||maxCalls>10000||!Number.isSafeInteger(expiresAt)||expiresAt<0||(expiresAt!==0&&expiresAt-now()>MAX_TTL)||typeof approvalRequired!=="boolean")throw new TypeError("INVALID_CAPABILITY_LIMITS");
   const key=[subjectType,subjectId,appId,capabilityId].join(":");
   if(entries.has(key))throw new TypeError("DUPLICATE_CAPABILITY_GRANT");
@@ -47,7 +47,7 @@ export function createCapabilityRegistry({grants=[],audit=null,now=()=>Date.now(
   if(!grant||(grant.expiresAt!==0&&grant.expiresAt<=now())||!grant.operations.includes(operation))return null;
   if(!grant.resourceScopes.length){
    if(!allowUnscopedGrants)return null;
-  }else if(!grant.resourceScopes.some(scope=>scope.endsWith("*")?resource.startsWith(scope.slice(0,-1)):(resource===scope||resource.startsWith(scope+"/"))))return null;
+  }else if(!grant.resourceScopes.some(scope=>{const base=scope.endsWith("/*")?scope.slice(0,-2):scope;return resource===base||resource.startsWith(base+"/");}))return null;
   return grant;
  }
  const validRequest=({appId,callerId,agentId,skillId,toolId,operation,resource})=>

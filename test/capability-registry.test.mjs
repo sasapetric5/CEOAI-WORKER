@@ -2,9 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createCapabilityRegistry } from "../src/agent/capability-registry.mjs";
 import { signCapabilityApproval, verifyCapabilityApproval } from "../src/agent/capability-grants.mjs";
-const grant=(subjectType,subjectId,extra={})=>({subjectType,subjectId,appId:"rankgeo",capabilityId:"web_search",operations:["execute"],resourceScopes:["*"],maxCalls:3,expiresAt:0,approvalRequired:false,...extra});
+const grant=(subjectType,subjectId,extra={})=>({subjectType,subjectId,appId:"rankgeo",capabilityId:"web_search",operations:["execute"],resourceScopes:["site:example.com"],maxCalls:3,expiresAt:0,approvalRequired:false,...extra});
 const base=()=>[grant("app","rankgeo"),grant("caller","user_1"),grant("agent","seo_agent"),grant("skill","seo_audit")];
-const request={appId:"rankgeo",callerId:"user_1",agentId:"seo_agent",skillId:"seo_audit",toolId:"web_search"};
+const request={appId:"rankgeo",callerId:"user_1",agentId:"seo_agent",skillId:"seo_audit",toolId:"web_search",resource:"site:example.com"};
 const approval={approvalId:"approval_1234567890",signature:"trusted"};
 test("all four registry layers must grant the capability",()=>{
  const r=createCapabilityRegistry({grants:base()});
@@ -112,4 +112,16 @@ test("durable authorization awaits server-signed approval and binds it to the ex
  assert.equal((await registry.authorize({...request,resource:"site:evil.example",argumentsDigest:"a".repeat(64),approval:signed})).code,"CAPABILITY_APPROVAL_REQUIRED");
  assert.equal((await registry.authorize({...request,resource:"site:example.com",argumentsDigest:"b".repeat(64),approval:signed})).code,"CAPABILITY_APPROVAL_REQUIRED");
  assert.equal(calls.length,1);
+});
+
+ 
+test("unbounded and malformed wildcard resource scopes are rejected",()=>{
+ assert.throws(()=>createCapabilityRegistry({grants:base().map(g=>({...g,resourceScopes:["*"]}))}),/INVALID_CAPABILITY_SCOPES/);
+ assert.throws(()=>createCapabilityRegistry({grants:base().map(g=>({...g,resourceScopes:["site:*"]}))}),/INVALID_CAPABILITY_SCOPES/);
+});
+ 
+test("explicit descendant wildcard is boundary-aware",()=>{
+ const r=createCapabilityRegistry({grants:base().map(g=>({...g,resourceScopes:["site:example.com/*"]}))});
+ assert.equal(r.resolve({...request,resource:"site:example.com/page"}).ok,true);
+ assert.equal(r.resolve({...request,resource:"site:example.com.evil/page"}).code,"CAPABILITY_NOT_GRANTED");
 });

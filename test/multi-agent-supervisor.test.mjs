@@ -191,14 +191,14 @@ test("supervisor enforces four-layer capability grants at the exact tool call", 
  const agentLoop=createAgentLoop({toolRegistry,skillRegistry,maxSteps:2,maxToolCalls:1});
  const grants=["app","caller","agent","skill"].map(subjectType=>({
   subjectType,subjectId:({app:"rankgeo",caller:"user_1",agent:"capability_agent",skill:"capability_skill"})[subjectType],
-  appId:"rankgeo",capabilityId:"lookup",operations:["execute"],resourceScopes:["*"],maxCalls:1,expiresAt:0,approvalRequired:false
+  appId:"rankgeo",capabilityId:"lookup",operations:["execute"],resourceScopes:["site:example.com"],maxCalls:1,expiresAt:0,approvalRequired:false
  }));
  const planAgent=async({context})=>context.step===1?{type:"tool",toolId:"lookup",arguments:{term:"proof"}}:{type:"final",output:"done"};
- const denied=createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoop,capabilityRegistry:createCapabilityRegistry({grants:grants.filter(g=>g.subjectType!=="caller")}),capabilityContext:{appId:"rankgeo",callerId:"user_1"},maxAgents:1,maxToolCalls:1});
+ const denied=createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoop,capabilityRegistry:createCapabilityRegistry({grants:grants.filter(g=>g.subjectType!=="caller")}),capabilityContext:{appId:"rankgeo",callerId:"user_1",resource:"site:example.com"},maxAgents:1,maxToolCalls:1});
  const deniedResult=await denied.run({task:"capability audit",allowedToolIds:["lookup"],allowToolExecution:true,capabilityContext:{appId:"contentcraft",callerId:"attacker"},planAgent});
  assert.equal(deniedResult.results[0].code,"CAPABILITY_NOT_GRANTED");
  assert.equal(calls,0);
- const allowed=createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoop,capabilityRegistry:createCapabilityRegistry({grants}),capabilityContext:{appId:"rankgeo",callerId:"user_1"},maxAgents:1,maxToolCalls:1});
+ const allowed=createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoop,capabilityRegistry:createCapabilityRegistry({grants}),capabilityContext:{appId:"rankgeo",callerId:"user_1",resource:"site:example.com"},maxAgents:1,maxToolCalls:1});
  const allowedResult=await allowed.run({task:"capability audit",allowedToolIds:["lookup"],allowToolExecution:true,capabilityContext:{appId:"contentcraft",callerId:"attacker"},planAgent});
  assert.equal(allowedResult.ok,true);
  assert.equal(calls,1);
@@ -231,8 +231,8 @@ test("production supervisor requires durable authority and ignores caller-suppli
  const agentRegistry=createAgentRegistry({agents:[agent],skillRegistry,toolRegistry});
  const agentLoop=createAgentLoop({toolRegistry,skillRegistry,maxSteps:2,maxToolCalls:1});
  const grants=["app","caller","agent","skill"].map(subjectType=>({subjectType,subjectId:({app:"rankgeo",caller:"user_1",agent:"durable_agent",skill:"durable_skill"})[subjectType],appId:"rankgeo",capabilityId:"lookup",operations:["execute"],resourceScopes:[],maxCalls:1,expiresAt:0,approvalRequired:false}));
- const supervisor=createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoop,capabilityRegistry:createCapabilityRegistry({grants}),capabilityContext:{appId:"rankgeo",callerId:"user_1"},requireDurableAuthority:true,maxAgents:1,maxToolCalls:1});
- const result=await supervisor.run({task:"durable capability test",allowedToolIds:["lookup"],allowToolExecution:true,capabilityContext:{appId:"rankgeo",callerId:"user_1"},planAgent:async({context})=>context.step===1?{type:"tool",toolId:"lookup",arguments:{term:"x"}}:{type:"final",output:"unexpected"}});
+ const supervisor=createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoop,capabilityRegistry:createCapabilityRegistry({grants}),capabilityContext:{appId:"rankgeo",callerId:"user_1",resource:"site:example.com"},requireDurableAuthority:true,maxAgents:1,maxToolCalls:1});
+ const result=await supervisor.run({task:"durable capability test",allowedToolIds:["lookup"],allowToolExecution:true,capabilityContext:{appId:"rankgeo",callerId:"user_1",resource:"site:example.com"},planAgent:async({context})=>context.step===1?{type:"tool",toolId:"lookup",arguments:{term:"x"}}:{type:"final",output:"unexpected"}});
  assert.equal(result.results[0].code,"CAPABILITY_AUTHORITY_REQUIRED");
  assert.equal(calls,0);
 });

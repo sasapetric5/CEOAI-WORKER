@@ -31,11 +31,10 @@ export function isSafeResource(s){
  return typeof s==="string"&&s.length>0&&s.length<=512&&s===s.trim()&&
   !/[\u0000-\u001f\u007f\\]/.test(s)&&!/(^|\/)\.{1,2}(\/|$)/.test(s)&&!/%(?:25)*(?:2e|2f|5c)/i.test(s);
 }
-function isSafeScope(x){
+export function isSafeResourceScope(x){
  if(typeof x!=="string"||!x.trim()||x.length>256)return false;
- if(x==="*")return true;
- const base=x.endsWith("*")?x.slice(0,-1):x;
- return base.length>0&&isSafeResource(base);
+ if(x.endsWith("/*"))return isSafeResource(x.slice(0,-2));
+ return !x.includes("*")&&isSafeResource(x);
 }
 
 function canonicalGrant(p){
@@ -48,7 +47,7 @@ function structureOk(payload){
  if(!SUBJECTS.has(subjectType)||typeof subjectId!=="string"||!(subjectType==="app"?APP:subjectType==="caller"?PRINCIPAL:ID).test(subjectId))return false;
  if(typeof appId!=="string"||!APP.test(appId)||typeof capabilityId!=="string"||!ID.test(capabilityId))return false;
  if(!Array.isArray(operations)||!operations.length||operations.length>16||operations.some(x=>typeof x!=="string"||!OP.test(x))||new Set(operations).size!==operations.length)return false;
- if(!Array.isArray(resourceScopes)||!resourceScopes.length||resourceScopes.length>32||resourceScopes.some(x=>!isSafeScope(x))||new Set(resourceScopes).size!==resourceScopes.length)return false;
+ if(!Array.isArray(resourceScopes)||!resourceScopes.length||resourceScopes.length>32||resourceScopes.some(x=>!isSafeResourceScope(x))||new Set(resourceScopes).size!==resourceScopes.length)return false;
  return Number.isSafeInteger(maxCalls)&&maxCalls>=1&&maxCalls<=10000&&Number.isSafeInteger(expiresAt)&&expiresAt>0&&typeof approvalRequired==="boolean";
 }
 const timeOk=(p,now)=>p.expiresAt>now&&p.expiresAt-now<=MAX_TTL;
