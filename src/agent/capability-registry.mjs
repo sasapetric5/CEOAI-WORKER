@@ -48,7 +48,7 @@ export function createCapabilityRegistry({grants=[],audit=null,now=()=>Date.now(
   const approvalRequired=found.some(g=>g.approvalRequired);
   if(approvalRequired){
    if(!plain(approval)||typeof approval.approvalId!=="string"||!APPROVAL.test(approval.approvalId)||usedApprovals.has(approval.approvalId)||!verifyApproval)return {ok:false,code:"CAPABILITY_APPROVAL_REQUIRED"};
-   let verified=false;try{verified=verifyApproval(approval,{appId,callerId,agentId,skillId,toolId,operation,resource,argumentsDigest})===true;}catch{}
+   let verified=false;try{verified=verifyApproval(approval,{appId,callerId,agentId,skillId,toolId,operation,resource})===true;}catch{}
    if(!verified)return {ok:false,code:"CAPABILITY_APPROVAL_REQUIRED"};
   }
   usage.set(key,used+1);
