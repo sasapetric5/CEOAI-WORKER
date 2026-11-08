@@ -25,7 +25,7 @@ const makeEnv = (overrides = {}) => ({
   ...overrides,
 });
 const getSession = async (env, origin = 'https://ceoai.dev') => {
-  const response = await worker.fetch(new Request(origin + '/', { headers: { Origin: origin } }), env);
+  const response = await worker.fetch(new Request(origin + '/', { headers: { Origin: origin, 'CF-Connecting-IP': '198.51.100.22' } }), env);
   assert.equal(response.status, 200);
   return { response, cookie: response.headers.get('Set-Cookie')?.split(';')[0] };
 };
@@ -38,6 +38,17 @@ const apiRequest = (cookie, body, overrides = {}) => new Request('https://ceoai.
 // 1–7: root, security headers, nonce, cookie, and default origin policy.
 const env = makeEnv();
 const { response: root, cookie } = await getSession(env);
+// A rejected or unavailable session limiter must prevent the KV session write.
+{
+  const deniedEnv = makeEnv({ RATE_LIMITER: { async limit({ key }) { assert.equal(key, 'session-create:203.0.113.9'); return { success: false }; } } });
+  const denied = await worker.fetch(new Request('https://ceoai.dev/', { headers: { Origin: 'https://ceoai.dev', 'CF-Connecting-IP': '203.0.113.9' } }), deniedEnv);
+  assert.equal(denied.status, 429);
+  assert.equal(deniedEnv.KV_MEMORY.data.size, 0);
+  const unavailableEnv = makeEnv({ RATE_LIMITER: undefined });
+  const unavailable = await worker.fetch(new Request('https://ceoai.dev/', { headers: { Origin: 'https://ceoai.dev', 'CF-Connecting-IP': '203.0.113.10' } }), unavailableEnv);
+  assert.equal(unavailable.status, 503);
+  assert.equal(unavailableEnv.KV_MEMORY.data.size, 0);
+}
 assert.match(root.headers.get('Content-Security-Policy') || '', /script-src 'nonce-[a-f0-9]+'/i);
 assert.match(root.headers.get('Content-Security-Policy') || '', /style-src 'nonce-[a-f0-9]+'/i);
 assert.doesNotMatch(root.headers.get('Content-Security-Policy') || '', /unsafe-inline/);

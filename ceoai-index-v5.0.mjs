@@ -1478,6 +1478,17 @@ export default {
         "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
       });
       if (!existing) {
+        // A new session consumes a KV write. Rate-limit creation before generating or storing it.
+        const clientIp = request.headers.get("CF-Connecting-IP");
+        if (!clientIp || !env.RATE_LIMITER || typeof env.RATE_LIMITER.limit !== "function") {
+          return new Response("Session service unavailable.", { status: 503, headers: { "Cache-Control": "no-store" } });
+        }
+        try {
+          const limited = await env.RATE_LIMITER.limit({ key: "session-create:" + clientIp });
+          if (!limited?.success) return new Response("Too many requests.", { status: 429, headers: { "Retry-After": "60", "Cache-Control": "no-store" } });
+        } catch {
+          return new Response("Session service unavailable.", { status: 503, headers: { "Cache-Control": "no-store" } });
+        }
         sessionId = crypto.randomUUID();
         try {
           await env.KV_MEMORY.put(`session:${sessionId}`, "1", { expirationTtl: SESSION_TTL });
@@ -1501,6 +1512,23 @@ export default {
     }
     if (request.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
       return json({ success: false, error: "Očekuje se JSON zahtev." }, 415, corsHeaders(origin));
+    }
+
+    const ip = request.headers.get("CF-Connecting-IP");
+    if (!ip) {
+      return json({ success: false, error: "Nije moguće proveriti ograničenje zahteva." }, 503, corsHeaders(origin));
+    }
+    try {
+      const allowed = await enforceRateLimit(env, ip, Date.now());
+      if (!allowed) {
+        return json(
+          { success: false, error: "Dostigli ste limit od 20 zahteva u minutu. Pokušajte ponovo za minut." },
+          429,
+          { ...corsHeaders(origin), "Retry-After": String(Math.ceil(RATE_WINDOW_MS / 1000)) }
+        );
+      }
+    } catch {
+      return json({ success: false, error: "Zaštita od preopterećenja je privremeno nedostupna." }, 503, corsHeaders(origin));
     }
 
     const sessionId = getCookie(request, "ceoai_session");
@@ -1548,23 +1576,6 @@ export default {
     }
     // Remove configured credentials and labeled secret values before provider use or persistence.
     const safePrompt = redactSensitiveText(prompt.trim(), env, MAX_PROMPT_CHARS);
-
-    const ip = request.headers.get("CF-Connecting-IP");
-    if (!ip) {
-      return json({ success: false, error: "Nije moguće proveriti ograničenje zahteva." }, 503, corsHeaders(origin));
-    }
-    try {
-      const allowed = await enforceRateLimit(env, ip, Date.now());
-      if (!allowed) {
-        return json(
-          { success: false, error: "Dostigli ste limit od 20 zahteva u minutu. Pokušajte ponovo za minut." },
-          429,
-          { ...corsHeaders(origin), "Retry-After": String(Math.ceil(RATE_WINDOW_MS / 1000)) }
-        );
-      }
-    } catch {
-      return json({ success: false, error: "Zaštita od preopterećenja je privremeno nedostupna." }, 503, corsHeaders(origin));
-    }
 
     // External AI is enabled by the owner-controlled AI_ENABLED switch; credentials select provider candidates.
     if (env.AI_ENABLED !== "true") {
