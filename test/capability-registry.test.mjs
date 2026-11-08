@@ -109,7 +109,7 @@ test("durable authorization awaits server-signed approval and binds it to the ex
  assert.equal((await registry.authorize({...request,resource:"site:example.com",argumentsDigest:"a".repeat(64),approval:signed})).ok,true);
  assert.equal(calls.length,1);
  assert.equal(calls[0].approvalId,"approval_server_1234567890");
- assert.equal((await registry.authorize({...request,resource:"site:evil.example",argumentsDigest:"a".repeat(64),approval:signed})).code,"CAPABILITY_APPROVAL_REQUIRED");
+ assert.equal((await registry.authorize({...request,resource:"site:evil.example",argumentsDigest:"a".repeat(64),approval:signed})).code,"CAPABILITY_NOT_GRANTED");
  assert.equal((await registry.authorize({...request,resource:"site:example.com",argumentsDigest:"b".repeat(64),approval:signed})).code,"CAPABILITY_APPROVAL_REQUIRED");
  assert.equal(calls.length,1);
 });
