@@ -15,17 +15,29 @@ export class CapabilityAuthorityDO {
   if(request.method!=="POST")return json({ok:false,code:"METHOD_NOT_ALLOWED"},405);
   if(new URL(request.url).pathname!=="/authorize")return json({ok:false,code:"NOT_FOUND"},404);
   let body;try{const raw=await request.text();if(new TextEncoder().encode(raw).byteLength>4096)return json({ok:false,code:"REQUEST_TOO_LARGE"},413);body=JSON.parse(raw);}catch{return json({ok:false,code:"INVALID_JSON"},400);}
-  const allowed=["appId","callerId","agentId","skillId","toolId","operation","resource","maxCalls","approvalId"];
-  if(!plain(body)||Object.keys(body).some(k=>!allowed.includes(k))||Object.keys(body).length!==9||
+  const allowed=["appId","callerId","agentId","skillId","toolId","operation","resource","maxCalls","approvalId","argumentsDigest","effectKey"];
+  if(!plain(body)||Object.keys(body).some(k=>!allowed.includes(k))||(Object.keys(body).length<9||Object.keys(body).length>11)||
    typeof body.appId!=="string"||!APP.test(body.appId)||typeof body.callerId!=="string"||!PRINCIPAL.test(body.callerId)||
    typeof body.agentId!=="string"||!CAPABILITY.test(body.agentId)||typeof body.skillId!=="string"||!CAPABILITY.test(body.skillId)||
    typeof body.toolId!=="string"||!CAPABILITY.test(body.toolId)||typeof body.operation!=="string"||!OP.test(body.operation)||
    typeof body.resource!=="string"||body.resource.length>512||!Number.isSafeInteger(body.maxCalls)||body.maxCalls<1||body.maxCalls>10000||
-   (body.approvalId!==null&&(typeof body.approvalId!=="string"||!APPROVAL.test(body.approvalId))))return json({ok:false,code:"INVALID_AUTHORITY_REQUEST"},400);
+   (body.approvalId!==null&&(typeof body.approvalId!=="string"||!APPROVAL.test(body.approvalId)))||
+   (body.argumentsDigest!==undefined&&body.argumentsDigest!==null&&(typeof body.argumentsDigest!=="string"||!/^[a-f0-9]{64}$/.test(body.argumentsDigest)))||
+   (body.effectKey!==undefined&&body.effectKey!==null&&(typeof body.effectKey!=="string"||body.effectKey.length>512||!KEY.test(body.effectKey))))return json({ok:false,code:"INVALID_AUTHORITY_REQUEST"},400);
   // Quotas aggregate across resource targets; callers cannot reset limits by changing URLs.
   const quotaKey=[body.appId,body.callerId,body.agentId,body.skillId,body.toolId,body.operation].join("|");
   const result=await this.ctx.storage.transaction(async txn=>{
    const usageKey="usage:"+quotaKey;
+   const effectKey=body.effectKey??null;
+   const fingerprint=JSON.stringify({appId:body.appId,callerId:body.callerId,agentId:body.agentId,skillId:body.skillId,toolId:body.toolId,operation:body.operation,resource:body.resource,maxCalls:body.maxCalls,approvalId:body.approvalId,argumentsDigest:body.argumentsDigest??null});
+   const effectStorageKey=effectKey===null?null:"effect:"+effectKey;
+   if(effectStorageKey){
+    const priorEffect=await txn.get(effectStorageKey);
+    if(priorEffect){
+     if(priorEffect.fingerprint!==fingerprint){await record("denied","IDEMPOTENCY_KEY_CONFLICT");return {ok:false,code:"IDEMPOTENCY_KEY_CONFLICT"};}
+     return {...priorEffect.result,replayed:true};
+    }
+   }
    const used=await txn.get(usageKey)||0;
    const priorAudit=await txn.get("audit")||[];
    const record=async(type,code=null)=>{const next=[...priorAudit,{at:Date.now(),type,code,appId:body.appId,callerId:body.callerId,agentId:body.agentId,skillId:body.skillId,toolId:body.toolId,operation:body.operation}].slice(-MAX_AUDIT);await txn.put("audit",next);};
@@ -38,7 +50,9 @@ export class CapabilityAuthorityDO {
    }
    await txn.put(usageKey,used+1);
    await record("granted");
-   return {ok:true,toolId:body.toolId,operation:body.operation,remaining:body.maxCalls-used-1};
+   const granted={ok:true,toolId:body.toolId,operation:body.operation,remaining:body.maxCalls-used-1};
+   if(effectStorageKey)await txn.put(effectStorageKey,{fingerprint,result:granted,createdAt:Date.now()});
+   return granted;
   });
   return json(result,result.ok?200:result.code==="CAPABILITY_QUOTA_EXCEEDED"||result.code==="CAPABILITY_APPROVAL_REQUIRED"?403:503);
  }

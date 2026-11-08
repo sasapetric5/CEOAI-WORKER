@@ -259,4 +259,6 @@ test("trusted approval provider receives exact canonical tool-argument digest be
  assert.match(providerRequest.argumentsDigest,/^[a-f0-9]{64}$/);
  assert.equal(authorizationRequest.argumentsDigest,providerRequest.argumentsDigest);
  assert.equal(authorizationRequest.approval.payload.approvalId,"approval_server_123456");
+ assert.equal(providerRequest.effectKey,authorizationRequest.effectKey);
+ assert.equal(authorizationRequest.effectKey,authorizationRequest.runId+":1:lookup");
 });

@@ -83,10 +83,12 @@ export function createCapabilityRegistry({grants=[],audit=null,now=()=>Date.now(
   }
   return {ok:true,allowedToolIds,denied};
  }
- async function authorize({appId,callerId,agentId,skillId,toolId,operation="execute",resource="",argumentsDigest=null,approval=null}={}){
+ async function authorize({appId,callerId,agentId,skillId,toolId,operation="execute",resource="",argumentsDigest=null,approval=null,effectKey=null}={}){
   if(!authority||typeof authority.authorize!=="function")return {ok:false,code:"CAPABILITY_AUTHORITY_REQUIRED"};
   const deny=(code,extra={})=>{try{audit?.record({type:"capability_denied",appId,callerId,agentId,skillId,toolId,operation,code,...extra});}catch{}return {ok:false,code};};
   if(!validRequest({appId,callerId,agentId,skillId,toolId,operation,resource}))return deny("INVALID_CAPABILITY_REQUEST");
+  if(argumentsDigest!==null&&(typeof argumentsDigest!=="string"||!/^[a-f0-9]{64}$/.test(argumentsDigest)))return deny("INVALID_CAPABILITY_ARGUMENTS");
+  if(effectKey!==null&&(typeof effectKey!=="string"||effectKey.length>512||!/^[A-Za-z0-9:._-]+$/.test(effectKey)))return deny("INVALID_CAPABILITY_EFFECT_KEY");
   const layers=[["app",appId],["caller",callerId],["agent",agentId],["skill",skillId]];
   const found=layers.map(([type,id])=>grantFor(type,id,appId,toolId,operation,resource));
   if(found.some(x=>!x))return deny("CAPABILITY_NOT_GRANTED");
@@ -101,7 +103,7 @@ export function createCapabilityRegistry({grants=[],audit=null,now=()=>Date.now(
    if(!verified)return deny("CAPABILITY_APPROVAL_REQUIRED");
    approvalId=signedApprovalId;
   }
-  let result;try{result=await authority.authorize({appId,callerId,agentId,skillId,toolId,operation,resource,maxCalls:Math.min(...found.map(g=>g.maxCalls)),approvalId});}
+  let result;try{result=await authority.authorize({appId,callerId,agentId,skillId,toolId,operation,resource,maxCalls:Math.min(...found.map(g=>g.maxCalls)),approvalId,argumentsDigest,effectKey});}
   catch{return deny("CAPABILITY_AUTHORITY_UNAVAILABLE");}
   if(result?.ok!==true){
    const code=result?.ok===false&&typeof result.code==="string"?result.code:(result?.ok===false?"CAPABILITY_AUTHORITY_UNAVAILABLE":"CAPABILITY_AUTHORITY_INVALID_RESPONSE");
