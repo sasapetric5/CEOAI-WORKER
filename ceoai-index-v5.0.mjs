@@ -1154,7 +1154,7 @@ async function compressHistory(env, oldSummary, oldMessages) {
  * Not mapped to an HTTP route. The caller must explicitly approve execution.
  */
 export async function runCEOAIInternalAgentTask(env, { system, task, input = {}, limit = 3, agentIds, allowedToolIds = [], allowToolExecution = false, maxToolCalls = 4, maxModelCalls = 4, synthesize = true, intent = CAPABILITY.reasoning, runId = crypto.randomUUID() } = {}) {
-  if (allowToolExecution !== true) return { ok: false, code: "EXECUTION_NOT_APPROVED", agents: [], results: [] };
+  if (allowToolExecution !== true && Array.isArray(allowedToolIds) && allowedToolIds.length > 0) return { ok: false, code: "EXECUTION_NOT_APPROVED", agents: [], results: [] };
   if (!env || env.AI_ENABLED !== "true") return { ok: false, code: "AI_DISABLED", agents: [], results: [] };
   if (!env.KV_MEMORY) return { ok: false, code: "MEMORY_BINDING_UNAVAILABLE", agents: [], results: [] };
   try {
@@ -1164,7 +1164,7 @@ export async function runCEOAIInternalAgentTask(env, { system, task, input = {},
       intent,
       generateText: (messages, requestedIntent) => runConfiguredProviderCompletion(env, messages, requestedIntent),
     });
-    return await runtime.runTask({ task, input, limit, agentIds, allowedToolIds, allowToolExecution: true, maxToolCalls, synthesize, runId });
+    return await runtime.runTask({ task, input, limit, agentIds, allowedToolIds, allowToolExecution: allowToolExecution === true && allowedToolIds.length > 0, maxToolCalls, synthesize, runId });
   } catch {
     return { ok: false, code: "AGENT_RUNTIME_UNAVAILABLE", agents: [], results: [] };
   }
@@ -1431,7 +1431,7 @@ export default {
         return json({ success: false, error: "Bezbednosna konfiguracija ovlašćenja nije validna.", code: "CAPABILITY_GRANT_CONFIGURATION_INVALID" }, 503);
       }
       const result = await runCEOAIInternalAgentTask(env, {
-        system, task: safeTask, input: agentInput, limit, agentIds: policy.allowedAgentIds, allowedToolIds: [], allowToolExecution: true,
+        system, task: safeTask, input: agentInput, limit, agentIds: policy.allowedAgentIds, allowedToolIds: [], allowToolExecution: false,
         maxToolCalls: 1, maxModelCalls: policy.maxModelCalls, synthesize: true,
         intent, runId: requestId ?? crypto.randomUUID(),
       });

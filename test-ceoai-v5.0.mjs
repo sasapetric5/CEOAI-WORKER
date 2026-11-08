@@ -98,8 +98,7 @@ const disabled = await worker.fetch(apiRequest(cookie, JSON.stringify({prompt:'Z
 assert.equal(disabled.status, 503);
 assert.match((await disabled.json()).error, /AI je isključen/);
 
-// Owner-confirmed credentials activate providers without *_FREE_CONFIRMED gates.
-// Simulated provider failures must trigger failover; no real external request is made.
+// Unconfirmed provider credentials are not eligible for chat. No external request is made.
 {
   const calls = [];
   const original = globalThis.fetch;
@@ -127,8 +126,8 @@ assert.match((await disabled.json()).error, /AI je isključen/);
       policyEnv
     );
     assert.equal(response.status, 503, "all simulated providers are unavailable");
-    assert.match((await response.json()).error, /AI provajderi trenutno nisu dostupni/);
-    assert.ok(calls.length >= 2, "configured providers must be attempted with automatic failover");
+    assert.match((await response.json()).error, /Nema konfigurisanog provajdera/);
+    assert.equal(calls.length, 0, "unconfirmed provider keys must never be called");
   } finally {
     globalThis.fetch = original;
   }
@@ -604,14 +603,14 @@ try {
   const xaiEnv = makeEnv({
     AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true",
     XAI_KEY:"must-not-call",
-    // No free-confirmation flag is required
+    // Gemini is explicitly confirmed; the xAI key alone must not enable xAI.
     GEMINI_KEY_1:"test-gemini",
   });
   const {cookie: xaiCookie} = await getSession(xaiEnv);
   const xaiResponse = await worker.fetch(apiRequest(xaiCookie, JSON.stringify({prompt:"Analiziraj strategiju i trade-off"})), xaiEnv);
   assert.equal(xaiResponse.status, 200);
   assert.equal((await xaiResponse.json()).reply, "Gemini ok");
-  assert.ok(xaiCalls.some(u => u.includes("api.x.ai")), "configured xAI must be attempted without a free-confirmation flag");
+  assert.ok(!xaiCalls.some(u => u.includes("api.x.ai")), "unconfirmed xAI must not be called");
 } finally { globalThis.fetch = originalFetchXai; }
 
 // V5-3: xAI is included when free confirmed and ranks high for reasoning.
@@ -682,7 +681,7 @@ globalThis.fetch = async (url) => {
 try {
   const nvEnv = makeEnv({
     AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true",
-    NVIDIA_KEY:"test-nvidia", DEEPSEEK_KEY:"test-ds",
+    NVIDIA_KEY:"test-nvidia", NVIDIA_FREE_CONFIRMED:"true", DEEPSEEK_KEY:"test-ds",
   });
   const {cookie: nvCookie} = await getSession(nvEnv);
   const nvResponse = await worker.fetch(apiRequest(nvCookie, JSON.stringify({prompt:"Napisи TypeScript klasu sa testovima"})), nvEnv);
@@ -743,13 +742,13 @@ globalThis.fetch = async (url) => {
 try {
   const hfEnv = makeEnv({
     AI_ENABLED:"true", EXTERNAL_AI_ENABLED:"true",
-    HF_TOKEN:"test-hf-token", GEMINI_KEY_1:"test-gemini",
+    HF_TOKEN:"test-hf-token", HF_FREE_CONFIRMED:"true", GEMINI_KEY_1:"test-gemini",
   });
   const {cookie: hfCookie} = await getSession(hfEnv);
   const hfResponse = await worker.fetch(apiRequest(hfCookie, JSON.stringify({prompt:"Zdravo"})), hfEnv);
   assert.equal(hfResponse.status, 200);
   assert.equal((await hfResponse.json()).reply, "Hugging Face preuzeo");
-  assert.ok(hfCalls.some(u => u.includes("huggingface")), "configured Hugging Face must be attempted without a free-confirmation flag");
+  assert.ok(hfCalls.some(u => u.includes("huggingface")), "explicitly confirmed Hugging Face may be attempted");
 } finally { globalThis.fetch = originalFetchHf; }
 
 // V5-9: quota exhaustion on first provider → automatic failover to second.
@@ -1177,7 +1176,7 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
   }
 }
 
-// Cloudflare Workers AI: binding and enable switch activate it without a free-confirmation flag.
+// Cloudflare Workers AI is blocked unless the free tier is explicitly confirmed.
 {
   let calls = 0;
   const original = globalThis.fetch;
@@ -1205,9 +1204,8 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
       apiRequest(cfEnabledCookie, JSON.stringify({ prompt: "Zdravo" })),
       cloudflareEnabledEnv
     );
-    assert.equal(response.status, 200);
-    assert.equal((await response.json()).reply, "Workers AI bez dodatne potvrde");
-    assert.equal(calls, 1, "Workers AI binding must run without free confirmation");
+    assert.equal(response.status, 503);
+    assert.equal(calls, 0, "Workers AI must not run without free confirmation");
   } finally {
     globalThis.fetch = original;
   }
@@ -1899,9 +1897,9 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
     const { cookie } = await getSession(env);
     const response = await worker.fetch(apiRequest(cookie, JSON.stringify({ prompt: "Provera automatskog prelaska provajdera" })), env);
     assert.equal(response.status, 503);
-    assert.match((await response.json()).error, /AI provajderi trenutno nisu dostupni/);
-    assert.ok(externalCalls > 0, "owner-supplied external provider keys must activate the pool");
-    assert.equal(workersAiCalls, 1, "enabled Workers AI binding must be attempted without free confirmation");
+    assert.match((await response.json()).error, /Nema konfigurisanog provajdera/);
+    assert.equal(externalCalls, 0, "unconfirmed external keys must not be called");
+    assert.equal(workersAiCalls, 0, "unconfirmed Workers AI binding must not be called");
   } finally {
     globalThis.fetch = originalFetch;
   }
