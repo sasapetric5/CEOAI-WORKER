@@ -98,8 +98,8 @@ export function createCapabilityRegistry({grants=[],audit=null,now=()=>Date.now(
    // The approval ID lives inside the SIGNED payload. A caller-supplied top-level ID is never trusted;
    // every bound claim (incl. argumentsDigest) is verified before the ID reaches the Durable Object.
    const signedApprovalId=plain(approval)&&plain(approval.payload)?approval.payload.approvalId:null;
-   if(typeof signedApprovalId!=="string"||!APPROVAL.test(signedApprovalId)||typeof argumentsDigest!=="string"||!/^[a-f0-9]{64}$/.test(argumentsDigest)||!verifyApproval)return deny("CAPABILITY_APPROVAL_REQUIRED");
-   let verified=false;try{verified=await verifyApproval(approval,{appId,callerId,agentId,skillId,toolId,operation,resource,argumentsDigest})===true;}catch{}
+   if(typeof signedApprovalId!=="string"||!APPROVAL.test(signedApprovalId)||typeof argumentsDigest!=="string"||!/^[a-f0-9]{64}$/.test(argumentsDigest)||typeof effectKey!=="string"||!KEY.test(effectKey)||!verifyApproval)return deny("CAPABILITY_APPROVAL_REQUIRED");
+   let verified=false;try{verified=await verifyApproval(approval,{appId,callerId,agentId,skillId,toolId,operation,resource,argumentsDigest,effectKey})===true;}catch{}
    if(!verified)return deny("CAPABILITY_APPROVAL_REQUIRED");
    approvalId=signedApprovalId;
   }

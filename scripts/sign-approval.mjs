@@ -2,7 +2,7 @@
 // Owner-side tool. Runs on YOUR machine; the private key never goes into the Worker.
 //   node scripts/sign-approval.mjs --gen                      -> new Ed25519 key pair
 //   APPROVAL_PRIVATE_KEY=<pkcs8 b64url> node scripts/sign-approval.mjs request.json
-// request.json: { appId, callerId, agentId, skillId, toolId, operation, resource, arguments, ttlMinutes? }
+// request.json: { appId, callerId, agentId, skillId, toolId, operation, resource, effectKey, arguments, ttlMinutes? }
 // The approval is bound to exactly these values, including a digest of `arguments`, and lives at most 10 minutes.
 import { readFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
@@ -26,9 +26,11 @@ const payload = {
   appId: r.appId, callerId: r.callerId, agentId: r.agentId, skillId: r.skillId, toolId: r.toolId,
   operation: r.operation ?? "execute", resource: r.resource ?? "",
   argumentsDigest: await hashCapabilityArguments(r.arguments ?? {}),
+  effectKey: r.effectKey,
   expiresAt: Date.now() + ttl * 60_000,
 };
 console.error(`APPROVING: ${payload.toolId}/${payload.operation} on "${payload.resource}" for ${payload.appId}/${payload.agentId}/${payload.skillId}`);
 console.error(`arguments: ${JSON.stringify(r.arguments ?? {})}`);
+console.error(`effect key: ${payload.effectKey}`);
 console.error(`valid ${ttl} min, single use, id ${payload.approvalId}`);
 console.log(JSON.stringify(await signCapabilityApprovalEd25519(payload, priv)));

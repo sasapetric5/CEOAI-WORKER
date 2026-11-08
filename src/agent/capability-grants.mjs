@@ -105,7 +105,7 @@ export async function loadVerifiedCapabilityGrants(env,{now=Date.now()}={}){
 }
 
 // ── arguments digest (unchanged) ──
-const APPROVAL_FIELDS=["approvalId","appId","callerId","agentId","skillId","toolId","operation","resource","argumentsDigest","expiresAt"];
+const APPROVAL_FIELDS=["approvalId","appId","callerId","agentId","skillId","toolId","operation","resource","argumentsDigest","effectKey","expiresAt"];
 function canonicalArguments(value,depth=0){
  if(depth>16)throw new TypeError("CAPABILITY_ARGUMENTS_TOO_DEEP");
  if(value===null||typeof value==="string"||typeof value==="boolean")return JSON.stringify(value);
@@ -139,6 +139,7 @@ function validateApproval(p,now){
   typeof p.toolId==="string"&&ID.test(p.toolId)&&typeof p.operation==="string"&&OP.test(p.operation)&&
   typeof p.resource==="string"&&p.resource.length<=512&&(p.resource===""||isSafeResource(p.resource))&&
   typeof p.argumentsDigest==="string"&&/^[a-f0-9]{64}$/.test(p.argumentsDigest)&&
+  typeof p.effectKey==="string"&&/^[A-Za-z0-9:._-]{1,256}$/.test(p.effectKey)&&
   Number.isSafeInteger(p.expiresAt)&&p.expiresAt>now&&p.expiresAt-now<=10*60*1000;
 }
 const boundFieldsMatch=(p,expected)=>APPROVAL_FIELDS.slice(1,-1).every(k=>p[k]===expected?.[k]);
