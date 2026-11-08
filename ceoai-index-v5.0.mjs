@@ -342,6 +342,18 @@ function chooseIntent(prompt) {
   if (hasMultiStep) return CAPABILITY.complex;
   return CAPABILITY.fast;
 }
+const PROVIDER_CAPABILITIES = {
+  "glm-flash":   { fast: 3, coding: 2, reasoning: 2, research: 1, complex: 2 },
+  "gemini":      { fast: 3, coding: 2, reasoning: 3, research: 2, complex: 3 },
+  "openrouter":  { fast: 2, coding: 2, reasoning: 2, research: 2, complex: 3 },
+  "deepseek":    { fast: 2, coding: 4, reasoning: 3, research: 1, complex: 3 },
+  "mistral":     { fast: 2, coding: 3, reasoning: 2, research: 1, complex: 2 },
+  "xai":         { fast: 2, coding: 3, reasoning: 4, research: 2, complex: 4 },
+  "nvidia":      { fast: 2, coding: 4, reasoning: 3, research: 1, complex: 3 },
+  "huggingface": { fast: 2, coding: 2, reasoning: 2, research: 1, complex: 2 },
+  "workers-ai":  { fast: 2, coding: 1, reasoning: 1, research: 1, complex: 1 },
+};
+
 function scoreProviderForIntent(providerName, intent) {
   const caps = PROVIDER_CAPABILITIES[providerName] || { fast: 1, coding: 1, reasoning: 1, research: 1, complex: 1 };
   return caps[intent] || caps.fast || 1;
