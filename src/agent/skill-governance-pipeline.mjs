@@ -78,7 +78,7 @@ export function createSkillGovernancePipeline({
     if (!fetched?.ok) return failure("source_fetch", fetched?.code || "SKILL_SOURCE_FETCH_FAILED");
     if (!plain(fetched.candidate) || fetched.candidate.id !== c.id || fetched.candidate.repository !== c.repository ||
         fetched.candidate.path !== c.path || fetched.candidate.commit !== c.commit || fetched.candidate.blobSha !== c.blobSha ||
-        typeof fetched.content !== "string" || !Array.isArray(fetched.files)) {
+        typeof fetched.content !== "string" || !Array.isArray(fetched.files) || !SHA256.test(fetched.bundleSha256 || "")) {
       return failure("source_integrity", "FETCHED_CANDIDATE_MISMATCH");
     }
     const fullMetadata = { ...metadata, license: fetched.license };
@@ -103,12 +103,12 @@ export function createSkillGovernancePipeline({
     let scannerResult;
     try {
       scannerResult = await securityFirewall.scan({
-        candidate: c, content: fetched.content, files: Object.freeze([...fetched.files]), contentSha256
+        candidate: c, content: fetched.content, files: Object.freeze([...fetched.files]), contentSha256, bundleSha256: fetched.bundleSha256
       });
     } catch {
       return failure("security_scanners", "SECURITY_SCANNER_EXECUTION_FAILED");
     }
-    if (!scannerResult?.ok || scannerResult.status !== "clean" || scannerResult.contentSha256 !== contentSha256) {
+    if (!scannerResult?.ok || scannerResult.status !== "clean" || scannerResult.contentSha256 !== contentSha256 || scannerResult.bundleSha256 !== fetched.bundleSha256) {
       const code = scannerResult?.code || "SECURITY_SCAN_NOT_VERIFIED";
       const severity = scannerResult?.severity === "reject" ? "reject" : "quarantine";
       return failure("security_scanners", code, severity);
