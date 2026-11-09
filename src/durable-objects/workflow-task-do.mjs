@@ -27,6 +27,11 @@ export class WorkflowTaskDO {
       return json({ ok: false, code: "INVALID_REQUEST" }, 400);
     }
     try {
+      if (path === "/skill/list") {
+        if (Object.keys(body).length !== 1) return json({ ok: false, code: "INVALID_SKILL_LIFECYCLE_REQUEST" }, 400);
+        const records = await this.ctx.storage.list({ prefix: "skillLifecycle:" });
+        return json({ ok: true, records: [...records.values()] });
+      }
       // Skill lifecycle records share this DO's transactional storage, but use a
       // dedicated keyspace. Discovery and status changes are atomic and fail closed.
       if (path === "/skill/get") {
