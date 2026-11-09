@@ -94,7 +94,7 @@ export function createSkillGovernancePipeline({
       id: c.id, version: "1.0.0", description: "External skill from pinned approved repository",
       allowedToolIds: [], content: fetched.content, source: metadata, contentSha256
     }] });
-    const evaluator = createSkillQualityEvaluator({ skillRegistry: registry, skillLifecycle, executeCase, now });
+    const evaluator = createSkillQualityEvaluator({ skillRegistry: registry, skillLifecycle: lifecycle, executeCase, now });
     const runId = "skill-" + (await hash(c.repository + "/" + c.path + "/" + c.commit + "/" + now())).slice(0, 32);
     const evaluation = await evaluator.evaluate({ skillId: c.id, runId, taskCategory: "external_skill", cases });
     if (!evaluation.ok) return evaluation;
