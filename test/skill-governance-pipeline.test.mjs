@@ -102,3 +102,14 @@ test("owner-approved recovery re-runs source, cost, security and quality gates",
  assert.equal(result.activated,false);
  assert.equal((await lifecycle.get(candidate.id)).ownerApproved,false);
 });
+
+test("repeated scheduled quality failures degrade then suspend and stop automatic retries",async()=>{
+ const {pipeline,lifecycle}=pipelineOptions({output:"wrong"});
+ const first=await pipeline.runBatch();
+ assert.equal(first.results[0].status,"DEGRADED");
+ const second=await pipeline.runBatch();
+ assert.equal(second.results[0].status,"SUSPENDED");
+ assert.equal((await lifecycle.get(candidate.id)).quality.consecutiveFailures,2);
+ const third=await pipeline.runBatch();
+ assert.equal(third.results[0].code,"SKILL_SUSPENDED_REQUIRES_OWNER_RECOVERY");
+});
