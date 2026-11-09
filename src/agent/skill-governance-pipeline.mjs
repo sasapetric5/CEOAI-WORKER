@@ -53,8 +53,19 @@ export function createSkillGovernancePipeline({
       return fail(code);
     }
     if (!recovery) {
-      const created = await lifecycle.discover({ id: c.id, metadata });
-      if (!created.ok) return created;
+      const current = await lifecycle.get(c.id);
+      if (!current) {
+        const created = await lifecycle.discover({ id: c.id, metadata });
+        if (!created.ok) return created;
+      } else {
+        if (["SUSPENDED", "REJECTED", "REVOKED", "ACTIVE"].includes(current.status)) {
+          return fail(current.status === "SUSPENDED" ? "SKILL_SUSPENDED_REQUIRES_OWNER_RECOVERY" : "SKILL_NOT_ELIGIBLE_FOR_AUTOMATIC_RECHECK");
+        }
+        const prior = current.metadata || {};
+        if (prior.repository !== c.repository || prior.path !== c.path || prior.commit !== c.commit || prior.blobSha !== c.blobSha) {
+          return fail("SKILL_SOURCE_VERSION_CONFLICT");
+        }
+      }
     } else {
       const current = await lifecycle.get(c.id);
       if (!current || current.status !== "QUARANTINED") return fail("RECOVERY_NOT_IN_QUARANTINE");
