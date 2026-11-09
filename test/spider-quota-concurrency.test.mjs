@@ -84,9 +84,10 @@ test("a duplicate retry remains idempotently allowed after the global limit is r
 });
 
 test("UTC date rollover starts a fresh quota bucket without changing the previous day", async () => {
-  const claim = makeLedger();
-  const yesterday = await claim("2026-11-08", "CONTENTCRAFT-APP", jobId(201));
-  const today = await claim("2026-11-09", "CONTENTCRAFT-APP", jobId(202));
+  const claimYesterday = makeLedger();
+  const claimToday = makeLedger();
+  const yesterday = await claimYesterday("2026-11-08", "CONTENTCRAFT-APP", jobId(201));
+  const today = await claimToday("2026-11-09", "CONTENTCRAFT-APP", jobId(202));
   assert.equal(yesterday.allowed, true);
   assert.equal(today.allowed, true);
   assert.equal(yesterday.count, 1);
