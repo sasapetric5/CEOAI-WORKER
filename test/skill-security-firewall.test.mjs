@@ -21,6 +21,7 @@ test("accepts only complete clean scanner reports bound to the exact skill hash"
   const result = evaluateSkillSecurityReport(cleanReport(), { expectedContentSha256: digest, expectedBundleSha256: bundleDigest, expectedCandidate: candidate });
   assert.equal(result.ok, true);
   assert.equal(result.status, "clean");
+  assert.equal(result.bundleSha256, bundleDigest);
   assert.equal(result.scanners.length, REQUIRED_SKILL_SCANNERS.length);
 });
 
