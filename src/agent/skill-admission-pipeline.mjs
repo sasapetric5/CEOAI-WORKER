@@ -28,8 +28,8 @@ export function createSkillAdmissionPipeline({
     reviewEvidence, runId, taskCategory = "general", cases
   } = {}) {
     if (!plain(candidate) || typeof candidate.id !== "string" ||
-        typeof content !== "string" || !Array.isArray(files) || !plain(reviewEvidence) ||
-        Object.keys(reviewEvidence).length === 0 || !["free", "paid", "unknown"].includes(costStatus)) {
+        typeof content !== "string" || !Array.isArray(files) ||
+        !["free", "paid", "unknown"].includes(costStatus)) {
       return { ok: false, code: "INVALID_SKILL_ADMISSION_REQUEST", isolated: false };
     }
     let record;
@@ -65,7 +65,8 @@ export function createSkillAdmissionPipeline({
     }
 
     let review;
-    try { review = await verifyIntakeReview({ candidate, reviewEvidence, security }); }
+    try { review = plain(reviewEvidence) && Object.keys(reviewEvidence).length > 0
+      ? await verifyIntakeReview({ candidate, reviewEvidence, security }) : null; }
     catch { review = null; }
     if (!plain(review) || REVIEW_KEYS.some(key => review[key] !== true) ||
         Object.keys(review).some(key => !REVIEW_KEYS.includes(key))) {
