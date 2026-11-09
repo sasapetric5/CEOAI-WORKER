@@ -120,7 +120,7 @@ test("security firewall blocks intake and records quarantine before reviewer or 
  let reviewerCalls=0;
  let runnerCalls=0;
  const source={approvedRepositories:[repo],discover:async()=>[candidate],fetchCandidate:async()=>({
-  ok:true,candidate,content:text,license:"MIT",files:[path],contentSha256:hash(text)
+  ok:true,candidate,content:text,license:"MIT",files:[path],contentSha256:hash(text),bundleSha256:hash("bundle:"+path)
  })};
  const pipeline=createSkillGovernancePipeline({
   source,lifecycle,
