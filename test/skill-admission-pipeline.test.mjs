@@ -7,7 +7,7 @@ const review = {
   dependenciesReviewed: true, scriptsReviewed: true, networkReviewed: true,
   credentialsReviewed: true
 };
-function fixture({ security = { ok: true }, quality = { ok: true, qualityPassed: true, lifecycleStatus: "VERIFIED" } = {}) {
+function fixture({ security = { ok: true }, quality = { ok: true, qualityPassed: true, lifecycleStatus: "VERIFIED" } } = {}) {
   const calls = [];
   const records = new Map();
   const lifecycle = {
