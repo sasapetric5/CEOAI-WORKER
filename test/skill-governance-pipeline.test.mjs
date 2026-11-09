@@ -87,3 +87,18 @@ test("paid skill is rejected before any security review or functional execution"
  assert.equal((await lifecycle.get(candidate.id)).status,"REJECTED");
  assert.equal((await lifecycle.get(candidate.id)).lastFailure.code,"PAID_SKILL_REJECTED");
 });
+
+test("owner-approved recovery re-runs source, cost, security and quality gates",async()=>{
+ const {pipeline,lifecycle}=pipelineOptions();
+ await lifecycle.discover({id:candidate.id,metadata:{repository:repo,path,commit:sha1,blobSha:sha1}});
+ await lifecycle.classifyCost(candidate.id,"free");
+ await lifecycle.recordQualityResult(candidate.id,{passed:0,total:1,score:0});
+ await lifecycle.recordQualityResult(candidate.id,{passed:0,total:1,score:0});
+ assert.equal((await lifecycle.get(candidate.id)).status,"SUSPENDED");
+ assert.equal((await pipeline.recover(candidate.id)).code,"EXPLICIT_OWNER_APPROVAL_REQUIRED");
+ const result=await pipeline.recover(candidate.id,{approvedByOwner:true});
+ assert.equal(result.ok,true);
+ assert.equal(result.status,"VERIFIED");
+ assert.equal(result.activated,false);
+ assert.equal((await lifecycle.get(candidate.id)).ownerApproved,false);
+});
