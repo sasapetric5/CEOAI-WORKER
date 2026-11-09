@@ -7,7 +7,7 @@ const review = {
   dependenciesReviewed: true, scriptsReviewed: true, networkReviewed: true,
   credentialsReviewed: true
 };
-function fixture({ security = { ok: true }, quality = { ok: true, qualityPassed: true, lifecycleStatus: "VERIFIED" } } = {}) {
+function fixture({ security = { ok: true }, quality = { ok: true, qualityPassed: true, lifecycleStatus: "VERIFIED" }, refreshRegistry = null } = {}) {
   const calls = [];
   const records = new Map();
   const lifecycle = {
@@ -35,7 +35,8 @@ function fixture({ security = { ok: true }, quality = { ok: true, qualityPassed:
     securityFirewall: { scan: async () => { calls.push("firewall"); return security; } },
     skillLifecycle: lifecycle,
     qualityEvaluator: { evaluate: async () => { calls.push("evaluator"); return quality; } },
-    verifyIntakeReview: async () => { calls.push("verify-review"); return review; }
+    verifyIntakeReview: async () => { calls.push("verify-review"); return review; },
+    refreshRegistry
   });
   return { pipeline, calls, records };
 }
@@ -87,4 +88,16 @@ test("missing intake evidence fails closed before quality evaluation", async () 
   assert.equal(result.ok, false);
   assert.equal(result.isolated, true);
   assert.equal(calls.includes("evaluator"), false);
+});
+
+
+test("owner approval refreshes the live runtime Skill Registry", async () => {
+  let refreshed = 0;
+  const { pipeline } = fixture({ refreshRegistry: async () => { refreshed++; } });
+  assert.equal((await pipeline.admit(request)).ok, true);
+  const result = await pipeline.approveForRegistry("sample_skill", { approvedByOwner: true });
+  assert.equal(result.ok, true);
+  assert.equal(result.registryRefreshed, true);
+  assert.equal(result.selectable, true);
+  assert.equal(refreshed, 1);
 });
