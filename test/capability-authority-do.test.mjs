@@ -2,14 +2,14 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { CapabilityAuthorityDO } from "../src/durable-objects/capability-authority-do.mjs";
 import { createCloudflareCapabilityAuthority } from "../src/agent/cloudflare-capability-authority.mjs";
-function harness(){
- const data=new Map();let chain=Promise.resolve();
+function harness({seed={},now=()=>Date.now()}={}){
+ const data=new Map(Object.entries(seed));let chain=Promise.resolve();
  const storage={
   get:async k=>data.get(k),
   put:async(k,v)=>{data.set(k,structuredClone(v));},
   transaction:async fn=>{let release;const previous=chain;chain=new Promise(r=>release=r);await previous;try{return await fn({get:async k=>data.get(k),put:async(k,v)=>{data.set(k,structuredClone(v));}});}finally{release();}}
  };
- const object=new CapabilityAuthorityDO({storage});
+ const object=new CapabilityAuthorityDO({storage},{now});
  const namespace={idFromName:name=>name,get:id=>({fetch:(url,init)=>object.fetch(new Request(url,init))})};
  return {authority:createCloudflareCapabilityAuthority(namespace),data};
 }
@@ -64,4 +64,29 @@ test("stable effect key cannot be rebound to changed arguments or approval claim
  assert.equal((await authority.authorize(req)).ok,true);
  const changed=await authority.authorize({...req,argumentsDigest:"b".repeat(64)});
  assert.equal(changed.code,"IDEMPOTENCY_KEY_CONFLICT");
+});
+
+
+test("legacy lifetime usage migrates conservatively into the first UTC daily bucket",async()=>{
+ const quotaKey=["rankgeo","caller_1","seo_agent","seo_audit","web_search","execute"].join("|");
+ const {authority,data}=harness({seed:{["usage:"+quotaKey]:1},now:()=>Date.parse("2026-11-09T12:00:00.000Z")});
+ const first=await authority.authorize(request({maxCalls:2}));
+ assert.equal(first.ok,true);
+ assert.equal(first.remaining,0);
+ assert.equal(data.get("usage:"+quotaKey+":2026-11-09"),2);
+ assert.equal(data.get("usage-migration:v1:"+quotaKey).firstDailyBucket,"2026-11-09");
+ assert.equal((await authority.authorize(request({maxCalls:2}))).code,"CAPABILITY_QUOTA_EXCEEDED");
+});
+
+test("UTC daily quota resets once at midnight without re-importing legacy usage",async()=>{
+ const quotaKey=["rankgeo","caller_1","seo_agent","seo_audit","web_search","execute"].join("|");
+ let now=Date.parse("2026-11-09T23:59:00.000Z");
+ const {authority,data}=harness({seed:{["usage:"+quotaKey]:1},now:()=>now});
+ assert.equal((await authority.authorize(request({maxCalls:2}))).ok,true);
+ now=Date.parse("2026-11-10T00:01:00.000Z");
+ const nextDay=await authority.authorize(request({maxCalls:2}));
+ assert.equal(nextDay.ok,true);
+ assert.equal(nextDay.remaining,1);
+ assert.equal(data.get("usage:"+quotaKey+":2026-11-10"),1);
+ assert.equal(data.get("usage:"+quotaKey+":2026-11-09"),2);
 });
