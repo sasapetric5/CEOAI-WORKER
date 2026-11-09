@@ -111,8 +111,13 @@ export function createGitHubSkillSource({ repositories = [], fetchImpl = globalT
     if (typeof licenseId !== "string") return { ok: false, code: "LICENSE_NOT_DETECTED" };
     const prefix = candidate.path.replace(/\/SKILL\.md$/i, "");
     const bundleEntries = tree.tree.filter(entry => entry.type === "blob" && typeof entry.path === "string" &&
-      (prefix ? entry.path.startsWith(prefix + "/") : true) && validPath(entry.path));
+      (prefix ? entry.path.startsWith(prefix + "/") : true));
     if (bundleEntries.length > MAX_SKILL_FILES) return { ok: false, code: "SKILL_BUNDLE_FILE_LIMIT_EXCEEDED" };
+    if (bundleEntries.some(entry => !validPath(entry.path) || !SHA.test(entry.sha || ""))) {
+      return { ok: false, code: "SKILL_BUNDLE_PROVENANCE_INVALID" };
+    }
+    const entrypoint = bundleEntries.find(entry => entry.path === candidate.path);
+    if (!entrypoint || entrypoint.sha !== candidate.blobSha) return { ok: false, code: "SKILL_BUNDLE_ENTRYPOINT_MISMATCH" };
     let bundleBytes = 0;
     const files = [];
     for (const entry of bundleEntries) {
