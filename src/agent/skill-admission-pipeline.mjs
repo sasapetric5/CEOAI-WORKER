@@ -6,6 +6,11 @@ const REVIEW_KEYS = Object.freeze([
 ]);
 const plain = value => value !== null && typeof value === "object" && !Array.isArray(value) &&
   (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+async function sha256(value) {
+  if (!globalThis.crypto?.subtle) throw new Error("SKILL_HASH_UNAVAILABLE");
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+}
 
 export function createSkillAdmissionPipeline({
   securityFirewall, skillLifecycle, qualityEvaluator, verifyIntakeReview, refreshRegistry
@@ -53,9 +58,16 @@ export function createSkillAdmissionPipeline({
     }
     if (costStatus !== "free") return isolate(candidate.id, "cost", "NON_FREE_OR_UNKNOWN_COST", costStatus === "paid" ? "reject" : "quarantine");
 
+    let verifiedContentSha256;
+    try { verifiedContentSha256 = await sha256(content); }
+    catch { return isolate(candidate.id, "security", "SKILL_HASH_UNAVAILABLE"); }
+    if (verifiedContentSha256 !== contentSha256) {
+      return isolate(candidate.id, "security", "CANDIDATE_CONTENT_HASH_MISMATCH", "reject");
+    }
+
     let security;
     try {
-      security = await securityFirewall.scan({ candidate, content, files, contentSha256, bundleSha256 });
+      security = await securityFirewall.scan({ candidate, content, files, contentSha256: verifiedContentSha256, bundleSha256 });
     } catch {
       return isolate(candidate.id, "security", "SECURITY_FIREWALL_ERROR");
     }
@@ -79,7 +91,7 @@ export function createSkillAdmissionPipeline({
 
     let quality;
     try {
-      quality = await qualityEvaluator.evaluate({ skillId: candidate.id, runId, taskCategory, cases, expectedContentSha256: contentSha256, candidateSkill: { id: candidate.id, version: candidate.version, description: candidate.description, content } });
+      quality = await qualityEvaluator.evaluate({ skillId: candidate.id, runId, taskCategory, cases, expectedContentSha256: verifiedContentSha256, candidateSkill: { id: candidate.id, version: candidate.version, description: candidate.description, content } });
     } catch {
       return isolate(candidate.id, "quality", "QUALITY_EVALUATOR_ERROR");
     }
@@ -98,21 +110,28 @@ export function createSkillAdmissionPipeline({
   }
 
   async function approveForRegistry(skillId, { approvedByOwner = false } = {}) {
+    if (approvedByOwner !== true) {
+      try { return await skillLifecycle.approveForActivation(skillId, { approvedByOwner: false }); }
+      catch { return { ok: false, code: "REGISTRY_ADMISSION_PERSISTENCE_FAILED" }; }
+    }
+    if (typeof refreshRegistry !== "function") return { ok: false, code: "REGISTRY_REFRESH_UNAVAILABLE" };
     let result;
-    try { result = await skillLifecycle.approveForActivation(skillId, { approvedByOwner }); }
+    try { result = await skillLifecycle.approveForActivation(skillId, { approvedByOwner: true }); }
     catch { return { ok: false, code: "REGISTRY_ADMISSION_PERSISTENCE_FAILED" }; }
     if (!result?.ok) return result;
-    if (typeof refreshRegistry === "function") {
-      try { await refreshRegistry(); }
-      catch { return { ok: false, code: "REGISTRY_REFRESH_FAILED", lifecycleStatus: result.record?.status ?? "ACTIVE" }; }
+    try {
+      const refreshed = await refreshRegistry();
+      if (refreshed?.ok === false) throw new Error("REGISTRY_REFRESH_FAILED");
+    } catch {
+      try { await skillLifecycle.recordFailure(skillId, { stage: "registry", code: "REGISTRY_REFRESH_FAILED", severity: "quarantine" }); } catch {}
+      return { ok: false, code: "REGISTRY_REFRESH_FAILED", lifecycleStatus: "SUSPENDED" };
     }
-    return {
-      ok: true,
-      skillId,
-      registryStatus: "ACTIVE",
-      selectable: skillLifecycle.isSelectable(result.record) === true,
-      registryRefreshed: typeof refreshRegistry === "function"
-    };
+    const selectable = skillLifecycle.isSelectable(result.record) === true;
+    if (!selectable) {
+      try { await skillLifecycle.recordFailure(skillId, { stage: "registry", code: "REGISTRY_SELECTION_VERIFICATION_FAILED", severity: "quarantine" }); } catch {}
+      return { ok: false, code: "REGISTRY_SELECTION_VERIFICATION_FAILED", lifecycleStatus: "SUSPENDED" };
+    }
+    return { ok: true, skillId, registryStatus: "ACTIVE", selectable: true, registryRefreshed: true };
   }
 
   return Object.freeze({
