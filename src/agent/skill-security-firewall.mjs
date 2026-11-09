@@ -14,11 +14,18 @@ const fail = code => Object.freeze({ ok: false, code });
 
 export function evaluateSkillSecurityReport(report, {
   expectedContentSha256,
+  expectedCandidate,
+  policyVersion = "ceoai-skill-firewall-v1",
   requiredScanners = REQUIRED_SKILL_SCANNERS
 } = {}) {
   if (!SHA256.test(expectedContentSha256 || "")) return fail("EXPECTED_SKILL_HASH_REQUIRED");
-  if (!plain(report) || report.schemaVersion !== 1 ||
+  if (!plain(expectedCandidate) || !plain(report) || report.schemaVersion !== 1 ||
       report.contentSha256 !== expectedContentSha256 ||
+      report.policyVersion !== policyVersion ||
+      !plain(report.candidate) ||
+      ["id", "repository", "path", "commit", "blobSha"].some(key => report.candidate[key] !== expectedCandidate[key]) ||
+      typeof report.runId !== "string" || !/^[A-Za-z0-9._:-]{8,128}$/.test(report.runId) ||
+      typeof report.scannedAt !== "string" || !Number.isFinite(Date.parse(report.scannedAt)) ||
       !Array.isArray(report.scans) || !Array.isArray(requiredScanners) ||
       requiredScanners.length < 1 || requiredScanners.length > 16 ||
       requiredScanners.some(id => typeof id !== "string" || !SCANNER_ID.test(id)) ||
@@ -63,9 +70,12 @@ export function evaluateSkillSecurityReport(report, {
 // It receives untrusted bytes as data; candidate instructions are never executed here.
 export function createSkillSecurityFirewall({
   scanCandidate,
+  verifyAttestation,
+  policyVersion = "ceoai-skill-firewall-v1",
   requiredScanners = REQUIRED_SKILL_SCANNERS
 } = {}) {
   if (typeof scanCandidate !== "function") throw new TypeError("TRUSTED_SECURITY_SCAN_ADAPTER_REQUIRED");
+  if (typeof verifyAttestation !== "function") throw new TypeError("TRUSTED_SCAN_ATTESTATION_VERIFIER_REQUIRED");
   if (!Array.isArray(requiredScanners) || requiredScanners.length < 1 ||
       requiredScanners.some(id => typeof id !== "string" || !SCANNER_ID.test(id)) ||
       new Set(requiredScanners).size !== requiredScanners.length) {
@@ -88,7 +98,15 @@ export function createSkillSecurityFirewall({
     } catch {
       return fail("SECURITY_SCANNER_EXECUTION_FAILED");
     }
-    return evaluateSkillSecurityReport(report, { expectedContentSha256: contentSha256, requiredScanners });
+    const validated = evaluateSkillSecurityReport(report, {
+      expectedContentSha256: contentSha256, expectedCandidate: candidate, policyVersion, requiredScanners
+    });
+    if (!validated.ok) return validated;
+    let trusted = false;
+    try { trusted = await verifyAttestation(report, { candidate, contentSha256, policyVersion }) === true; }
+    catch { trusted = false; }
+    if (!trusted) return fail("UNTRUSTED_SCAN_ATTESTATION");
+    return validated;
   }
   return Object.freeze({ scan });
 }
