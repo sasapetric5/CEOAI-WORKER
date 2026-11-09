@@ -81,3 +81,21 @@ test("a degraded skill can return to verification after a successful retest",asy
  assert.equal((await manager.approveForActivation("example_skill",{approvedByOwner:true})).record.status,"ACTIVE");
  assert.equal(manager.isSelectable(await manager.get("example_skill")),true);
 });
+
+test("suspended skill recovery requires owner approval and fresh security plus quality gates",async()=>{
+ const manager=createSkillLifecycleManager({storage:createMemorySkillLifecycleStore()});
+ await candidate(manager);
+ await manager.classifyCost("example_skill","free");
+ await manager.recordSecurityReview("example_skill",review);
+ await manager.recordQualityResult("example_skill",{passed:0,total:1,score:0});
+ await manager.recordQualityResult("example_skill",{passed:0,total:1,score:0});
+ assert.equal((await manager.get("example_skill")).status,"SUSPENDED");
+ assert.equal((await manager.beginRecovery("example_skill")).code,"EXPLICIT_OWNER_APPROVAL_REQUIRED");
+ const recovery=await manager.beginRecovery("example_skill",{approvedByOwner:true});
+ assert.equal(recovery.record.status,"QUARANTINED");
+ assert.equal(recovery.record.securityReview,null);
+ assert.equal(manager.isSelectable(recovery.record),false);
+ await manager.recordSecurityReview("example_skill",review);
+ assert.equal((await manager.recordQualityResult("example_skill",{passed:2,total:2,score:1})).record.status,"VERIFIED");
+ assert.equal((await manager.approveForActivation("example_skill",{approvedByOwner:true})).record.status,"ACTIVE");
+});
