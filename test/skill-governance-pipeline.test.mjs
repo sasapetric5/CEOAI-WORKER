@@ -14,10 +14,10 @@ const candidate={id:"demo_skill",repository:repo,path,commit:sha1,blobSha:sha1};
 function pipelineOptions({cost="free",review=true,output="expected"}={}) {
  const lifecycle=createSkillLifecycleManager({storage:createMemorySkillLifecycleStore(),now:()=>100});
  const source={approvedRepositories:[repo],discover:async()=>[candidate],fetchCandidate:async()=>({
-  ok:true,candidate,content:text,license:"MIT",files:[path],contentSha256:hash(text)
+  ok:true,candidate,content:text,license:"MIT",files:[path],contentSha256:hash(text),bundleSha256:hash("bundle:"+path)
  })};
  const pipeline=createSkillGovernancePipeline({
-  securityFirewall:{scan:async ({contentSha256})=>({ok:true,status:"clean",contentSha256})},
+  securityFirewall:{scan:async ({contentSha256,bundleSha256})=>({ok:true,status:"clean",contentSha256,bundleSha256})},
   source,lifecycle,
   costVerifier:async()=>({status:cost}),
   reviewCandidate:async()=>({dependenciesReviewed:review,scriptsReviewed:review,networkReviewed:review,credentialsReviewed:review}),
@@ -157,5 +157,6 @@ test("pinned source fetches bounded sibling files so scanners inspect scripts an
  const fetched=await source.fetchCandidate(candidate);
  assert.equal(fetched.ok,true);
  assert.equal(fetched.files.length,2);
+ assert.match(fetched.bundleSha256,/^[a-f0-9]{64}$/);
  assert.equal(fetched.files.find(file=>file.path.endsWith("helper.mjs")).content,script);
 });
