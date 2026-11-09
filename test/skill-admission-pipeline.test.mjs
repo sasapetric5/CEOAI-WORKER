@@ -40,7 +40,7 @@ function fixture({ security = { ok: true }, quality = { ok: true, qualityPassed:
   return { pipeline, calls, records };
 }
 const request = {
-  candidate: { id: "sample_skill" }, content: "untrusted skill data", files: ["SKILL.md"],
+  candidate: { id: "sample_skill", version: "1.0.0", description: "A sample skill candidate" }, content: "untrusted skill data", files: ["SKILL.md"],
   contentSha256: "a".repeat(64), bundleSha256: "b".repeat(64),
   reviewEvidence: { signed: true }, runId: "quality-run-0001",
   cases: [{ id: "case_one", input: {}, expectedOutput: "ok" }]
