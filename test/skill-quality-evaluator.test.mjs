@@ -108,3 +108,15 @@ test("quality evidence persistence failure prevents a successful evaluation clai
   assert.equal(result.passed, 1);
   assert.ok(evaluator);
 });
+
+
+test("quality evaluator refuses content different from the firewall-scanned hash", async () => {
+  const { evaluator } = fixture();
+  const result = await evaluator.evaluate({
+    skillId: "sample_skill", runId: "run-0000007",
+    expectedContentSha256: "f".repeat(64),
+    cases: [{ id: "valid", input: {}, expectedOutput: "ok" }]
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "EVALUATED_CONTENT_HASH_MISMATCH");
+});
