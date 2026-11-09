@@ -19,6 +19,6 @@ export async function createKVSkillSystem({
  approvedSkillIds=BUILTIN_SKILLS.map(skill=>skill.id),categoryBySkillId={},
  categoryCapabilityPolicy={},indexKey,documentPrefix,skillLifecycle=null,securityFirewall=null,qualityEvaluator=null,verifyIntakeReview=null
 }={}){
- const registry=await createKVSkillRegistry({kv,toolRegistry,capabilityPolicy,approvedSkillIds,categoryBySkillId,categoryCapabilityPolicy,indexKey,documentPrefix});
+ const registry=await createKVSkillRegistry({kv,toolRegistry,capabilityPolicy,approvedSkillIds,categoryBySkillId,categoryCapabilityPolicy,indexKey,documentPrefix,skillLifecycle});
  return compose({registry,toolRegistry,agentLoopFactory,maxSelectedSkills,skillLifecycle,securityFirewall,qualityEvaluator,verifyIntakeReview});
 }
