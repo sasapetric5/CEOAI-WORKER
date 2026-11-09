@@ -1281,7 +1281,8 @@ async function createRequestAgentSystem(env, maxAgents, capabilityContext, appro
   // No grants are provisioned yet: DCA is wired, but all tool execution remains denied.
   const grants = await loadVerifiedCapabilityGrants(env);
   const approvalProvider = createCapabilityApprovalProvider(approvalTokens);
-  const skillLifecycle = env?.WORKFLOW_TASKS ? createSkillLifecycleManager({ storage: createCloudflareSkillLifecycleStore(env.WORKFLOW_TASKS) }) : null;
+  if (!env?.WORKFLOW_TASKS) throw new Error("SKILL_LIFECYCLE_BINDING_UNAVAILABLE");
+  const skillLifecycle = createSkillLifecycleManager({ storage: createCloudflareSkillLifecycleStore(env.WORKFLOW_TASKS) });
   const capabilityRegistry = createCapabilityRegistry({
     grants,
     authority,
