@@ -382,3 +382,37 @@ test("reusing a request ID with a different URL never starts another crawl", asy
   assert.equal(starts, 1);
   assert.equal(reused.calls[0], "ack");
 });
+
+test("combined Spider quota migrates legacy global and per-app counters and preserves legacy IDs", async () => {
+  const ns = makeLedgerNamespace();
+  const date = "2026-11-08";
+  const global = ns.get("quota:" + date);
+  const app = ns.get("quota:app:CONTENTCRAFT-APP:" + date);
+  const post = (stub, path, body) => stub.fetch(new Request("https://ledger.test" + path, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  })).then(response => response.json());
+  const globalIds = ["123e4567-e89b-42d3-a456-426614174050", "123e4567-e89b-42d3-a456-426614174051"];
+  const appIds = ["223e4567-e89b-42d3-a456-426614174050", "223e4567-e89b-42d3-a456-426614174051"];
+  for (const jobId of globalIds) await post(global, "/quota/claim", { appId: "GLOBAL", date, id: jobId, limit: 5, now: now() });
+  for (const jobId of appIds) await post(app, "/quota/claim", { appId: "CONTENTCRAFT-APP", date, id: jobId, limit: 3, now: now() });
+  const legacyGlobal = await post(global, "/quota/get", { appId: "GLOBAL", date });
+  const legacyApp = await post(app, "/quota/get", { appId: "CONTENTCRAFT-APP", date });
+  const combined = ns.get("quota:global:" + date);
+  const claim = (jobId, g = legacyGlobal, a = legacyApp) => post(combined, "/quota/claim-combined", {
+    appId: "GLOBAL", quotaAppId: "CONTENTCRAFT-APP", date, id: jobId,
+    appLimit: 3, globalLimit: 5, now: now(),
+    legacyGlobalCount: g.count, legacyGlobalJobIds: g.jobIds,
+    legacyAppCount: a.count, legacyAppJobIds: a.jobIds,
+  });
+  const appBlocked = await claim("323e4567-e89b-42d3-a456-426614174050");
+  assert.equal(appBlocked.allowed, false);
+  assert.equal(appBlocked.reason, "APP_DAILY_LIMIT_REACHED");
+  const duplicate = await claim(appIds[0]);
+  assert.equal(duplicate.allowed, true);
+  assert.equal(duplicate.duplicate, true);
+  assert.equal(duplicate.appCount, 2);
+  const globalAtCap = { count: 5, jobIds: [...globalIds, "323e4567-e89b-42d3-a456-426614174051", "323e4567-e89b-42d3-a456-426614174052", "323e4567-e89b-42d3-a456-426614174053"] };
+  const globalBlocked = await claim("423e4567-e89b-42d3-a456-426614174050", globalAtCap, legacyApp);
+  assert.equal(globalBlocked.allowed, false);
+  assert.equal(globalBlocked.reason, "GLOBAL_DAILY_LIMIT_REACHED");
+});
