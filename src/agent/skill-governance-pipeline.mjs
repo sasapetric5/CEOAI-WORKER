@@ -30,7 +30,7 @@ export function createSkillGovernancePipeline({
 } = {}) {
   if (!source || typeof source.discover !== "function" || typeof source.fetchCandidate !== "function")
     throw new TypeError("PINNED_SKILL_SOURCE_REQUIRED");
-  if (!lifecycle || !["discover", "classifyCost", "recordSecurityReview", "recordQualityResult", "beginRecovery", "get"].every(k => typeof lifecycle[k] === "function"))
+  if (!lifecycle || !["discover", "classifyCost", "recordSecurityReview", "recordFailure", "recordQualityResult", "beginRecovery", "get"].every(k => typeof lifecycle[k] === "function"))
     throw new TypeError("SKILL_LIFECYCLE_REQUIRED");
   if (typeof costVerifier !== "function") throw new TypeError("TRUSTED_COST_VERIFIER_REQUIRED");
   if (typeof reviewCandidate !== "function") throw new TypeError("TRUSTED_SECURITY_REVIEWER_REQUIRED");
