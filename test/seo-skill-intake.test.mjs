@@ -26,7 +26,7 @@ for (const [path] of skills) {
 test("SEO catalog lists all four quarantined workflows", async () => {
   const readme = await readFile(new URL("../skills/catalog/external/seo/README.md", import.meta.url), "utf8");
   for (const [path] of skills) assert.ok(readme.includes(path.split("/")[0]));
-  assert.match(readme, /Skill documents: 4/);
+  assert.match(readme, /Skill documents: 7/);
   assert.match(readme, /Tool grants: 0/);
 });
 
