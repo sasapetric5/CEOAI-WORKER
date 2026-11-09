@@ -24,11 +24,21 @@ export class CapabilityAuthorityDO {
    (body.approvalId!==null&&(typeof body.approvalId!=="string"||!APPROVAL.test(body.approvalId)))||
    (body.argumentsDigest!==undefined&&body.argumentsDigest!==null&&(typeof body.argumentsDigest!=="string"||!/^[a-f0-9]{64}$/.test(body.argumentsDigest)))||
    (body.effectKey!==undefined&&body.effectKey!==null&&(typeof body.effectKey!=="string"||body.effectKey.length>512||!KEY.test(body.effectKey))))return json({ok:false,code:"INVALID_AUTHORITY_REQUEST"},400);
-  // Quotas aggregate across resource targets; callers cannot reset limits by changing URLs.
+  // Quotas aggregate across resource targets and rotate on the UTC calendar day.
+  // A one-time conservative migration carries the legacy lifetime counter into the first
+  // daily bucket only; the marker prevents that old value being re-counted on later days.
   const quotaKey=[body.appId,body.callerId,body.agentId,body.skillId,body.toolId,body.operation].join("|");
+  const utcDay=new Date().toISOString().slice(0,10);
   const result=await this.ctx.storage.transaction(async txn=>{
-   const usageKey="usage:"+quotaKey;
+   const usageKey="usage:"+quotaKey+":"+utcDay;
+   const migrationKey="usage-migration:v1:"+quotaKey;
    const priorAudit=await txn.get("audit")||[];
+   if(!(await txn.get(migrationKey))){
+    const currentDaily=await txn.get(usageKey);
+    const legacyUsage=await txn.get("usage:"+quotaKey);
+    if(currentDaily===undefined&&legacyUsage!==undefined)await txn.put(usageKey,legacyUsage);
+    await txn.put(migrationKey,{migratedAt:Date.now(),firstDailyBucket:utcDay});
+   }
    const record=async(type,code=null)=>{const next=[...priorAudit,{at:Date.now(),type,code,appId:body.appId,callerId:body.callerId,agentId:body.agentId,skillId:body.skillId,toolId:body.toolId,operation:body.operation}].slice(-MAX_AUDIT);await txn.put("audit",next);};
    const effectKey=body.effectKey??null;
    const fingerprint=JSON.stringify({appId:body.appId,callerId:body.callerId,agentId:body.agentId,skillId:body.skillId,toolId:body.toolId,operation:body.operation,resource:body.resource,maxCalls:body.maxCalls,approvalId:body.approvalId,argumentsDigest:body.argumentsDigest??null});
