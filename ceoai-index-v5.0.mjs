@@ -1978,3 +1978,6 @@ export { createCloudflareSkillLifecycleStore } from "./src/agent/cloudflare-skil
 
 
 export { createSkillQualityEvaluator } from "./src/agent/skill-quality-evaluator.mjs";
+
+export { createGitHubSkillSource } from "./src/agent/github-skill-source.mjs";
+export { createSkillGovernancePipeline } from "./src/agent/skill-governance-pipeline.mjs";
