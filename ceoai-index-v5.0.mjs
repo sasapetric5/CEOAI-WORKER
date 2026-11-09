@@ -30,6 +30,7 @@ import { createAgentLoop } from "./src/agent/agent-loop.mjs";
 import { createCloudflareIdempotentToolExecutor } from "./src/agent/idempotent-tool-executor.mjs";
 import { createBuiltinAgentSystem } from "./src/agent/agent-system.mjs";
 import { planResearchAcquisition, normalizeResearchUrl } from "./src/agent/research-acquisition-policy.mjs";
+import { createResearchReadTool } from "./src/agent/research-read-tool.mjs";
 import { enqueueSpiderCrawl, createSpiderQueueHandler, readSpiderResult } from "./src/integrations/spider-queue.mjs";
 import { SpiderJobLedgerDO } from "./src/durable-objects/spider-job-ledger-do.mjs";
 import { createAppMemoryStore } from "./src/v5-modules/app-memory.mjs";
@@ -1265,14 +1266,13 @@ const APP_AGENT_POLICIES = Object.freeze({
 });
 
 async function createRequestAgentSystem(env, maxAgents, capabilityContext, approvalTokens = []) {
-  // This app gateway intentionally has no external-action tools in this integration stage.
-  // The durable executor is optional here because no tools are registered or enabled.
-  // When a future tool is enabled, its registry contract still requires an executor;
-  // the Cloudflare factory itself remains fail-closed if WORKFLOW_TASKS is absent.
-  const idempotentExecutor = env?.WORKFLOW_TASKS
-    ? createCloudflareIdempotentToolExecutor({ env })
-    : null;
-  const toolRegistry = createToolRegistry({ tools: [], enabled: false, idempotentExecutor });
+  // Register the bounded research reader for Supervisor discovery, but keep execution
+  // globally disabled until signed app/caller/agent/skill grants are provisioned and tested.
+  // This read-only tool has no external side effect and therefore needs no effect executor.
+  const toolRegistry = createToolRegistry({
+    tools: [createResearchReadTool()],
+    enabled: false,
+  });
   const authority = env?.CAPABILITY_AUTHORITY
     ? createCloudflareCapabilityAuthority(env.CAPABILITY_AUTHORITY)
     : null;
