@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createResearchReadTool, RESEARCH_READ_MAX_RESPONSE_BYTES } from "../src/agent/research-read-tool.mjs";
+import { createToolRegistry, createToolSession } from "../src/agent/tool-registry.mjs";
 
 const json = (value, headers = {}) => new Response(JSON.stringify(value), {
   status: 200, headers: { "Content-Type": "application/json", ...headers },
@@ -63,4 +64,21 @@ test("research reader honours an already-aborted execution signal", async () => 
   const tool = createResearchReadTool({ fetchImpl: async () => { calls++; return json({}); } });
   await assert.rejects(tool.handler({ query: "public research" }, { signal: controller.signal }), /RESEARCH_ABORTED/);
   assert.equal(calls, 0);
+});
+
+
+test("registered research tool stays blocked without explicit execution approval and tool grant", async () => {
+  const registry = createToolRegistry({
+    tools: [createResearchReadTool({ fetchImpl: async () => json({}) })],
+    enabled: true,
+  });
+  const session = createToolSession({ maxCalls: 1 });
+  const denied = await registry.execute("research_read", { query: "public research" }, {
+    allowToolExecution: false, allowedToolIds: ["research_read"], session,
+  });
+  assert.equal(denied.code, "EXECUTION_NOT_APPROVED");
+  const noGrant = await registry.execute("research_read", { query: "public research" }, {
+    allowToolExecution: true, allowedToolIds: [], session,
+  });
+  assert.equal(noGrant.code, "TOOL_CAPABILITY_DENIED");
 });
