@@ -29,13 +29,14 @@ function staticReview(files, content) {
 }
 
 export function createSkillGovernancePipeline({
-  source, lifecycle, costVerifier, reviewCandidate, testCasesForSkill, executeCase, now = () => Date.now()
+  source, lifecycle, costVerifier, securityFirewall, reviewCandidate, testCasesForSkill, executeCase, now = () => Date.now()
 } = {}) {
   if (!source || typeof source.discover !== "function" || typeof source.fetchCandidate !== "function")
     throw new TypeError("PINNED_SKILL_SOURCE_REQUIRED");
   if (!lifecycle || !["discover", "classifyCost", "recordSecurityReview", "recordFailure", "recordQualityResult", "beginRecovery", "get"].every(k => typeof lifecycle[k] === "function"))
     throw new TypeError("SKILL_LIFECYCLE_REQUIRED");
   if (typeof costVerifier !== "function") throw new TypeError("TRUSTED_COST_VERIFIER_REQUIRED");
+  if (!securityFirewall || typeof securityFirewall.scan !== "function") throw new TypeError("TRUSTED_SKILL_SECURITY_FIREWALL_REQUIRED");
   if (typeof reviewCandidate !== "function") throw new TypeError("TRUSTED_SECURITY_REVIEWER_REQUIRED");
   if (typeof testCasesForSkill !== "function") throw new TypeError("TRUSTED_TEST_CASE_PROVIDER_REQUIRED");
   if (typeof executeCase !== "function") throw new TypeError("TRUSTED_ISOLATED_SKILL_RUNNER_REQUIRED");
@@ -98,6 +99,19 @@ export function createSkillGovernancePipeline({
     }, { approvedRepositories: source.approvedRepositories || [], approvedLicenses: [...LICENSES] });
     if (!intake.ok) return failure("supply_chain", intake.code);
     const staticChecks = staticReview(fetched.files, fetched.content);
+    let scannerResult;
+    try {
+      scannerResult = await securityFirewall.scan({
+        candidate: c, content: fetched.content, files: Object.freeze([...fetched.files]), contentSha256
+      });
+    } catch {
+      return failure("security_scanners", "SECURITY_SCANNER_EXECUTION_FAILED");
+    }
+    if (!scannerResult?.ok || scannerResult.status !== "clean" || scannerResult.contentSha256 !== contentSha256) {
+      const code = scannerResult?.code || "SECURITY_SCAN_NOT_VERIFIED";
+      const severity = scannerResult?.severity === "reject" ? "reject" : "quarantine";
+      return failure("security_scanners", code, severity);
+    }
     let independent;
     try {
       independent = await reviewCandidate({ candidate: c, content: fetched.content, license: fetched.license,
@@ -154,7 +168,7 @@ export function createSkillGovernancePipeline({
 
 
 export function createCloudflareSkillGovernancePipeline({
-  env, repositories, costVerifier, reviewCandidate, testCasesForSkill, executeCase, fetchImpl, now = () => Date.now()
+  env, repositories, costVerifier, securityFirewall, reviewCandidate, testCasesForSkill, executeCase, fetchImpl, now = () => Date.now()
 } = {}) {
   if (!env?.WORKFLOW_TASKS || typeof env.WORKFLOW_TASKS.idFromName !== "function" ||
       typeof env.WORKFLOW_TASKS.get !== "function") throw new TypeError("WORKFLOW_TASKS_BINDING_REQUIRED");
@@ -162,7 +176,7 @@ export function createCloudflareSkillGovernancePipeline({
   const lifecycle = createSkillLifecycleManager({ storage, now });
   const source = createGitHubSkillSource({ repositories, fetchImpl });
   const pipeline = createSkillGovernancePipeline({
-    source, lifecycle, costVerifier, reviewCandidate, testCasesForSkill, executeCase, now
+    source, lifecycle, costVerifier, securityFirewall, reviewCandidate, testCasesForSkill, executeCase, now
   });
   return Object.freeze({ pipeline, lifecycle, source });
 }
