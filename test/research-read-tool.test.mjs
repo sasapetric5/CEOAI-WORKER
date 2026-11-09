@@ -31,7 +31,7 @@ test("research reader sends only a bounded query to its fixed HTTPS endpoint", a
 test("research reader rejects arbitrary URLs and malformed queries before network access", async () => {
   let calls = 0;
   const tool = createResearchReadTool({ fetchImpl: async () => { calls++; return json({}); } });
-  for (const query of ["https://127.0.0.1/admin", "http://localhost/", "x", "a".repeat(201), "query\\u0000bad"]) {
+  for (const query of ["https://127.0.0.1/admin", "http://localhost/", "x", "a".repeat(201), "query\u0000bad"]) {
     await assert.rejects(tool.handler({ query }, {}), /INVALID_RESEARCH_QUERY/);
   }
   assert.equal(calls, 0);
