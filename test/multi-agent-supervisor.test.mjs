@@ -262,3 +262,51 @@ test("trusted approval provider receives exact canonical tool-argument digest be
  assert.equal(providerRequest.effectKey,authorizationRequest.effectKey);
  assert.equal(authorizationRequest.effectKey,providerRequest.runId+":1:lookup");
 });
+
+test("multi-agent supervisor rejects discovered skills before planner or tools run", async()=>{
+ let plannerCalls=0,agentCalls=0;
+ const skill={id:"pending_skill",version:"1.0.0",description:"Pending review",allowedToolIds:[]};
+ const agent={id:"pending_agent",role:"Pending agent",description:"Pending review agent",skillId:"pending_skill",allowedToolIds:[],score:10,matchedTerms:["review"]};
+ const lifecycle={get:async()=>({id:"pending_skill",status:"QUARANTINED"}),isSelectable:()=>false};
+ const supervisor=createMultiAgentSupervisor({
+  agentRegistry:{search:()=>[agent],get:()=>agent},
+  skillRegistry:{get:()=>skill,search:()=>[{id:"pending_skill",score:10,matchedTerms:["review"]}]},
+  agentLoop:{run:async()=>{agentCalls++;return {ok:true,output:"unsafe"};}},
+  skillLifecycle:lifecycle
+ });
+ const prepared=await supervisor.prepare({task:"review pending skill"});
+ assert.equal(prepared.ok,false);
+ assert.equal(prepared.code,"NO_ACTIVE_VERIFIED_SKILL");
+ const result=await supervisor.run({task:"review pending skill",allowToolExecution:true,planAgent:async()=>{plannerCalls++;return {type:"final",output:"unsafe"};}});
+ assert.equal(result.ok,false);
+ assert.equal(result.code,"NO_ACTIVE_VERIFIED_SKILL");
+ assert.equal(plannerCalls,0);
+ assert.equal(agentCalls,0);
+});
+test("multi-agent supervisor permits only an owner-approved active verified skill", async()=>{
+ let agentCalls=0;
+ const skill={id:"approved_skill",version:"1.0.0",description:"Approved",allowedToolIds:[]};
+ const agent={id:"approved_agent",role:"Approved agent",description:"Approved agent",skillId:"approved_skill",allowedToolIds:[],score:10,matchedTerms:["approved"]};
+ const lifecycle={get:async()=>({id:"approved_skill",status:"ACTIVE",ownerApproved:true,costStatus:"free"}),isSelectable:r=>r?.status==="ACTIVE"&&r.ownerApproved===true&&r.costStatus==="free"};
+ const supervisor=createMultiAgentSupervisor({
+  agentRegistry:{search:()=>[agent],get:()=>agent},
+  skillRegistry:{get:()=>skill,search:()=>[{id:"approved_skill",score:10,matchedTerms:["approved"]}]},
+  agentLoop:{run:async()=>{agentCalls++;return {ok:true,output:"verified",steps:1,toolCalls:0};}},
+  skillLifecycle:lifecycle
+ });
+ const prepared=await supervisor.prepare({task:"approved skill"});
+ assert.equal(prepared.ok,true);
+ const result=await supervisor.run({task:"approved skill",allowToolExecution:true,planAgent:async()=>({type:"final",output:"done"})});
+ assert.equal(result.ok,true);
+ assert.equal(agentCalls,1);
+});
+test("multi-agent supervisor fails closed when lifecycle storage cannot be read", async()=>{
+ const agent={id:"storage_agent",role:"Storage agent",description:"Storage test",skillId:"storage_skill",allowedToolIds:[],score:10,matchedTerms:["storage"]};
+ const supervisor=createMultiAgentSupervisor({
+  agentRegistry:{search:()=>[agent],get:()=>agent},
+  skillRegistry:{get:()=>({id:"storage_skill"}),search:()=>[{id:"storage_skill",score:10,matchedTerms:["storage"]}]},
+  agentLoop:{run:async()=>({ok:true})},
+  skillLifecycle:{get:async()=>{throw new Error("storage unavailable");},isSelectable:()=>true}
+ });
+ assert.equal((await supervisor.prepare({task:"storage test"})).code,"SKILL_LIFECYCLE_UNAVAILABLE");
+});
