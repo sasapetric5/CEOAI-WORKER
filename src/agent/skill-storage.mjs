@@ -37,6 +37,18 @@ export async function publishSkillCatalogToKV({ kv, skills, toolRegistry, approv
   const registry = createSkillRegistry({ skills, toolRegistry });
   const knownIds = new Set(registry.list().map((skill) => skill.id));
   const approved = idSet(approvedSkillIds, knownIds, "INVALID_APPROVED_SKILL_IDS");
+  if (skillLifecycle !== null && (typeof skillLifecycle.get !== "function" || typeof skillLifecycle.isSelectable !== "function")) throw new TypeError("INVALID_SKILL_LIFECYCLE");
+  // Runtime admission is the union of code-owned built-ins and externally reviewed,
+  // owner-approved lifecycle records. Catalog metadata can never grant admission.
+  const lifecycleApproved = new Set();
+  if (skillLifecycle) {
+    for (const id of knownIds) {
+      let record;
+      try { record = await skillLifecycle.get(id); } catch { throw new Error("SKILL_LIFECYCLE_UNAVAILABLE"); }
+      if (skillLifecycle.isSelectable(record) === true) lifecycleApproved.add(id);
+    }
+  }
+  const admitted = new Set([...approved, ...lifecycleApproved]);
   const metadata = [];
   for (const skill of registry.list()) {
     const loaded = await registry.load(skill.id);
@@ -54,7 +66,7 @@ export async function publishSkillCatalogToKV({ kv, skills, toolRegistry, approv
 }
 
 export async function createKVSkillRegistry({
-  kv, toolRegistry, capabilityPolicy = {}, approvedSkillIds = [],
+  kv, toolRegistry, capabilityPolicy = {}, approvedSkillIds = [], skillLifecycle = null,
   categoryBySkillId = {}, categoryCapabilityPolicy = {},
   indexKey = SKILL_INDEX_KEY, documentPrefix = SKILL_DOCUMENT_PREFIX
 } = {}) {
@@ -88,7 +100,7 @@ export async function createKVSkillRegistry({
 
   // Only the code-owned approvedSkillIds list controls runtime admission. The KV
   // approvalStatus is audit metadata and cannot be forged to bypass this gate.
-  const trustedSkills = parsed.skills.filter((entry) => approved.has(entry.id)).map((entry) => {
+  const trustedSkills = parsed.skills.filter((entry) => admitted.has(entry.id)).map((entry) => {
     const skillTools = capabilityPolicy[entry.id] ?? [];
     if (!Array.isArray(skillTools) || skillTools.length > 8 || skillTools.some((id) => typeof id !== "string") || new Set(skillTools).size !== skillTools.length) throw new TypeError("INVALID_SKILL_CAPABILITY_POLICY:" + entry.id);
     const category = categoryBySkillId[entry.id];
