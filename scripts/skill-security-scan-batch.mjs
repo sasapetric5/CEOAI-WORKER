@@ -14,7 +14,7 @@ async function walk(dir){const out=[];async function visit(d){for(const e of awa
 const rel=f=>path.relative(ROOT,f).split(path.sep).join("/"),norm=v=>String(v||"").replace(/\\/g,"/").replace(/^\.\/+/,"").replace(/^file:\/\//,"");
 const codeFiles=fs=>fs.filter(f=>/\.(c|cc|cpp|cs|go|java|js|jsx|mjs|cjs|py|rb|rs|ts|tsx)$/i.test(f));
 const hasDeps=fs=>fs.some(f=>/(package(-lock)?\.json|pnpm-lock\.yaml|yarn\.lock|requirements[^/]*\.txt|pyproject\.toml|poetry\.lock|pipfile\.lock|cargo\.(toml|lock)|go\.(mod|sum)|gemfile(\.lock)?|composer\.(json|lock)|pom\.xml|build\.gradle(\.kts)?|mix\.lock|pubspec\.lock)$/i.test(path.basename(f)));
-const inSkill=(file,dir)=>{const f=norm(file),d=norm(dir);return f===d||f.startsWith(d+"/")||f.endsWith("/"+d);};
+const inSkill=(file,dir)=>{const f=norm(file),d=norm(dir);return f===d||f.startsWith(d+"/")||f.includes("/"+d+"/")||f.endsWith("/"+d);};
 const finding=(s,c)=>({severity:severity(s),code:safeCode(c)});
 function parseSemgrep(r){if(!Array.isArray(r?.results))throw Error("SEMGREP_REPORT_INVALID");return r.results.map(x=>({path:norm(x.path),...finding(x.extra?.severity||x.severity,x.check_id||"SEMGREP_FINDING")}));}
 function parseGitleaks(r){if(!Array.isArray(r))throw Error("GITLEAKS_REPORT_INVALID");return r.map(x=>({path:norm(x.File||x.file||x.Path||x.path),...finding("high",x.RuleID||x.ruleID||"SECRET_LEAK")}));}
