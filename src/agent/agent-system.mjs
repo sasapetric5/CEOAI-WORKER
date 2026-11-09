@@ -21,9 +21,10 @@ export function createBuiltinAgentSystem({toolRegistry,agentLoopFactory,maxAgent
 export async function createKVAgentSystem({
  kv,toolRegistry,agentLoopFactory,maxAgents=3,maxToolCalls=4,capabilityRegistry=null,capabilityContext=null,approvalProvider=null,requireDurableAuthority=false,capabilityPolicy={},
  approvedSkillIds,categoryBySkillId={},categoryCapabilityPolicy={},indexKey,documentPrefix,
- mcpAuthorize=null,mcpAudit=null,mcpPageSize=20,skillLifecycle=null
+ mcpAuthorize=null,mcpAudit=null,mcpPageSize=20,skillLifecycle=null,
+ securityFirewall=null,qualityEvaluator=null,verifyIntakeReview=null
 }={}){
- const skills=await createKVSkillSystem({kv,toolRegistry,agentLoopFactory,maxSelectedSkills:3,capabilityPolicy,approvedSkillIds,categoryBySkillId,categoryCapabilityPolicy,indexKey,documentPrefix,skillLifecycle});
+ const skills=await createKVSkillSystem({kv,toolRegistry,agentLoopFactory,maxSelectedSkills:3,capabilityPolicy,approvedSkillIds,categoryBySkillId,categoryCapabilityPolicy,indexKey,documentPrefix,skillLifecycle,securityFirewall,qualityEvaluator,verifyIntakeReview});
  if(!skills.agentLoop)throw new TypeError("AGENT_LOOP_FACTORY_REQUIRED");
  return attach(skills,{toolRegistry,maxAgents,maxToolCalls,capabilityRegistry,capabilityContext,approvalProvider,requireDurableAuthority,mcpAuthorize,mcpAudit,mcpPageSize,skillLifecycle});
 }
