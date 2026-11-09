@@ -26,13 +26,14 @@ function safeSnapshot(value, seen = new WeakSet(), depth = 0) {
  return output;
 }
 const safeJson=value=>{try{const snapshot=safeSnapshot(value);if(snapshot===undefined)return null;const json=JSON.stringify(snapshot);return typeof json==="string"&&new TextEncoder().encode(json).byteLength<=MAX_CONTEXT_BYTES?json:null;}catch{return null;}};
-export function createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoop,capabilityRegistry=null,capabilityContext=null,approvalProvider=null,requireDurableAuthority=false,maxAgents=3,maxToolCalls=4}={}){
+export function createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoop,capabilityRegistry=null,capabilityContext=null,approvalProvider=null,requireDurableAuthority=false,maxAgents=3,maxToolCalls=4,skillLifecycle=null}={}){
  if(!agentRegistry||typeof agentRegistry.search!=="function"||typeof agentRegistry.get!=="function")throw new TypeError("AGENT_REGISTRY_REQUIRED");
  if(!skillRegistry||typeof skillRegistry.get!=="function"||typeof skillRegistry.search!=="function")throw new TypeError("SKILL_REGISTRY_REQUIRED");
  if(!agentLoop||typeof agentLoop.run!=="function")throw new TypeError("AGENT_LOOP_REQUIRED");
  if(capabilityRegistry!==null&&(typeof capabilityRegistry.resolve!=="function"||typeof capabilityRegistry.authorize!=="function"))throw new TypeError("INVALID_CAPABILITY_REGISTRY");
  if(typeof requireDurableAuthority!=="boolean")throw new TypeError("INVALID_DURABLE_AUTHORITY_POLICY");
  if(approvalProvider!==null&&typeof approvalProvider!=="function")throw new TypeError("INVALID_APPROVAL_PROVIDER");
+ if(skillLifecycle!==null&&(typeof skillLifecycle.get!=="function"||typeof skillLifecycle.isSelectable!=="function"))throw new TypeError("INVALID_SKILL_LIFECYCLE");
  if(capabilityRegistry!==null&&(!plain(capabilityContext)||typeof capabilityContext.appId!=="string"||typeof capabilityContext.callerId!=="string"||(capabilityContext.resource!==undefined&&(typeof capabilityContext.resource!=="string"||capabilityContext.resource.length>512))||(capabilityContext.operation!==undefined&&(typeof capabilityContext.operation!=="string"||!/^[a-z][a-z0-9:_-]{0,63}$/.test(capabilityContext.operation)))))throw new TypeError("INVALID_TRUSTED_CAPABILITY_CONTEXT");
  if(!Number.isSafeInteger(maxAgents)||maxAgents<1||maxAgents>5)throw new TypeError("INVALID_AGENT_LIMIT");
  if(!Number.isSafeInteger(maxToolCalls)||maxToolCalls<1||maxToolCalls>8)throw new TypeError("INVALID_SHARED_BUDGET");
@@ -60,6 +61,17 @@ export function createMultiAgentSupervisor({agentRegistry,skillRegistry,agentLoo
     skillId:skill.id,score:skill.score??0,matchedTerms:skill.matchedTerms??[],
     allowedToolIds:[...(skill.allowedToolIds??[])],universal:true
    }));
+  }
+  if(skillLifecycle){
+   const eligible=[];
+   for(const agent of selected){
+    let record;
+    try{record=await skillLifecycle.get(agent.skillId);}
+    catch{return {ok:false,code:"SKILL_LIFECYCLE_UNAVAILABLE",agents:[]};}
+    if(skillLifecycle.isSelectable(record))eligible.push(agent);
+   }
+   selected=eligible;
+   if(!selected.length)return {ok:false,code:"NO_ACTIVE_VERIFIED_SKILL",agents:[]};
   }
   if(!selected.length)return {ok:false,code:"NO_RELEVANT_AGENT",agents:[]};
   return {ok:true,agents:selected.map(a=>({id:a.id,role:a.role,description:a.description,skillId:a.skillId,score:a.score??null,matchedTerms:a.matchedTerms??[],allowedToolIds:a.allowedToolIds, ...(a.universal===true?{universal:true}:{})}))};
