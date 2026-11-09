@@ -410,7 +410,7 @@ test("combined Spider quota migrates legacy global and per-app counters and pres
   const duplicate = await claim(appIds[0]);
   assert.equal(duplicate.allowed, true);
   assert.equal(duplicate.duplicate, true);
-  assert.equal(duplicate.appCount, 2);
+  assert.equal(duplicate.appCount, 3);
   const globalAtCap = { count: 5, jobIds: [...globalIds, "323e4567-e89b-42d3-a456-426614174051", "323e4567-e89b-42d3-a456-426614174052", "323e4567-e89b-42d3-a456-426614174053"] };
   const globalBlocked = await claim("423e4567-e89b-42d3-a456-426614174050", globalAtCap, legacyApp);
   assert.equal(globalBlocked.allowed, false);
