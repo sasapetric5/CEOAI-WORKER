@@ -158,7 +158,7 @@ export class SpiderJobLedgerDO {
   }
 
   async getQuota(input) {
-    if (typeof input.date !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(input.date) ||
+    if (typeof input.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(input.date) ||
         Object.keys(input).some(key => !["appId", "date"].includes(key))) return fail("INVALID_QUOTA_REQUEST");
     const existing = await this.ctx.storage.get("quota");
     if (!existing) return json({ ok: true, count: 0, jobIds: [] });
