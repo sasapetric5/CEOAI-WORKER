@@ -22,5 +22,5 @@ export async function createKVAgentSystem({
 }={}){
  const skills=await createKVSkillSystem({kv,toolRegistry,agentLoopFactory,maxSelectedSkills:3,capabilityPolicy,approvedSkillIds,categoryBySkillId,categoryCapabilityPolicy,indexKey,documentPrefix,skillLifecycle});
  if(!skills.agentLoop)throw new TypeError("AGENT_LOOP_FACTORY_REQUIRED");
- return attach(skills,{toolRegistry,maxAgents,maxToolCalls,capabilityRegistry,capabilityContext,approvalProvider,requireDurableAuthority,mcpAuthorize,mcpAudit,mcpPageSize});
+ return attach(skills,{toolRegistry,maxAgents,maxToolCalls,capabilityRegistry,capabilityContext,approvalProvider,requireDurableAuthority,mcpAuthorize,mcpAudit,mcpPageSize,skillLifecycle});
 }
