@@ -1,0 +1,94 @@
+name: CEOAI Skill Security Firewall
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  security-events: write
+
+concurrency:
+  group: ceoai-skill-security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: Scan external Skill bundles
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout pinned commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pipx and scanner tools
+        run: |
+          python -m pip install --user pipx
+          python -m pipx ensurepath
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/pipx" install semgrep
+          "$HOME/.local/bin/pipx" install owasp-depscan
+
+      - name: Install Gitleaks
+        run: |
+          VERSION=8.24.2
+          curl --fail --silent --show-error --location "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" -o /tmp/gitleaks.tar.gz
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          sudo install /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Install ClamAV and update signatures
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clamav clamav-freshclam
+          sudo freshclam
+          clamscan --version
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.8.2
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+
+      - name: Analyze repository with CodeQL
+        uses: github/codeql-action/analyze@v3
+        with:
+          output: ${{ github.workspace }}/.reports/skill-security/codeql.sarif
+          upload: false
+
+      - name: Run CEOAI scanner aggregation and signed evaluator
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          CODEQL_SARIF: .reports/skill-security/codeql.sarif
+        run: node scripts/skill-security-scan.mjs
+
+      - name: Preserve signed Skill scan reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ceoai-skill-security-${{ github.run_id }}
+          path: .reports/skill-security/
+          if-no-files-found: warn
+          retention-days: 30
