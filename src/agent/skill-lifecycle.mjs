@@ -65,7 +65,7 @@ export function createSkillLifecycleManager({storage,now=()=>Date.now()}={}){
   else if(failed){status="DEGRADED";reason="Functional quality check failed; retry or review required";}
   else if(record.costStatus==="free"&&validReview(record.securityReview)){status="VERIFIED";reason="Free-cost policy, security review and functional quality checks passed";}
   const next={...record,revision:record.revision+1,quality,status,reason,updatedAt:now()};
-  const ok=await storage.compareAndSet(KEY(id),record.status,next);
+  const ok=await storage.compareAndSet(KEY(id),record.status,record.revision,next);
   return ok?{ok:true,record:copy(next)}:{ok:false,code:"SKILL_LIFECYCLE_CONFLICT"};
  }
  async function approveForActivation(id,{approvedByOwner=false}={}){
