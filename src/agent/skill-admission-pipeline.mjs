@@ -28,8 +28,8 @@ export function createSkillAdmissionPipeline({
     reviewEvidence, runId, taskCategory = "general", cases
   } = {}) {
     if (!plain(candidate) || typeof candidate.id !== "string" ||
-        typeof content !== "string" || !Array.isArray(files) ||
-        !["free", "paid", "unknown"].includes(costStatus)) {
+        typeof content !== "string" || !Array.isArray(files) || !plain(reviewEvidence) ||
+        Object.keys(reviewEvidence).length === 0 || !["free", "paid", "unknown"].includes(costStatus)) {
       return { ok: false, code: "INVALID_SKILL_ADMISSION_REQUEST", isolated: false };
     }
     let record;
