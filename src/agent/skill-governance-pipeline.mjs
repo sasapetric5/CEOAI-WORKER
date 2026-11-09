@@ -39,14 +39,16 @@ export function createSkillGovernancePipeline({
   const noTools = Object.freeze({ get: () => null });
 
   async function process(candidate, recovery = false) {
-    let fetched;
-    try { fetched = await source.fetchCandidate(candidate); } catch { return fail("SKILL_SOURCE_FETCH_FAILED"); }
-    if (!fetched?.ok) return fail(fetched?.code || "SKILL_SOURCE_FETCH_FAILED");
-    const c = fetched.candidate;
-    if (!plain(c) || typeof c.id !== "string" || !/^[a-z][a-z0-9_]{0,47}$/.test(c.id) ||
-        typeof c.repository !== "string" || typeof c.path !== "string" ||
-        !SHA1.test(c.commit || "") || !SHA1.test(c.blobSha || "")) return fail("INVALID_PINNED_CANDIDATE");
-    const metadata = { repository: c.repository, path: c.path, commit: c.commit, blobSha: c.blobSha, license: fetched.license };
+    if (!plain(candidate) || typeof candidate.id !== "string" || !/^[a-z][a-z0-9_]{0,47}$/.test(candidate.id) ||
+        typeof candidate.repository !== "string" || typeof candidate.path !== "string" ||
+        !SHA1.test(candidate.commit || "") || !SHA1.test(candidate.blobSha || "") ||
+        !(source.approvedRepositories || []).includes(candidate.repository)) return fail("INVALID_PINNED_CANDIDATE");
+    const c = candidate;
+    const metadata = { repository: c.repository, path: c.path, commit: c.commit, blobSha: c.blobSha };
+    async function failure(stage, code, severity = "quarantine") {
+      try { await lifecycle.recordFailure(c.id, { stage, code, severity }); } catch {}
+      return fail(code);
+    }
     if (!recovery) {
       const created = await lifecycle.discover({ id: c.id, metadata });
       if (!created.ok) return created;
@@ -54,28 +56,39 @@ export function createSkillGovernancePipeline({
       const current = await lifecycle.get(c.id);
       if (!current || current.status !== "QUARANTINED") return fail("RECOVERY_NOT_IN_QUARANTINE");
     }
-
+    let fetched;
+    try { fetched = await source.fetchCandidate(candidate); }
+    catch { return failure("source_fetch", "SKILL_SOURCE_FETCH_FAILED"); }
+    if (!fetched?.ok) return failure("source_fetch", fetched?.code || "SKILL_SOURCE_FETCH_FAILED");
+    if (!plain(fetched.candidate) || fetched.candidate.id !== c.id || fetched.candidate.repository !== c.repository ||
+        fetched.candidate.path !== c.path || fetched.candidate.commit !== c.commit || fetched.candidate.blobSha !== c.blobSha ||
+        typeof fetched.content !== "string" || !Array.isArray(fetched.files)) {
+      return failure("source_integrity", "FETCHED_CANDIDATE_MISMATCH");
+    }
+    const fullMetadata = { ...metadata, license: fetched.license };
     let cost;
     try { cost = await costVerifier({ candidate: c, content: fetched.content, license: fetched.license }); }
     catch { cost = null; }
     const costStatus = cost?.status === "free" ? "free" : cost?.status === "paid" ? "paid" : "unknown";
     const costResult = await lifecycle.classifyCost(c.id, costStatus);
     if (!costResult.ok) return costResult;
-    if (costStatus !== "free") return fail(costStatus === "paid" ? "PAID_SKILL_REJECTED" : "COST_UNVERIFIED_QUARANTINED");
-
+    if (costStatus !== "free") {
+      return failure("cost_review", costStatus === "paid" ? "PAID_SKILL_REJECTED" : "COST_UNVERIFIED_QUARANTINED",
+        costStatus === "paid" ? "reject" : "quarantine");
+    }
     const contentSha256 = await hash(fetched.content);
     const intake = await verifySkillIntake({
       id: c.id, version: "1.0.0", description: "External skill from pinned approved repository",
       content: fetched.content, contentSha256,
       source: { repository: c.repository, path: c.path, license: fetched.license, commit: c.commit, blobSha: c.blobSha }
     }, { approvedRepositories: source.approvedRepositories || [], approvedLicenses: [...LICENSES] });
-    if (!intake.ok) return fail(intake.code);
-
-    const staticChecks = staticReview(fetched.files || [], fetched.content);
+    if (!intake.ok) return failure("supply_chain", intake.code);
+    const staticChecks = staticReview(fetched.files, fetched.content);
     let independent;
-    try { independent = await reviewCandidate({ candidate: c, content: fetched.content, license: fetched.license,
-      files: Object.freeze([...(fetched.files || [])]), staticChecks: Object.freeze(staticChecks) }); }
-    catch { return fail("INDEPENDENT_SECURITY_REVIEW_FAILED"); }
+    try {
+      independent = await reviewCandidate({ candidate: c, content: fetched.content, license: fetched.license,
+        files: Object.freeze([...fetched.files]), staticChecks: Object.freeze(staticChecks) });
+    } catch { return failure("security_review", "INDEPENDENT_SECURITY_REVIEW_FAILED"); }
     const review = {
       sourcePinned: true, licenseVerified: LICENSES.has(fetched.license), hashVerified: intake.contentTrust === "sha256_verified",
       dependenciesReviewed: staticChecks.dependenciesReviewed && independent?.dependenciesReviewed === true,
@@ -83,23 +96,22 @@ export function createSkillGovernancePipeline({
       networkReviewed: staticChecks.networkReviewed && independent?.networkReviewed === true,
       credentialsReviewed: staticChecks.credentialsReviewed && independent?.credentialsReviewed === true
     };
-    if (!Object.values(review).every(Boolean)) return fail("SECURITY_REVIEW_INCOMPLETE");
+    if (!Object.values(review).every(Boolean)) return failure("security_review", "SECURITY_REVIEW_INCOMPLETE");
     const secured = await lifecycle.recordSecurityReview(c.id, review);
     if (!secured.ok) return secured;
-
     let cases;
-    try { cases = await testCasesForSkill({ id: c.id, content: fetched.content, source: metadata }); }
-    catch { return fail("SKILL_TEST_CASES_UNAVAILABLE"); }
+    try { cases = await testCasesForSkill({ id: c.id, content: fetched.content, source: fullMetadata }); }
+    catch { return failure("quality_tests", "SKILL_TEST_CASES_UNAVAILABLE"); }
     const registry = createSkillRegistry({ toolRegistry: noTools, skills: [{
       id: c.id, version: "1.0.0", description: "External skill from pinned approved repository",
-      allowedToolIds: [], content: fetched.content, source: metadata, contentSha256
+      allowedToolIds: [], content: fetched.content, source: fullMetadata, contentSha256
     }] });
     const evaluator = createSkillQualityEvaluator({ skillRegistry: registry, skillLifecycle: lifecycle, executeCase, now });
     const runId = "skill-" + (await hash(c.repository + "/" + c.path + "/" + c.commit + "/" + now())).slice(0, 32);
     const evaluation = await evaluator.evaluate({ skillId: c.id, runId, taskCategory: "external_skill", cases });
     if (!evaluation.ok) return evaluation;
     return { ok: true, id: c.id, status: evaluation.lifecycleStatus, score: evaluation.score,
-      passed: evaluation.passed, total: evaluation.total, activated: false, source: metadata, staticChecks };
+      passed: evaluation.passed, total: evaluation.total, activated: false, source: fullMetadata, staticChecks };
   }
 
   async function runBatch({ limit = 20 } = {}) {
