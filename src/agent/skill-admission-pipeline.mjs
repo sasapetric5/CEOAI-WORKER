@@ -8,7 +8,7 @@ const plain = value => value !== null && typeof value === "object" && !Array.isA
   (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
 
 export function createSkillAdmissionPipeline({
-  securityFirewall, skillLifecycle, qualityEvaluator, verifyIntakeReview
+  securityFirewall, skillLifecycle, qualityEvaluator, verifyIntakeReview, refreshRegistry
 } = {}) {
   if (!securityFirewall || typeof securityFirewall.scan !== "function") throw new TypeError("SKILL_SECURITY_FIREWALL_REQUIRED");
   if (!skillLifecycle || !["discover", "get", "classifyCost", "recordSecurityReview", "recordFailure", "approveForActivation", "isSelectable"]
@@ -102,11 +102,16 @@ export function createSkillAdmissionPipeline({
     try { result = await skillLifecycle.approveForActivation(skillId, { approvedByOwner }); }
     catch { return { ok: false, code: "REGISTRY_ADMISSION_PERSISTENCE_FAILED" }; }
     if (!result?.ok) return result;
+    if (typeof refreshRegistry === "function") {
+      try { await refreshRegistry(); }
+      catch { return { ok: false, code: "REGISTRY_REFRESH_FAILED", lifecycleStatus: result.record?.status ?? "ACTIVE" }; }
+    }
     return {
       ok: true,
       skillId,
       registryStatus: "ACTIVE",
-      selectable: skillLifecycle.isSelectable(result.record) === true
+      selectable: skillLifecycle.isSelectable(result.record) === true,
+      registryRefreshed: typeof refreshRegistry === "function"
     };
   }
 
