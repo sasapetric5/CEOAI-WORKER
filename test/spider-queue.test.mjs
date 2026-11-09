@@ -392,7 +392,7 @@ test("combined Spider quota migrates legacy global and per-app counters and pres
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
   })).then(response => response.json());
   const globalIds = ["123e4567-e89b-42d3-a456-426614174050", "123e4567-e89b-42d3-a456-426614174051"];
-  const appIds = ["223e4567-e89b-42d3-a456-426614174050", "223e4567-e89b-42d3-a456-426614174051"];
+  const appIds = ["223e4567-e89b-42d3-a456-426614174050", "223e4567-e89b-42d3-a456-426614174051", "223e4567-e89b-42d3-a456-426614174052"];
   for (const jobId of globalIds) await post(global, "/quota/claim", { appId: "GLOBAL", date, id: jobId, limit: 5, now: now() });
   for (const jobId of appIds) await post(app, "/quota/claim", { appId: "CONTENTCRAFT-APP", date, id: jobId, limit: 3, now: now() });
   const legacyGlobal = await post(global, "/quota/get", { appId: "GLOBAL", date });
