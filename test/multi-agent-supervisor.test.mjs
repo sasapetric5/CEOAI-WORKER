@@ -9,7 +9,7 @@ import {createAgentLoop} from "../src/agent/agent-loop.mjs";
 import {createKVAgentSystem} from "../src/agent/agent-system.mjs";
 import {BUILTIN_SKILLS} from "../src/agent/builtin-skills.mjs";
 import {publishSkillCatalogToKV} from "../src/agent/skill-storage.mjs";
-const emptyTools={get:()=>null};
+const emptyTools={get:id=>id==="research_read"?{id}:null};
 test("five curated agents have valid role and skill references",()=>{
  const skills={get:id=>BUILTIN_SKILLS.find(s=>s.id===id)||null,search:()=>[]};
  const r=createAgentRegistry({agents:BUILTIN_AGENTS,skillRegistry:skills,toolRegistry:emptyTools});
@@ -50,7 +50,7 @@ test("agents run sequentially under one shared tool-call budget",async()=>{
 });
 test("agent composition loads the KV skill library and exposes supervisor",async()=>{
  const values=new Map(),kv={async put(k,v){values.set(k,v);},async get(k){return values.get(k)??null;}};
- const toolRegistry=createToolRegistry({tools:[]});
+ const toolRegistry=createToolRegistry({tools:[{id:"research_read",description:"Bounded read-only research",inputSchema:{type:"object",properties:{query:{type:"string",maxLength:200}},required:["query"],additionalProperties:false},handler:async()=>({results:[]})}],enabled:false});
  await publishSkillCatalogToKV({kv,skills:BUILTIN_SKILLS,toolRegistry,approvedSkillIds:BUILTIN_SKILLS.map(skill=>skill.id)});
  const system=await createKVAgentSystem({kv,toolRegistry,agentLoopFactory:({toolRegistry,skillRegistry})=>createAgentLoop({toolRegistry,skillRegistry}),mcpAuthorize:async context=>context?.valid===true});
  assert.equal(system.agents.size,5);assert.ok(system.multiAgentSupervisor);assert.ok(system.mcpResources);
