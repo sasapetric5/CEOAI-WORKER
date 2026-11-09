@@ -109,7 +109,7 @@ export function createGitHubSkillSource({ repositories = [], fetchImpl = globalT
     }
     const licenseId = license.license && license.license.spdx_id;
     if (typeof licenseId !== "string") return { ok: false, code: "LICENSE_NOT_DETECTED" };
-    const prefix = candidate.path.replace(/\/SKILL\.md$/i, "");
+    const prefix = candidate.path.replace(/(^|\\/)SKILL\\.md$/i, "");
     const bundleEntries = tree.tree.filter(entry => entry.type === "blob" && typeof entry.path === "string" &&
       (prefix ? entry.path.startsWith(prefix + "/") : true));
     if (bundleEntries.length > MAX_SKILL_FILES) return { ok: false, code: "SKILL_BUNDLE_FILE_LIMIT_EXCEEDED" };
