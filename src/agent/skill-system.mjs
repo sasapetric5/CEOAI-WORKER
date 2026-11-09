@@ -2,14 +2,14 @@
 import {BUILTIN_SKILLS,createBuiltinSkillRegistry} from "./builtin-skills.mjs";
 import {createSkillSupervisor} from "./skill-supervisor.mjs";
 import {createKVSkillRegistry} from "./skill-storage.mjs";
-function compose({registry,toolRegistry,agentLoopFactory,maxSelectedSkills}){
+function compose({registry,toolRegistry,agentLoopFactory,maxSelectedSkills,skillLifecycle=null}){
  if(agentLoopFactory!==null&&typeof agentLoopFactory!=="function")throw new TypeError("INVALID_AGENT_LOOP_FACTORY");
  const agentLoop=agentLoopFactory?agentLoopFactory({toolRegistry,skillRegistry:registry}):null;
- return Object.freeze({registry,agentLoop,supervisor:createSkillSupervisor({skillRegistry:registry,agentLoop,maxSelectedSkills})});
+ return Object.freeze({registry,agentLoop,supervisor:createSkillSupervisor({skillRegistry:registry,agentLoop,maxSelectedSkills,skillLifecycle})});
 }
-export function createBuiltinSkillSystem({toolRegistry,agentLoopFactory=null,maxSelectedSkills=3}={}){
+export function createBuiltinSkillSystem({toolRegistry,agentLoopFactory=null,maxSelectedSkills=3,skillLifecycle=null}={}){
  const registry=createBuiltinSkillRegistry({toolRegistry});
- return compose({registry,toolRegistry,agentLoopFactory,maxSelectedSkills});
+ return compose({registry,toolRegistry,agentLoopFactory,maxSelectedSkills,skillLifecycle});
 }
 export async function createKVSkillSystem({
  kv,toolRegistry,agentLoopFactory=null,maxSelectedSkills=3,capabilityPolicy={},
@@ -17,5 +17,5 @@ export async function createKVSkillSystem({
  categoryCapabilityPolicy={},indexKey,documentPrefix
 }={}){
  const registry=await createKVSkillRegistry({kv,toolRegistry,capabilityPolicy,approvedSkillIds,categoryBySkillId,categoryCapabilityPolicy,indexKey,documentPrefix});
- return compose({registry,toolRegistry,agentLoopFactory,maxSelectedSkills});
+ return compose({registry,toolRegistry,agentLoopFactory,maxSelectedSkills,skillLifecycle});
 }
