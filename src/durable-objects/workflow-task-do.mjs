@@ -23,10 +23,55 @@ export class WorkflowTaskDO {
       body = JSON.parse(raw);
     } catch { return json({ ok: false, code: "INVALID_JSON" }, 400); }
     if (!plain(body) || typeof body.id !== "string" || !TASK_ID.test(body.id) ||
-        Object.keys(body).some(key => !["id", "state", "expectedRevision", "ownerToken", "fencingToken", "leaseMs", "effectKey", "payloadHash", "result"].includes(key))) {
+        Object.keys(body).some(key => !["id", "state", "expectedRevision", "ownerToken", "fencingToken", "leaseMs", "effectKey", "payloadHash", "result", "skillId", "skillRecord", "expectedStatus", "expectedSkillRevision"].includes(key))) {
       return json({ ok: false, code: "INVALID_REQUEST" }, 400);
     }
     try {
+      // Skill lifecycle records share this DO's transactional storage, but use a
+      // dedicated keyspace. Discovery and status changes are atomic and fail closed.
+      if (path === "/skill/get") {
+        if (Object.keys(body).length !== 2 || typeof body.skillId !== "string" || !/^[a-z][a-z0-9_]{0,47}$/.test(body.skillId)) {
+          return json({ ok: false, code: "INVALID_SKILL_LIFECYCLE_REQUEST" }, 400);
+        }
+        const record = await this.ctx.storage.get("skillLifecycle:" + body.skillId);
+        return json({ ok: true, record: record || null });
+      }
+      if (path === "/skill/create") {
+        if (Object.keys(body).length !== 3 || typeof body.skillId !== "string" || !/^[a-z][a-z0-9_]{0,47}$/.test(body.skillId) ||
+            !plain(body.skillRecord) || body.skillRecord.id !== body.skillId || body.skillRecord.schemaVersion !== 1 ||
+            !Number.isSafeInteger(body.skillRecord.revision) || body.skillRecord.revision !== 0 ||
+            new TextEncoder().encode(JSON.stringify(body.skillRecord)).byteLength > MAX_BYTES) {
+          return json({ ok: false, code: "INVALID_SKILL_LIFECYCLE_RECORD" }, 400);
+        }
+        const result = await this.ctx.storage.transaction(async txn => {
+          const key = "skillLifecycle:" + body.skillId;
+          if (await txn.get(key)) return { ok: false, code: "SKILL_ALREADY_TRACKED" };
+          await txn.put(key, body.skillRecord);
+          return { ok: true, record: body.skillRecord };
+        });
+        return json(result, result.ok ? 200 : 409);
+      }
+      if (path === "/skill/cas") {
+        if (Object.keys(body).length !== 5 || typeof body.skillId !== "string" || !/^[a-z][a-z0-9_]{0,47}$/.test(body.skillId) ||
+            !Number.isSafeInteger(body.expectedSkillRevision) || body.expectedSkillRevision < 0 ||
+            typeof body.expectedStatus !== "string" || !/^[A-Z_]{3,24}$/.test(body.expectedStatus) ||
+            !plain(body.skillRecord) || body.skillRecord.id !== body.skillId || body.skillRecord.schemaVersion !== 1 ||
+            !Number.isSafeInteger(body.skillRecord.revision) || body.skillRecord.revision !== body.expectedSkillRevision + 1 ||
+            new TextEncoder().encode(JSON.stringify(body.skillRecord)).byteLength > MAX_BYTES) {
+          return json({ ok: false, code: "INVALID_SKILL_LIFECYCLE_RECORD" }, 400);
+        }
+        const result = await this.ctx.storage.transaction(async txn => {
+          const key = "skillLifecycle:" + body.skillId;
+          const current = await txn.get(key);
+          if (!current) return { ok: false, code: "SKILL_NOT_FOUND" };
+          if (current.revision !== body.expectedSkillRevision || current.status !== body.expectedStatus) {
+            return { ok: false, code: "SKILL_LIFECYCLE_CONFLICT" };
+          }
+          await txn.put(key, body.skillRecord);
+          return { ok: true, record: body.skillRecord };
+        });
+        return json(result, result.ok ? 200 : 409);
+      }
       if (path === "/lease/acquire") {
         if (Object.keys(body).some(key => !["id", "ownerToken", "leaseMs"].includes(key)) ||
             Object.keys(body).length !== 3 || typeof body.ownerToken !== "string" || !OWNER_TOKEN.test(body.ownerToken) ||
