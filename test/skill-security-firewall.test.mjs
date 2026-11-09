@@ -76,3 +76,14 @@ test("rejects scanner reports without a valid trusted CI attestation", async()=>
  const result=await firewall.scan({candidate,content:"untrusted",files:["SKILL.md"],contentSha256:digest,bundleSha256:bundleDigest});
  assert.equal(result.code,"UNTRUSTED_SCAN_ATTESTATION");
 });
+
+test("records scanners with explicit non-applicability separately from unavailable scanners",()=>{
+ const report=cleanReport();
+ report.scans[1]={scanner:"semgrep",version:"1.2.3",status:"not_applicable",applicabilityReason:"No source code in this Skill bundle",findings:[]};
+ report.scans[2]={scanner:"codeql",version:"2.20.0",status:"not_applicable",applicabilityReason:"No supported source files",findings:[]};
+ report.scans[4]={scanner:"owasp_dep_scan",version:"1.0.0",status:"not_applicable",applicabilityReason:"No dependency manifest",findings:[]};
+ const accepted=evaluateSkillSecurityReport(report,{expectedContentSha256:digest,expectedBundleSha256:bundleDigest,expectedCandidate:candidate});
+ assert.equal(accepted.ok,true);
+ report.scans[0]={...report.scans[0],status:"unavailable"};
+ assert.equal(evaluateSkillSecurityReport(report,{expectedContentSha256:digest,expectedBundleSha256:bundleDigest,expectedCandidate:candidate}).code,"SCANNER_UNAVAILABLE");
+});
