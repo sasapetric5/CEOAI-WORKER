@@ -42,7 +42,7 @@ export function createBuiltinResearchAgentSystem({
     limits: { timeoutMs: 9000, maxOutputBytes: 7000 },
   });
   const registry = createSkillRegistry({
-    skills: [...BUILTIN_SKILLS, RESEARCH_SKILL],
+    skills: [...BUILTIN_SKILLS.map(skill => ({ ...skill, allowedToolIds: skill.allowedToolIds.filter(id => toolRegistry.get(id)) })), RESEARCH_SKILL],
     toolRegistry,
   });
   const agentLoop = createAgentLoop({ toolRegistry, skillRegistry: registry, maxSteps, maxToolCalls });
