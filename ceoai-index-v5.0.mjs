@@ -1981,3 +1981,5 @@ export { createSkillQualityEvaluator } from "./src/agent/skill-quality-evaluator
 
 export { createGitHubSkillSource } from "./src/agent/github-skill-source.mjs";
 export { createSkillGovernancePipeline } from "./src/agent/skill-governance-pipeline.mjs";
+
+export { createCloudflareSkillGovernancePipeline } from "./src/agent/skill-governance-pipeline.mjs";
