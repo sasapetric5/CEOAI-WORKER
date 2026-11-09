@@ -22,7 +22,9 @@ export function evaluateSkillSecurityReport(report, {
   if (!plain(expectedCandidate) || !plain(report) || report.schemaVersion !== 1 ||
       report.contentSha256 !== expectedContentSha256 ||
       report.policyVersion !== policyVersion ||
-      !plain(report.candidate) ||
+      !plain(report.candidate) || !plain(report.attestation) ||
+      typeof report.attestation.envelope !== "string" || report.attestation.envelope.length < 16 ||
+      report.attestation.envelope.length > 128 * 1024 ||
       ["id", "repository", "path", "commit", "blobSha"].some(key => report.candidate[key] !== expectedCandidate[key]) ||
       typeof report.runId !== "string" || !/^[A-Za-z0-9._:-]{8,128}$/.test(report.runId) ||
       typeof report.scannedAt !== "string" || !Number.isFinite(Date.parse(report.scannedAt)) ||
