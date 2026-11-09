@@ -29,6 +29,12 @@ function canonical(value, depth = 0, seen = new Set()) {
   return result;
 }
 
+async function sha256(value) {
+  if (!globalThis.crypto?.subtle) throw new Error("SKILL_HASH_UNAVAILABLE");
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
 function boundedJson(value) {
   const serialized = canonical(value);
   if (new TextEncoder().encode(serialized).byteLength > MAX_VALUE_BYTES) throw new TypeError("EVALUATION_VALUE_TOO_LARGE");
@@ -59,9 +65,10 @@ export function createSkillQualityEvaluator({
   if (typeof now !== "function") throw new TypeError("INVALID_CLOCK");
   if (!Number.isSafeInteger(maxCases) || maxCases < 1 || maxCases > MAX_CASES) throw new TypeError("INVALID_EVALUATION_LIMIT");
 
-  async function evaluate({ skillId, runId, taskCategory = "general", cases } = {}) {
+  async function evaluate({ skillId, runId, taskCategory = "general", cases, expectedContentSha256 } = {}) {
     if (typeof skillId !== "string" || !ID.test(skillId) || typeof runId !== "string" || !RUN_ID.test(runId) ||
         typeof taskCategory !== "string" || !/^[a-z][a-z0-9_-]{0,47}$/.test(taskCategory) ||
+        (expectedContentSha256 !== undefined && (typeof expectedContentSha256 !== "string" || !/^[a-f0-9]{64}$/.test(expectedContentSha256))) ||
         !Array.isArray(cases) || cases.length < 1 || cases.length > maxCases ||
         cases.some(item => !validCase(item)) || new Set(cases.map(item => item.id)).size !== cases.length) {
       return { ok: false, code: "INVALID_SKILL_EVALUATION_REQUEST" };
@@ -74,6 +81,12 @@ export function createSkillQualityEvaluator({
     catch { return { ok: false, code: "SKILL_CONTENT_UNAVAILABLE" }; }
     if (!skill || typeof skill.content !== "string" || !skill.content.trim()) {
       return { ok: false, code: "SKILL_CONTENT_UNAVAILABLE" };
+    }
+    if (expectedContentSha256 !== undefined) {
+      let actualHash;
+      try { actualHash = await sha256(skill.content); }
+      catch { return { ok: false, code: "SKILL_HASH_UNAVAILABLE" }; }
+      if (actualHash !== expectedContentSha256) return { ok: false, code: "EVALUATED_CONTENT_HASH_MISMATCH" };
     }
 
     const results = [];
