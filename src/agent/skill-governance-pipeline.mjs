@@ -2,6 +2,9 @@
 import { verifySkillIntake } from "./supply-chain-shield.mjs";
 import { createSkillRegistry } from "./skill-registry.mjs";
 import { createSkillQualityEvaluator } from "./skill-quality-evaluator.mjs";
+import { createGitHubSkillSource } from "./github-skill-source.mjs";
+import { createCloudflareSkillLifecycleStore } from "./cloudflare-skill-lifecycle-store.mjs";
+import { createSkillLifecycleManager } from "./skill-lifecycle.mjs";
 
 const LICENSES = new Set(["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC"]);
 const SHA1 = /^[a-f0-9]{40}$/;
@@ -136,4 +139,19 @@ export function createSkillGovernancePipeline({
   }
 
   return Object.freeze({ runBatch, recover });
+}
+
+
+export function createCloudflareSkillGovernancePipeline({
+  env, repositories, costVerifier, reviewCandidate, testCasesForSkill, executeCase, fetchImpl, now = () => Date.now()
+} = {}) {
+  if (!env?.WORKFLOW_TASKS || typeof env.WORKFLOW_TASKS.idFromName !== "function" ||
+      typeof env.WORKFLOW_TASKS.get !== "function") throw new TypeError("WORKFLOW_TASKS_BINDING_REQUIRED");
+  const storage = createCloudflareSkillLifecycleStore(env.WORKFLOW_TASKS);
+  const lifecycle = createSkillLifecycleManager({ storage, now });
+  const source = createGitHubSkillSource({ repositories, fetchImpl });
+  const pipeline = createSkillGovernancePipeline({
+    source, lifecycle, costVerifier, reviewCandidate, testCasesForSkill, executeCase, now
+  });
+  return Object.freeze({ pipeline, lifecycle, source });
 }
