@@ -30,13 +30,14 @@ export class SpiderJobLedgerDO {
     if (!plain(input)) return fail("INVALID_REQUEST");
 
     try {
-      if ((path.startsWith("/job/") || path === "/quota/claim" || path === "/quota/claim-combined") && !APP_ID.test(input.appId || "")) return fail("INVALID_APP_ID");
+      if ((path.startsWith("/job/") || path === "/quota/get" || path === "/quota/claim" || path === "/quota/claim-combined") && !APP_ID.test(input.appId || "")) return fail("INVALID_APP_ID");
       if (path === "/job/claim-start") return await this.claimStart(input);
       if (path === "/job/get") return await this.getJob(input);
       if (path === "/job/mark-running") return await this.markRunning(input);
       if (path === "/job/mark-unknown") return await this.markUnknown(input);
       if (path === "/job/mark-failed") return await this.markFailed(input);
       if (path === "/job/mark-complete") return await this.markComplete(input);
+      if (path === "/quota/get") return await this.getQuota(input);
       if (path === "/quota/claim") return await this.claimQuota(input);
       if (path === "/quota/claim-combined") return await this.claimCombinedQuota(input);
       return fail("NOT_FOUND", 404);
@@ -156,6 +157,17 @@ export class SpiderJobLedgerDO {
     return json(result, result.ok ? 200 : 409);
   }
 
+  async getQuota(input) {
+    if (typeof input.date !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(input.date) ||
+        Object.keys(input).some(key => !["appId", "date"].includes(key))) return fail("INVALID_QUOTA_REQUEST");
+    const existing = await this.ctx.storage.get("quota");
+    if (!existing) return json({ ok: true, count: 0, jobIds: [] });
+    if (existing.appId !== input.appId || existing.date !== input.date) return fail("QUOTA_DATE_MISMATCH", 409);
+    const count = Number.isSafeInteger(existing.count) && existing.count >= 0 ? existing.count : 0;
+    const jobIds = Array.isArray(existing.jobIds) ? existing.jobIds.filter(id => JOB_ID.test(id)).slice(0, 5) : [];
+    return json({ ok: true, count, jobIds });
+  }
+
   async claimQuota(input) {
     if (typeof input.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(input.date) ||
         !JOB_ID.test(input.id || "") || !Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 5 ||
@@ -181,7 +193,13 @@ export class SpiderJobLedgerDO {
         typeof input.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(input.date) ||
         !JOB_ID.test(input.id || "") || input.appLimit !== appLimits[input.quotaAppId] ||
         input.globalLimit !== 5 || !Number.isSafeInteger(input.now) || input.now < 0 ||
-        Object.keys(input).some(key => !["appId", "quotaAppId", "date", "id", "appLimit", "globalLimit", "now"].includes(key))) {
+        !Number.isSafeInteger(input.legacyGlobalCount ?? 0) || (input.legacyGlobalCount ?? 0) < 0 || (input.legacyGlobalCount ?? 0) > 5 ||
+        !Number.isSafeInteger(input.legacyAppCount ?? 0) || (input.legacyAppCount ?? 0) < 0 || (input.legacyAppCount ?? 0) > 5 ||
+        !Array.isArray(input.legacyGlobalJobIds ?? []) || (input.legacyGlobalJobIds ?? []).length > 5 ||
+        (input.legacyGlobalJobIds ?? []).some(id => !JOB_ID.test(id)) ||
+        !Array.isArray(input.legacyAppJobIds ?? []) || (input.legacyAppJobIds ?? []).length > 5 ||
+        (input.legacyAppJobIds ?? []).some(id => !JOB_ID.test(id)) ||
+        Object.keys(input).some(key => !["appId", "quotaAppId", "date", "id", "appLimit", "globalLimit", "now", "legacyGlobalCount", "legacyGlobalJobIds", "legacyAppCount", "legacyAppJobIds"].includes(key))) {
       return fail("INVALID_QUOTA_REQUEST");
     }
     const result = await this.ctx.storage.transaction(async txn => {
@@ -194,14 +212,16 @@ export class SpiderJobLedgerDO {
       const legacyJobIds = priorJobIds.filter(key => !String(key).includes(":"));
       const ownIds = Array.isArray(appJobIds[input.quotaAppId]) ? appJobIds[input.quotaAppId] : [];
       const jobKey = input.quotaAppId + ":" + input.id;
-      if (legacyJobIds.includes(input.id) || globalJobIds.includes(jobKey) || ownIds.includes(input.id)) return { ok: true, allowed: true, duplicate: true, count: existing.count, appCount: appCounts[input.quotaAppId] || 0 };
-      const globalCount = Number.isSafeInteger(existing.count) && existing.count >= 0 ? existing.count : 0;
-      const appCount = Number.isSafeInteger(appCounts[input.quotaAppId]) && appCounts[input.quotaAppId] >= 0 ? appCounts[input.quotaAppId] : 0;
+      const globalCount = Math.max(Number.isSafeInteger(existing.count) && existing.count >= 0 ? existing.count : 0, input.legacyGlobalCount || 0);
+      const appCount = Math.max(Number.isSafeInteger(appCounts[input.quotaAppId]) && appCounts[input.quotaAppId] >= 0 ? appCounts[input.quotaAppId] : 0, input.legacyAppCount || 0);
+      const mergedLegacyGlobalIds = [...new Set([...legacyJobIds, ...(input.legacyGlobalJobIds || [])])].slice(0, 5);
+      const mergedLegacyAppIds = [...new Set([...ownIds, ...(input.legacyAppJobIds || [])])].slice(0, 5);
+      if (mergedLegacyGlobalIds.includes(input.id) || globalJobIds.includes(jobKey) || mergedLegacyAppIds.includes(input.id)) return { ok: true, allowed: true, duplicate: true, count: globalCount, appCount };
       if (globalCount >= input.globalLimit) return { ok: true, allowed: false, reason: "GLOBAL_DAILY_LIMIT_REACHED", count: globalCount, appCount };
       if (appCount >= input.appLimit) return { ok: true, allowed: false, reason: "APP_DAILY_LIMIT_REACHED", count: globalCount, appCount };
-      const next = { appId: "GLOBAL", date: input.date, count: globalCount + 1, jobIds: [...legacyJobIds, ...globalJobIds, jobKey],
+      const next = { appId: "GLOBAL", date: input.date, count: globalCount + 1, jobIds: [...mergedLegacyGlobalIds, ...globalJobIds, jobKey],
         appCounts: { ...appCounts, [input.quotaAppId]: appCount + 1 },
-        appJobIds: { ...appJobIds, [input.quotaAppId]: [...ownIds, input.id] } };
+        appJobIds: { ...appJobIds, [input.quotaAppId]: [...mergedLegacyAppIds, input.id] } };
       await txn.put("quota", next);
       return { ok: true, allowed: true, duplicate: false, count: next.count, appCount: appCount + 1 };
     });
