@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { createSkillAdmissionPipeline } from "../src/agent/skill-admission-pipeline.mjs";
 
 const review = {
@@ -42,7 +43,7 @@ function fixture({ security = { ok: true }, quality = { ok: true, qualityPassed:
 }
 const request = {
   candidate: { id: "sample_skill", version: "1.0.0", description: "A sample skill candidate" }, content: "untrusted skill data", files: ["SKILL.md"],
-  contentSha256: "a".repeat(64), bundleSha256: "b".repeat(64),
+  contentSha256: createHash("sha256").update("untrusted skill data").digest("hex"), bundleSha256: "b".repeat(64),
   reviewEvidence: { signed: true }, runId: "quality-run-0001",
   cases: [{ id: "case_one", input: {}, expectedOutput: "ok" }]
 };
@@ -90,6 +91,23 @@ test("missing intake evidence fails closed before quality evaluation", async () 
   assert.equal(calls.includes("evaluator"), false);
 });
 
+
+test("candidate content hash is recomputed before the Firewall and mismatches are rejected", async () => {
+  const { pipeline, calls, records } = fixture();
+  const result = await pipeline.admit({ ...request, contentSha256: "a".repeat(64) });
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "CANDIDATE_CONTENT_HASH_MISMATCH");
+  assert.equal(records.get("sample_skill").status, "REJECTED");
+  assert.equal(calls.includes("firewall"), false);
+});
+
+test("registry admission refuses to activate when the live registry cannot be refreshed", async () => {
+  const { pipeline } = fixture();
+  assert.equal((await pipeline.admit(request)).ok, true);
+  const result = await pipeline.approveForRegistry("sample_skill", { approvedByOwner: true });
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "REGISTRY_REFRESH_UNAVAILABLE");
+});
 
 test("owner approval refreshes the live runtime Skill Registry", async () => {
   let refreshed = 0;
