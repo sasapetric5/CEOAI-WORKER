@@ -127,3 +127,18 @@ test("Secret Guardian is a defensive-only skill with no tools or credential harv
  assert.equal(r.allows("secret_guardian_scan","approved_lookup"),false);
  assert.equal(r.search("defensive secret scanning credential leak gitleaks")[0].id,"secret_guardian_scan");
 });
+
+test("optional research skills remain catalogued but lose tool access while research is disabled",()=>{
+ const disabled=createToolRegistry({tools:[],enabled:false});
+ const registry=createBuiltinSkillRegistry({toolRegistry:disabled});
+ assert.ok(registry.get("skill_public_research_read"));
+ assert.ok(registry.get("skill_find_skills"));
+ assert.deepEqual(registry.get("skill_public_research_read").allowedToolIds,[]);
+ assert.deepEqual(registry.get("skill_find_skills").allowedToolIds,[]);
+});
+test("research skills receive the read-only capability only when explicitly enabled",()=>{
+ const enabled=createToolRegistry({tools:[{id:"research_read",description:"Bounded read-only research",inputSchema:{type:"object",properties:{query:{type:"string",maxLength:200}},required:["query"],additionalProperties:false},handler:async()=>({results:[]})}],enabled:true});
+ const registry=createBuiltinSkillRegistry({toolRegistry:enabled});
+ assert.deepEqual(registry.get("skill_public_research_read").allowedToolIds,["research_read"]);
+ assert.deepEqual(registry.get("skill_find_skills").allowedToolIds,["research_read"]);
+});
