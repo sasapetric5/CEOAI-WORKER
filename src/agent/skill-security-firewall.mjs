@@ -7,7 +7,7 @@ const SHA256 = /^[a-f0-9]{64}$/;
 const SCANNER_ID = /^[a-z][a-z0-9_]{1,31}$/;
 const VERSION = /^[A-Za-z0-9][A-Za-z0-9._+:-]{0,63}$/;
 const SEVERITIES = new Set(["critical", "high", "medium", "low", "info"]);
-const STATUSES = new Set(["clean", "findings", "unavailable"]);
+const STATUSES = new Set(["clean", "findings", "not_applicable", "unavailable"]);
 const plain = value => value !== null && typeof value === "object" && !Array.isArray(value) &&
   (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
 const fail = code => Object.freeze({ ok: false, code });
@@ -42,6 +42,7 @@ export function evaluateSkillSecurityReport(report, {
     if (!plain(scan) || !SCANNER_ID.test(scan.scanner || "") ||
         !VERSION.test(scan.version || "") || !STATUSES.has(scan.status) ||
         !Array.isArray(scan.findings) || scan.findings.length > 500 ||
+        (scan.status === "not_applicable" && (typeof scan.applicabilityReason !== "string" || !scan.applicabilityReason.trim() || scan.applicabilityReason.length > 240 || scan.findings.length !== 0)) ||
         byId.has(scan.scanner)) return fail("INVALID_SCANNER_RESULT");
     for (const finding of scan.findings) {
       if (!plain(finding) || !SEVERITIES.has(finding.severity) ||
