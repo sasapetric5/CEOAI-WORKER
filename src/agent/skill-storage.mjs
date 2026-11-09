@@ -37,18 +37,6 @@ export async function publishSkillCatalogToKV({ kv, skills, toolRegistry, approv
   const registry = createSkillRegistry({ skills, toolRegistry });
   const knownIds = new Set(registry.list().map((skill) => skill.id));
   const approved = idSet(approvedSkillIds, knownIds, "INVALID_APPROVED_SKILL_IDS");
-  if (skillLifecycle !== null && (typeof skillLifecycle.get !== "function" || typeof skillLifecycle.isSelectable !== "function")) throw new TypeError("INVALID_SKILL_LIFECYCLE");
-  // Runtime admission is the union of code-owned built-ins and externally reviewed,
-  // owner-approved lifecycle records. Catalog metadata can never grant admission.
-  const lifecycleApproved = new Set();
-  if (skillLifecycle) {
-    for (const id of knownIds) {
-      let record;
-      try { record = await skillLifecycle.get(id); } catch { throw new Error("SKILL_LIFECYCLE_UNAVAILABLE"); }
-      if (skillLifecycle.isSelectable(record) === true) lifecycleApproved.add(id);
-    }
-  }
-  const admitted = new Set([...approved, ...lifecycleApproved]);
   const metadata = [];
   for (const skill of registry.list()) {
     const loaded = await registry.load(skill.id);
@@ -86,6 +74,19 @@ export async function createKVSkillRegistry({
     knownIds.add(entry.id);
   }
   const approved = idSet(approvedSkillIds, knownIds, "INVALID_APPROVED_SKILL_IDS");
+  if (skillLifecycle !== null && (typeof skillLifecycle.get !== "function" || typeof skillLifecycle.isSelectable !== "function")) throw new TypeError("INVALID_SKILL_LIFECYCLE");
+  // Lifecycle approval is read from the trusted durable lifecycle store, never from
+  // mutable KV catalog metadata. Failure to read it fails closed.
+  const lifecycleApproved = new Set();
+  if (skillLifecycle) {
+    for (const id of knownIds) {
+      let record;
+      try { record = await skillLifecycle.get(id); }
+      catch { throw new Error("SKILL_LIFECYCLE_UNAVAILABLE"); }
+      if (skillLifecycle.isSelectable(record) === true) lifecycleApproved.add(id);
+    }
+  }
+  const admitted = new Set([...approved, ...lifecycleApproved]);
   if (Object.keys(capabilityPolicy).some((id) => !knownIds.has(id)) || Object.keys(categoryBySkillId).some((id) => !knownIds.has(id))) throw new TypeError("UNKNOWN_SKILL_CAPABILITY_POLICY_ID");
 
   const categoryIds = new Set(Object.keys(categoryCapabilityPolicy));
