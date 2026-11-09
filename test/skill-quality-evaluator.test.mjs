@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { createSkillQualityEvaluator } from "../src/agent/skill-quality-evaluator.mjs";
 
 function fixture({ outputs = {}, errors = {} } = {}) {
@@ -119,4 +120,24 @@ test("quality evaluator refuses content different from the firewall-scanned hash
   });
   assert.equal(result.ok, false);
   assert.equal(result.code, "EVALUATED_CONTENT_HASH_MISMATCH");
+});
+
+
+test("staged Skill can be evaluated before it enters the runtime Registry", async () => {
+  const { evaluator, recorded } = fixture();
+  const content = "Candidate content scanned by the Security Firewall.";
+  const hash = createHash("sha256").update(content).digest("hex");
+  const result = await evaluator.evaluate({
+    skillId: "staged_skill", runId: "run-0000008",
+    expectedContentSha256: hash,
+    candidateSkill: {
+      id: "staged_skill", version: "1.0.0",
+      description: "Staged candidate for isolated quality checks",
+      content
+    },
+    cases: [{ id: "valid", input: {}, expectedOutput: "ok" }]
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.qualityPassed, true);
+  assert.equal(recorded[0].id, "staged_skill");
 });
