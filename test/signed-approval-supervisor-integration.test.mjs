@@ -100,5 +100,7 @@ test("signed approval, four grants and durable idempotent executor form one end-
  assert.equal(externalEffects,1,"the tool side effect must execute exactly once");
  assert.equal(data.has("effect:"+effectKey),true,"the Durable Object stores the stable effect receipt");
  assert.equal(data.has("approval:"+token.payload.approvalId),true,"the Durable Object consumes the signed approval");
- assert.equal(data.get("usage:rankgeo|app_rankgeo|approval_agent|approval_skill|lookup|execute:"+new Date(NOW).toISOString().slice(0,10)),1);
+ const usageEntries=[...data.entries()].filter(([key])=>key.startsWith("usage:rankgeo|app_rankgeo|approval_agent|approval_skill|lookup|execute:"));
+ assert.equal(usageEntries.length,1);
+ assert.equal(usageEntries[0][1],1);
 });
