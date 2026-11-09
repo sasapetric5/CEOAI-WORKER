@@ -11,13 +11,13 @@ const SECURITY_FIELDS=["sourcePinned","licenseVerified","hashVerified","dependen
 const MAX_FAILURES=2;
 function validId(id){return typeof id==="string"&&ID.test(id);}
 function validReview(review){return plain(review)&&Object.keys(review).every(k=>SECURITY_FIELDS.includes(k))&&SECURITY_FIELDS.every(k=>review[k]===true);}
-function defaultRecord(id,metadata,now){return {schemaVersion:1,id,status:"DISCOVERED",costStatus:"unknown",securityReview:null,quality:{runs:0,passes:0,failures:0,consecutiveFailures:0,lastResult:null},ownerApproved:false,metadata:plain(metadata)?copy(metadata):{},createdAt:now,updatedAt:now,reason:"Awaiting independent review"};}
+function defaultRecord(id,metadata,now){return {schemaVersion:1,revision:0,id,status:"DISCOVERED",costStatus:"unknown",securityReview:null,quality:{runs:0,passes:0,failures:0,consecutiveFailures:0,lastResult:null},ownerApproved:false,metadata:plain(metadata)?copy(metadata):{},createdAt:now,updatedAt:now,reason:"Awaiting independent review"};}
 export function createMemorySkillLifecycleStore(){
  const records=new Map();
  return Object.freeze({
   async get(key){const value=records.get(key);return value?copy(value):null;},
   async putIfAbsent(key,value){if(records.has(key))return false;records.set(key,copy(value));return true;},
-  async compareAndSet(key,expectedStatus,next){const current=records.get(key);if(!current||current.status!==expectedStatus)return false;records.set(key,copy(next));return true;},
+  async compareAndSet(key,expectedStatus,expectedRevision,next){const current=records.get(key);if(!current||current.status!==expectedStatus||current.revision!==expectedRevision)return false;records.set(key,copy(next));return true;},
   async list(prefix=""){return [...records.entries()].filter(([key])=>key.startsWith(prefix)).map(([,value])=>copy(value));}
  });
 }
@@ -26,8 +26,8 @@ export function createSkillLifecycleManager({storage,now=()=>Date.now()}={}){
  if(typeof now!=="function")throw new TypeError("INVALID_CLOCK");
  async function read(id){return storage.get(KEY(id));}
  async function transition(record,status,reason){
-  const next={...record,status,reason,updatedAt:now()};
-  const ok=await storage.compareAndSet(KEY(record.id),record.status,next);
+  const next={...record,revision:record.revision+1,status,reason,updatedAt:now()};
+  const ok=await storage.compareAndSet(KEY(record.id),record.status,record.revision,next);
   return ok?{ok:true,record:copy(next)}:{ok:false,code:"SKILL_LIFECYCLE_CONFLICT"};
  }
  async function discover({id,metadata={}}={}){
@@ -40,18 +40,18 @@ export function createSkillLifecycleManager({storage,now=()=>Date.now()}={}){
   if(!validId(id)||!COSTS.has(costStatus))return {ok:false,code:"INVALID_COST_CLASSIFICATION"};
   const record=await read(id);if(!record)return {ok:false,code:"SKILL_NOT_FOUND"};
   if(["ACTIVE","REVOKED","REJECTED"].includes(record.status))return {ok:false,code:"INVALID_SKILL_STATE"};
-  const next={...record,costStatus,updatedAt:now()};
+  const next={...record,revision:record.revision+1,costStatus,updatedAt:now()};
   if(costStatus==="paid")return transition(record,"REJECTED","Paid skill or paid dependency rejected by free-only policy");
   if(costStatus==="unknown")return transition(record,"QUARANTINED","Cost or required external service is unknown");
-  const ok=await storage.compareAndSet(KEY(id),record.status,next);
+  const ok=await storage.compareAndSet(KEY(id),record.status,record.revision,next);
   return ok?{ok:true,record:copy(next)}:{ok:false,code:"SKILL_LIFECYCLE_CONFLICT"};
  }
  async function recordSecurityReview(id,review){
   if(!validId(id)||!validReview(review))return {ok:false,code:"SECURITY_REVIEW_INCOMPLETE"};
   const record=await read(id);if(!record)return {ok:false,code:"SKILL_NOT_FOUND"};
   if(record.status==="REJECTED"||record.status==="REVOKED"||record.status==="ACTIVE")return {ok:false,code:"INVALID_SKILL_STATE"};
-  const next={...record,securityReview:copy(review),updatedAt:now()};
-  const ok=await storage.compareAndSet(KEY(id),record.status,next);
+  const next={...record,revision:record.revision+1,securityReview:copy(review),updatedAt:now()};
+  const ok=await storage.compareAndSet(KEY(id),record.status,record.revision,next);
   return ok?{ok:true,record:copy(next)}:{ok:false,code:"SKILL_LIFECYCLE_CONFLICT"};
  }
  async function recordQualityResult(id,{passed,total,score=0,taskCategory="general",evidenceId=null}={}){
@@ -64,7 +64,7 @@ export function createSkillLifecycleManager({storage,now=()=>Date.now()}={}){
   if(failed&&quality.consecutiveFailures>=MAX_FAILURES){status="SUSPENDED";reason="Repeated functional quality failures; removed from active selection";}
   else if(failed){status="DEGRADED";reason="Functional quality check failed; retry or review required";}
   else if(record.costStatus==="free"&&validReview(record.securityReview)){status="VERIFIED";reason="Free-cost policy, security review and functional quality checks passed";}
-  const next={...record,quality,status,reason,updatedAt:now()};
+  const next={...record,revision:record.revision+1,quality,status,reason,updatedAt:now()};
   const ok=await storage.compareAndSet(KEY(id),record.status,next);
   return ok?{ok:true,record:copy(next)}:{ok:false,code:"SKILL_LIFECYCLE_CONFLICT"};
  }
@@ -72,8 +72,8 @@ export function createSkillLifecycleManager({storage,now=()=>Date.now()}={}){
   if(!validId(id)||approvedByOwner!==true)return {ok:false,code:"EXPLICIT_OWNER_APPROVAL_REQUIRED"};
   const record=await read(id);if(!record)return {ok:false,code:"SKILL_NOT_FOUND"};
   if(record.status!=="VERIFIED"||record.costStatus!=="free"||!validReview(record.securityReview)||record.quality.runs<1||record.quality.failures!==0)return {ok:false,code:"SKILL_NOT_VERIFIED"};
-  const next={...record,ownerApproved:true,updatedAt:now()};
-  const ok=await storage.compareAndSet(KEY(id),record.status,{...next,status:"ACTIVE",reason:"Owner-approved after verified free-cost, security and quality gates"});
+  const next={...record,revision:record.revision+1,ownerApproved:true,updatedAt:now()};
+  const ok=await storage.compareAndSet(KEY(id),record.status,record.revision,{...next,status:"ACTIVE",reason:"Owner-approved after verified free-cost, security and quality gates"});
   return ok?{ok:true,record:{...next,status:"ACTIVE",reason:"Owner-approved after verified free-cost, security and quality gates"}}:{ok:false,code:"SKILL_LIFECYCLE_CONFLICT"};
  }
  async function revoke(id,reason="Revoked by trusted policy"){
