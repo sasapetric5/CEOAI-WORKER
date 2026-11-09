@@ -23,10 +23,13 @@ function staticReview(files, content) {
     "requirements.txt", "pyproject.toml", "cargo.toml", "go.mod", "gemfile", "composer.json"].includes(name));
   const executables = paths.filter(path => /\.(sh|bash|ps1|bat|cmd|js|mjs|cjs|py|rb|php|go|rs)$/i.test(path));
   const codeFences = [...content.matchAll(/^\s*```(?:bash|sh|shell|powershell|javascript|js|python|py|ruby|php|go|rust)\s*$/gim)].length;
-  return { dependenciesReviewed: manifests.length === 0, scriptsReviewed: executables.length === 0 && codeFences === 0,
-    networkReviewed: executables.length === 0 && codeFences === 0,
-    credentialsReviewed: executables.length === 0 && codeFences === 0,
-    manifests, executables, codeFences };
+  return {
+    manifests,
+    executables,
+    codeFences,
+    hasDependencies: manifests.length > 0,
+    hasExecutableCode: executables.length > 0 || codeFences > 0
+  };
 }
 
 export function createSkillGovernancePipeline({
@@ -120,10 +123,10 @@ export function createSkillGovernancePipeline({
     } catch { return failure("security_review", "INDEPENDENT_SECURITY_REVIEW_FAILED"); }
     const review = {
       sourcePinned: true, licenseVerified: LICENSES.has(fetched.license), hashVerified: intake.contentTrust === "sha256_verified",
-      dependenciesReviewed: staticChecks.dependenciesReviewed && independent?.dependenciesReviewed === true,
-      scriptsReviewed: staticChecks.scriptsReviewed && independent?.scriptsReviewed === true,
-      networkReviewed: staticChecks.networkReviewed && independent?.networkReviewed === true,
-      credentialsReviewed: staticChecks.credentialsReviewed && independent?.credentialsReviewed === true
+      dependenciesReviewed: independent?.dependenciesReviewed === true,
+      scriptsReviewed: independent?.scriptsReviewed === true,
+      networkReviewed: independent?.networkReviewed === true,
+      credentialsReviewed: independent?.credentialsReviewed === true
     };
     if (!Object.values(review).every(Boolean)) return failure("security_review", "SECURITY_REVIEW_INCOMPLETE");
     const secured = await lifecycle.recordSecurityReview(c.id, review);
