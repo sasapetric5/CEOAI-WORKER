@@ -160,3 +160,29 @@ test("pinned source fetches bounded sibling files so scanners inspect scripts an
  assert.match(fetched.bundleSha256,/^[a-f0-9]{64}$/);
  assert.equal(fetched.files.find(file=>file.path.endsWith("helper.mjs")).content,script);
 });
+
+test("clean reviewed code Skills are scanned rather than rejected only for containing code",async()=>{
+ const lifecycle=createSkillLifecycleManager({storage:createMemorySkillLifecycleStore(),now:()=>100});
+ const source={approvedRepositories:[repo],discover:async()=>[candidate],fetchCandidate:async()=>({
+  ok:true,candidate,content:text,license:"MIT",
+  files:[path,{path:"skills/demo/helper.mjs",content:"export const safe = true;",size:24,sha:"e".repeat(40)}],
+  contentSha256:hash(text),bundleSha256:hash("code-bundle")
+ })};
+ let reviewerSawCode=false;
+ const pipeline=createSkillGovernancePipeline({
+  source,lifecycle,costVerifier:async()=>({status:"free"}),
+  securityFirewall:{scan:async ({contentSha256,bundleSha256,files})=>{
+   assert.equal(files.length,2);
+   return {ok:true,status:"clean",contentSha256,bundleSha256};
+  }},
+  reviewCandidate:async ({staticChecks})=>{
+   reviewerSawCode=staticChecks.hasExecutableCode===true;
+   return {dependenciesReviewed:true,scriptsReviewed:true,networkReviewed:true,credentialsReviewed:true};
+  },
+  testCasesForSkill:async()=>[{id:"summary",input:{text:"hello"},expectedOutput:"expected"}],
+  executeCase:async()=>({output:"expected"})
+ });
+ const result=await pipeline.runBatch();
+ assert.equal(reviewerSawCode,true);
+ assert.equal(result.results[0].status,"VERIFIED");
+});
