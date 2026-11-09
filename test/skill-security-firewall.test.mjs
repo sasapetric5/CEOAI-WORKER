@@ -10,6 +10,7 @@ const cleanReport = () => ({
   candidate,
   runId: "scan-run-0001",
   scannedAt: "2026-11-09T18:00:00.000Z",
+  attestation: { envelope: "trusted-ci-attestation-envelope" },
   contentSha256: digest,
   scans: REQUIRED_SKILL_SCANNERS.map(scanner => ({ scanner, version: "1.0.0", status: "clean", findings: [] }))
 });
