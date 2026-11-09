@@ -47,7 +47,7 @@ export function createBuiltinResearchAgentSystem({
   });
   const agentLoop = createAgentLoop({ toolRegistry, skillRegistry: registry, maxSteps, maxToolCalls });
   const agents = createAgentRegistry({
-    agents: [...BUILTIN_AGENTS, RESEARCH_AGENT],
+    agents: [...BUILTIN_AGENTS.map(agent => ({ ...agent, allowedToolIds: agent.allowedToolIds.filter(id => toolRegistry.get(id)) })), RESEARCH_AGENT],
     skillRegistry: registry,
     toolRegistry,
   });
