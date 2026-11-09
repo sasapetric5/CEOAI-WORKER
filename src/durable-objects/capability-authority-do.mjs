@@ -10,7 +10,7 @@ const json=(body,status=200)=>Response.json(body,{status,headers:{"Cache-Control
 const plain=v=>v!==null&&typeof v==="object"&&!Array.isArray(v)&&(Object.getPrototypeOf(v)===Object.prototype||Object.getPrototypeOf(v)===null);
 const MAX_AUDIT=512;
 export class CapabilityAuthorityDO {
- constructor(ctx){this.ctx=ctx;}
+ constructor(ctx,{now=()=>Date.now()}={}){if(typeof now!=="function")throw new TypeError("INVALID_CLOCK");this.ctx=ctx;this.now=now;}
  async fetch(request){
   if(request.method!=="POST")return json({ok:false,code:"METHOD_NOT_ALLOWED"},405);
   if(new URL(request.url).pathname!=="/authorize")return json({ok:false,code:"NOT_FOUND"},404);
@@ -28,7 +28,9 @@ export class CapabilityAuthorityDO {
   // A one-time conservative migration carries the legacy lifetime counter into the first
   // daily bucket only; the marker prevents that old value being re-counted on later days.
   const quotaKey=[body.appId,body.callerId,body.agentId,body.skillId,body.toolId,body.operation].join("|");
-  const utcDay=new Date().toISOString().slice(0,10);
+  const now=this.now();
+  if(!Number.isSafeInteger(now)||now<0)return json({ok:false,code:"INVALID_AUTHORITY_CLOCK"},503);
+  const utcDay=new Date(now).toISOString().slice(0,10);
   const result=await this.ctx.storage.transaction(async txn=>{
    const usageKey="usage:"+quotaKey+":"+utcDay;
    const migrationKey="usage-migration:v1:"+quotaKey;
@@ -37,9 +39,9 @@ export class CapabilityAuthorityDO {
     const currentDaily=await txn.get(usageKey);
     const legacyUsage=await txn.get("usage:"+quotaKey);
     if(currentDaily===undefined&&legacyUsage!==undefined)await txn.put(usageKey,legacyUsage);
-    await txn.put(migrationKey,{migratedAt:Date.now(),firstDailyBucket:utcDay});
+    await txn.put(migrationKey,{migratedAt:now,firstDailyBucket:utcDay});
    }
-   const record=async(type,code=null)=>{const next=[...priorAudit,{at:Date.now(),type,code,appId:body.appId,callerId:body.callerId,agentId:body.agentId,skillId:body.skillId,toolId:body.toolId,operation:body.operation}].slice(-MAX_AUDIT);await txn.put("audit",next);};
+   const record=async(type,code=null)=>{const next=[...priorAudit,{at:this.now(),type,code,appId:body.appId,callerId:body.callerId,agentId:body.agentId,skillId:body.skillId,toolId:body.toolId,operation:body.operation}].slice(-MAX_AUDIT);await txn.put("audit",next);};
    const effectKey=body.effectKey??null;
    const fingerprint=JSON.stringify({appId:body.appId,callerId:body.callerId,agentId:body.agentId,skillId:body.skillId,toolId:body.toolId,operation:body.operation,resource:body.resource,maxCalls:body.maxCalls,approvalId:body.approvalId,argumentsDigest:body.argumentsDigest??null});
    const effectStorageKey=effectKey===null?null:"effect:"+effectKey;
@@ -56,12 +58,12 @@ export class CapabilityAuthorityDO {
    if(body.approvalId!==null){
     const approvalKey="approval:"+body.approvalId;
     if(await txn.get(approvalKey)){await record("denied","CAPABILITY_APPROVAL_REPLAY");return {ok:false,code:"CAPABILITY_APPROVAL_REQUIRED"};}
-    await txn.put(approvalKey,{usedAt:Date.now(),quotaKey});
+    await txn.put(approvalKey,{usedAt:now,quotaKey});
    }
    await txn.put(usageKey,used+1);
    await record("granted");
    const granted={ok:true,toolId:body.toolId,operation:body.operation,remaining:body.maxCalls-used-1};
-   if(effectStorageKey)await txn.put(effectStorageKey,{fingerprint,result:granted,createdAt:Date.now()});
+   if(effectStorageKey)await txn.put(effectStorageKey,{fingerprint,result:granted,createdAt:now});
    return granted;
   });
   return json(result,result.ok?200:result.code==="CAPABILITY_QUOTA_EXCEEDED"||result.code==="CAPABILITY_APPROVAL_REQUIRED"?403:503);
