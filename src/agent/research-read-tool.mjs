@@ -70,7 +70,7 @@ export function createResearchReadTool({ fetchImpl = globalThis.fetch } = {}) {
       additionalProperties: false,
     },
     limits: { maxCalls: 1, timeoutMs: 5000, maxOutputBytes: 8192 },
-    idempotencyMode: "downstream_key",
+    idempotencyMode: "none",
     handler: async ({ query }, { signal } = {}) => {
       const checked = safeQuery(query);
       if (!checked) throw Object.assign(new Error("INVALID_RESEARCH_QUERY"), { code: "INVALID_RESEARCH_QUERY" });
