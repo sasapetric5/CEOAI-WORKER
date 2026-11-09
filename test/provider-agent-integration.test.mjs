@@ -20,6 +20,18 @@ function env(extra = {}) {
       async delete(key) { memory.delete(key); },
     },
     RATE_LIMITER: { async limit() { return { success: true }; } },
+    WORKFLOW_TASKS: {
+      idFromName(name) { return name; },
+      get() { return { async fetch(url, options) {
+        const body = JSON.parse(options.body);
+        if (new URL(url).pathname !== "/skill/get") return Response.json({ok:false,code:"NOT_FOUND"},{status:404});
+        return Response.json({ok:true,record:{
+          schemaVersion:1,revision:1,id:body.skillId,status:"ACTIVE",costStatus:"free",ownerApproved:true,
+          securityReview:{sourcePinned:true,licenseVerified:true,hashVerified:true,dependenciesReviewed:true,scriptsReviewed:true,networkReviewed:true,credentialsReviewed:true},
+          quality:{runs:1,passes:1,failures:0,consecutiveFailures:0,lastResult:{passed:1,total:1,score:1}}
+        }});
+      }}; }
+    },
     SECURITY_DO: {
       idFromName(name) { return name; },
       get() { return { async fetch() { return Response.json({ success: true }); } }; },
