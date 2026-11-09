@@ -167,7 +167,8 @@ test("Supervisor denies research before network access when any one of four gran
       : { type: "final", output: "unexpected" },
   });
   assert.equal(result.ok, false);
-  assert.equal(result.results[0].code, "ALL_AGENTS_FAILED");
+  assert.equal(result.code, "ALL_AGENTS_FAILED");
+  assert.equal(result.results[0].code, "CAPABILITY_NOT_GRANTED");
   assert.equal(fixture.fetchCalls(), 0);
   assert.equal(fixture.authorityCalls.length, 0);
 });
