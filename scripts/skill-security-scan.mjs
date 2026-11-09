@@ -134,8 +134,22 @@ async function main(){
  if(!entries.length)throw new Error("NO_EXTERNAL_SKILLS_FOUND");
  const versions={clamav:version("clamscan"),semgrep:version("semgrep"),codeql:version("codeql",["version"]),gitleaks:version("gitleaks"),owasp_dep_scan:version("depscan",["--version"])};
  const sarif=await json(process.env.CODEQL_SARIF||path.join(REPORT_ROOT,"codeql.sarif"));
- const results=[];
- for(const entry of entries){try{results.push(await scanOne(entry,versions,sarif));}catch(e){results.push({candidatePath:path.relative(ROOT,entry),decision:"QUARANTINED",error:safeCode(e?.message)});}}
+ const results=new Array(entries.length);
+ const concurrency=Math.max(1,Math.min(8,Number.parseInt(process.env.SKILL_SCAN_CONCURRENCY||"8",10)||8));
+ let cursor=0,completed=0;
+ async function worker(){
+  while(true){
+   const index=cursor++;
+   if(index>=entries.length)return;
+   const entry=entries[index];
+   console.log("[skill-security] "+(index+1)+"/"+entries.length+" "+path.relative(ROOT,entry));
+   try{results[index]=await scanOne(entry,versions,sarif);}
+   catch(e){results[index]={candidatePath:path.relative(ROOT,entry),decision:"QUARANTINED",error:safeCode(e?.message)};}
+   completed++;
+   console.log("[skill-security] completed "+completed+"/"+entries.length+" decision="+results[index].decision);
+  }
+ }
+ await Promise.all(Array.from({length:Math.min(concurrency,entries.length)},()=>worker()));
  const summary={schemaVersion:1,commit:process.env.GITHUB_SHA||"local",scanned:results.length,
   cleanPendingQuality:results.filter(x=>x.decision==="SCANNED_CLEAN_PENDING_QUALITY").length,
   quarantined:results.filter(x=>x.decision==="QUARANTINED").length,rejected:results.filter(x=>x.decision==="REJECTED").length,results};
