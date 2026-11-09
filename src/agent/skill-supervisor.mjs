@@ -1,7 +1,8 @@
 // Deterministic skill selection and bounded loading. It does not call an LLM or execute tools.
-export function createSkillSupervisor({ skillRegistry, agentLoop = null, maxSelectedSkills = 3 } = {}) {
+export function createSkillSupervisor({ skillRegistry, agentLoop = null, maxSelectedSkills = 3, skillLifecycle = null } = {}) {
   if (!skillRegistry || typeof skillRegistry.search !== "function" || typeof skillRegistry.load !== "function" || typeof skillRegistry.get !== "function") throw new TypeError("SKILL_REGISTRY_REQUIRED");
   if (agentLoop !== null && typeof agentLoop.run !== "function") throw new TypeError("INVALID_AGENT_LOOP");
+  if (skillLifecycle !== null && (typeof skillLifecycle.get !== "function" || typeof skillLifecycle.isSelectable !== "function")) throw new TypeError("INVALID_SKILL_LIFECYCLE");
   if (!Number.isSafeInteger(maxSelectedSkills) || maxSelectedSkills < 1 || maxSelectedSkills > 5) throw new TypeError("INVALID_SKILL_SELECTION_LIMIT");
 
   async function prepare({ task, skillIds, limit = maxSelectedSkills, requiredTags = [] } = {}) {
@@ -18,6 +19,17 @@ export function createSkillSupervisor({ skillRegistry, agentLoop = null, maxSele
       selected = skillRegistry.search(task.trim().slice(0, 500), { limit, requiredTags });
     }
     if (!selected.length) return { ok: false, code: "NO_RELEVANT_SKILL", skills: [] };
+    if (skillLifecycle) {
+      const eligible = [];
+      for (const item of selected) {
+        let record;
+        try { record = await skillLifecycle.get(item.id); }
+        catch { return { ok: false, code: "SKILL_LIFECYCLE_UNAVAILABLE", skills: [] }; }
+        if (skillLifecycle.isSelectable(record)) eligible.push(item);
+      }
+      selected = eligible;
+      if (!selected.length) return { ok: false, code: "NO_ACTIVE_VERIFIED_SKILL", skills: [] };
+    }
     const loaded = [];
     for (const item of selected) {
       let doc;
