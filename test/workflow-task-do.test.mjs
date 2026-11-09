@@ -4,12 +4,15 @@ import { WorkflowTaskDO } from "../src/durable-objects/workflow-task-do.mjs";
 import { createCloudflareCheckpointStore } from "../src/agent/cloudflare-checkpoint-store.mjs";
 import { createCloudflareDurableExecutionEngine } from "../src/agent/cloudflare-durable-runtime.mjs";
 import { createCloudflareIdempotentToolExecutor } from "../src/agent/idempotent-tool-executor.mjs";
+import { createCloudflareSkillLifecycleStore } from "../src/agent/cloudflare-skill-lifecycle-store.mjs";
+import { createSkillLifecycleManager } from "../src/agent/skill-lifecycle.mjs";
 
 function makeDO() {
   const data = new Map();
   let transactionTail = Promise.resolve();
   const storage = {
     async get(k) { return data.get(k) ?? null; },
+    async list({prefix="",limit=500}={}) { return new Map([...data.entries()].filter(([key])=>key.startsWith(prefix)).slice(0,limit)); },
     transaction(fn) {
       const run = transactionTail.then(async () => {
         const staged = new Map(data);
@@ -312,4 +315,37 @@ test("42 idempotent tool executor replays a side effect through the real Durable
   assert.deepEqual(second.result, first.result);
   assert.equal(second.replayed, true);
   assert.equal(calls, 1);
+});
+
+const SKILL_REVIEW={sourcePinned:true,licenseVerified:true,hashVerified:true,dependenciesReviewed:true,scriptsReviewed:true,networkReviewed:true,credentialsReviewed:true};
+test("skill lifecycle adapter persists records through the existing Durable Object namespace", async()=>{
+ const {namespace}=makeDO();
+ const store=createCloudflareSkillLifecycleStore(namespace);
+ const manager=createSkillLifecycleManager({storage:store});
+ const discovered=await manager.discover({id:"durable_skill",metadata:{repository:"owner/repo"}});
+ assert.equal(discovered.ok,true);
+ assert.equal((await manager.get("durable_skill")).status,"DISCOVERED");
+ assert.equal((await manager.classifyCost("durable_skill","free")).ok,true);
+ assert.equal((await manager.recordSecurityReview("durable_skill",SKILL_REVIEW)).ok,true);
+ assert.equal((await manager.recordQualityResult("durable_skill",{passed:2,total:2,score:1})).record.status,"VERIFIED");
+ const listed=await manager.list({status:"VERIFIED"});
+ assert.equal(listed.length,1);
+ assert.equal(listed[0].id,"durable_skill");
+});
+test("skill lifecycle Durable Object compare-and-set rejects stale concurrent revisions", async()=>{
+ const {namespace}=makeDO();
+ const store=createCloudflareSkillLifecycleStore(namespace);
+ const manager=createSkillLifecycleManager({storage:store});
+ await manager.discover({id:"cas_skill"});
+ const outcomes=await Promise.all([
+  manager.classifyCost("cas_skill","free"),
+  manager.classifyCost("cas_skill","unknown")
+ ]);
+ assert.equal(outcomes.filter(result=>result.ok).length,1);
+ assert.equal((await manager.get("cas_skill")).revision,1);
+});
+test("skill lifecycle Durable Object adapter rejects mismatched record identities", async()=>{
+ const {namespace}=makeDO();
+ const store=createCloudflareSkillLifecycleStore(namespace);
+ await assert.rejects(()=>store.putIfAbsent("skill-lifecycle:v1:expected_skill",{id:"other_skill",schemaVersion:1,revision:0}),/INVALID_SKILL_LIFECYCLE_KEY/);
 });
