@@ -58,7 +58,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes clamav clamav-freshclam
-          sudo freshclam
+          # Ubuntu may start freshclam as a daemon and hold its log lock.
+          sudo systemctl stop clamav-freshclam.service || true
+          sudo freshclam --stdout --verbose
           clamscan --version
 
       - name: Install Cosign
