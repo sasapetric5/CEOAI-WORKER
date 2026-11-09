@@ -6,7 +6,7 @@ export function createCloudflareSkillLifecycleStore(namespace){
  if(!namespace||typeof namespace.idFromName!=="function"||typeof namespace.get!=="function")throw new TypeError("SKILL_LIFECYCLE_BINDING_REQUIRED");
  const stub=namespace.get(namespace.idFromName("skill-lifecycle-global"));
  async function request(path,payload={}){
-  const response=await stub.fetch("https://skill-lifecycle.internal"+path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+  const response=await stub.fetch("https://skill-lifecycle.internal"+path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:"skill-lifecycle-global",...payload})});
   let result;try{result=await response.json();}catch{throw new Error("SKILL_LIFECYCLE_INVALID_RESPONSE");}
   if(!response.ok||result?.ok!==true){const error=new Error(result?.code||"SKILL_LIFECYCLE_UNAVAILABLE");error.code=result?.code||"SKILL_LIFECYCLE_UNAVAILABLE";throw error;}
   return result;
