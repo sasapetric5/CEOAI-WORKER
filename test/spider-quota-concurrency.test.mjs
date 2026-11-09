@@ -47,7 +47,7 @@ function makeLedger() {
   };
 }
 
-const jobId = n => `123e4567-e89b-42d3-a456-${String(n).padStart(4, "0")}-123456789012`;
+const jobId = n => `123e4567-e89b-42d3-a456-${String(n).padStart(12, "0")}`;
 
 test("concurrent app claims cannot exceed the shared global or per-app daily limits", async () => {
   const claim = makeLedger();
