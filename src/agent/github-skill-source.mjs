@@ -3,6 +3,9 @@ const REPO = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const SHA = /^[a-f0-9]{40}$/;
 const MAX_TREE = 5000;
 const MAX_BYTES = 24 * 1024;
+const MAX_SKILL_FILES = 64;
+const MAX_FILE_BYTES = 64 * 1024;
+const MAX_SKILL_BUNDLE_BYTES = 256 * 1024;
 const plain = v => v !== null && typeof v === "object" && !Array.isArray(v);
 function validPath(path) {
   return typeof path === "string" && path.length <= 512 && !path.startsWith("/") &&
@@ -76,8 +79,34 @@ export function createGitHubSkillSource({ repositories = [], fetchImpl = globalT
     const licenseId = license.license && license.license.spdx_id;
     if (typeof licenseId !== "string") return { ok: false, code: "LICENSE_NOT_DETECTED" };
     const prefix = candidate.path.replace(/\/SKILL\.md$/i, "");
-    const files = tree.tree.filter(entry => entry.type === "blob" && typeof entry.path === "string" &&
-      (prefix ? entry.path.startsWith(prefix + "/") : true)).map(entry => entry.path);
+    const bundleEntries = tree.tree.filter(entry => entry.type === "blob" && typeof entry.path === "string" &&
+      (prefix ? entry.path.startsWith(prefix + "/") : true) && validPath(entry.path));
+    if (bundleEntries.length > MAX_SKILL_FILES) return { ok: false, code: "SKILL_BUNDLE_FILE_LIMIT_EXCEEDED" };
+    let bundleBytes = 0;
+    const files = [];
+    for (const entry of bundleEntries) {
+      if (!Number.isSafeInteger(entry.size) || entry.size < 0 || entry.size > MAX_FILE_BYTES) {
+        return { ok: false, code: "SKILL_BUNDLE_FILE_SIZE_INVALID" };
+      }
+      bundleBytes += entry.size;
+      if (bundleBytes > MAX_SKILL_BUNDLE_BYTES) return { ok: false, code: "SKILL_BUNDLE_SIZE_LIMIT_EXCEEDED" };
+      if (entry.path === candidate.path) {
+        files.push(Object.freeze({ path: entry.path, content, size: new TextEncoder().encode(content).byteLength, sha: entry.sha }));
+        continue;
+      }
+      const rawUrl = "https://raw.githubusercontent.com/" + candidate.repository + "/" + candidate.commit + "/" +
+        entry.path.split("/").map(encodeURIComponent).join("/");
+      const response = await fetchImpl(rawUrl, { method: "GET", redirect: "error" });
+      if (!response?.ok) return { ok: false, code: "SKILL_BUNDLE_FILE_FETCH_FAILED" };
+      let fileContent;
+      try { fileContent = new TextDecoder("utf-8", { fatal: true }).decode(await response.arrayBuffer()); }
+      catch { return { ok: false, code: "SKILL_BUNDLE_FILE_NOT_UTF8" }; }
+      if (new TextEncoder().encode(fileContent).byteLength !== entry.size || fileContent.includes("\0")) {
+        return { ok: false, code: "SKILL_BUNDLE_FILE_SIZE_OR_CONTENT_MISMATCH" };
+      }
+      files.push(Object.freeze({ path: entry.path, content: fileContent, size: entry.size, sha: entry.sha }));
+    }
+    if (!files.some(file => file.path === candidate.path)) return { ok: false, code: "SKILL_BUNDLE_MISSING_ENTRYPOINT" };
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(content));
     const contentSha256 = [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
     return { ok: true, candidate, content, license: licenseId, files, contentSha256 };
