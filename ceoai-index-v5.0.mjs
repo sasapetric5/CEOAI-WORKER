@@ -27,7 +27,6 @@ import { parseRetryAfterSeconds, providerFailureCooldown } from "./src/v5-module
 import { createProviderAgentRuntime } from "./src/agent/provider-agent-runtime.mjs";
 import { createToolRegistry } from "./src/agent/tool-registry.mjs";
 import { createAgentLoop } from "./src/agent/agent-loop.mjs";
-import { createCloudflareIdempotentToolExecutor } from "./src/agent/idempotent-tool-executor.mjs";
 import { createBuiltinAgentSystem } from "./src/agent/agent-system.mjs";
 import { planResearchAcquisition, normalizeResearchUrl } from "./src/agent/research-acquisition-policy.mjs";
 import { createResearchReadTool } from "./src/agent/research-read-tool.mjs";
