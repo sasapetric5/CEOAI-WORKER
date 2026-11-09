@@ -70,3 +70,14 @@ test("concurrent state transitions fail closed instead of overwriting one anothe
  assert.equal(outcomes.filter(x=>x.ok).length,1);
  assert.equal(manager.isSelectable(await manager.get("example_skill")),false);
 });
+
+test("a degraded skill can return to verification after a successful retest",async()=>{
+ const manager=createSkillLifecycleManager({storage:createMemorySkillLifecycleStore()});
+ await candidate(manager);
+ await manager.classifyCost("example_skill","free");
+ await manager.recordSecurityReview("example_skill",review);
+ assert.equal((await manager.recordQualityResult("example_skill",{passed:1,total:2,score:0.5})).record.status,"DEGRADED");
+ assert.equal((await manager.recordQualityResult("example_skill",{passed:2,total:2,score:1})).record.status,"VERIFIED");
+ assert.equal((await manager.approveForActivation("example_skill",{approvedByOwner:true})).record.status,"ACTIVE");
+ assert.equal(manager.isSelectable(await manager.get("example_skill")),true);
+});
