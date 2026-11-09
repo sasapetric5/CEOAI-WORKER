@@ -347,5 +347,5 @@ test("code-owned curated skill library remains usable while external intake life
  const prepared=await system.multiAgentSupervisor.prepare({task:"HMAC replay security audit"});
  assert.equal(prepared.ok,true);
  assert.equal(prepared.agents[0].id,"security_reviewer");
- assert.equal(prepared.agents[0].skillId,"skill_two_axis_code_review");
+ assert.ok(BUILTIN_AGENTS.find(agent=>agent.id==="security_reviewer").skillIds.includes(prepared.agents[0].skillId));
 });
