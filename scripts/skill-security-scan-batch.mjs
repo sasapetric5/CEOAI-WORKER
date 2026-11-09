@@ -22,7 +22,26 @@ function parseClam(s){const out=[];for(const l of s.split(/\r?\n/)){const m=l.ma
 function parseCodeql(r){if(!Array.isArray(r?.runs))throw Error("CODEQL_SARIF_INVALID");const out=[];for(const run of r.runs){const rules=new Map((run.tool?.driver?.rules||[]).map(x=>[x.id,x]));for(const x of run.results||[])for(const loc of x.locations||[]){const p=norm(loc.physicalLocation?.artifactLocation?.uri);if(p)out.push({path:p,...finding(x.properties?.["security-severity"]??rules.get(x.ruleId)?.properties?.["security-severity"]??x.level,x.ruleId||"CODEQL_FINDING")});}}return out;}
 function parseDeps(r){if(!r||typeof r!=="object")throw Error("DEPSCAN_REPORT_INVALID");const out=[],seen=new Set();function visit(n,d=0,parentPath=""){if(!n||typeof n!=="object"||d>18)return;if(Array.isArray(n)){for(const x of n)visit(x,d+1,parentPath);return;}const p=n.file||n.path||n.manifest||n.manifest_file||n.source_file||parentPath;for(const k of ["vulnerabilities","findings","violations","issues"])if(Array.isArray(n[k]))for(const x of n[k])if(x&&typeof x==="object"){const f={path:norm(x.file||x.path||x.manifest||x.manifest_file||p),...finding(x.severity??x.cvss?.severity??x.cvssScore??x.score??x.risk,x.id||x.cve||x.name||x.package||"DEPENDENCY_FINDING")};const key=f.path+":"+f.severity+":"+f.code;if(!seen.has(key)){seen.add(key);out.push(f);}}for(const [k,v] of Object.entries(n))if(!["vulnerabilities","findings","violations","issues"].includes(k))visit(v,d+1,p);}visit(r);return out;}
 function forSkill(items,dir){return items.filter(x=>x.path&&inSkill(x.path,dir)).map(({severity,code})=>({severity,code}));}
-async function attest(payloadObj,outDir,repo,ref){const payload=path.join(outDir,"unsigned.json"),bundle=path.join(outDir,"cosign.bundle.json");await writeFile(payload,JSON.stringify(payloadObj,null,2)+"\n",{mode:0o600});const s=run("cosign",["sign-blob","--yes","--bundle",bundle,payload],120000);if(s.status!==0)throw Error("COSIGN_SIGN_FAILED");const esc=v=>v.replace(/[|\\{}()[\]^$+*?.-]/g,"\\$&");const identity="^https://github\\.com/"+esc(repo)+"/.github/workflows/skill-security-firewall\\.yml@"+esc(ref)+"$";const v=run("cosign",["verify-blob","--bundle",bundle,"--certificate-identity-regexp",identity,"--certificate-oidc-issuer","https://token.actions.githubusercontent.com",payload],120000);if(v.status!==0)throw Error("COSIGN_ATTESTATION_VERIFY_FAILED");return Buffer.from(await readFile(bundle)).toString("base64");}
+async function runRetry(c,a,t=120000,attempts=3){
+ let result;
+ for(let attempt=1;attempt<=attempts;attempt++){
+  result=run(c,a,t);
+  if(result.status===0)return result;
+  if(attempt<attempts)await new Promise(resolve=>setTimeout(resolve,attempt*1500));
+ }
+ return result;
+}
+async function attest(payloadObj,outDir,repo,ref){
+ const payload=path.join(outDir,"unsigned.json"),bundle=path.join(outDir,"cosign.bundle.json");
+ await writeFile(payload,JSON.stringify(payloadObj,null,2)+"\n",{mode:0o600});
+ const s=await runRetry("cosign",["sign-blob","--yes","--bundle",bundle,payload]);
+ if(s.status!==0)throw Error("COSIGN_SIGN_FAILED");
+ const esc=v=>v.replace(/[|\\{}()[\]^$+*?.-]/g,"\\$&");
+ const identity="^https://github\\.com/"+esc(repo)+"/.github/workflows/skill-security-firewall\\.yml@"+esc(ref)+"$";
+ const v=await runRetry("cosign",["verify-blob","--bundle",bundle,"--certificate-identity-regexp",identity,"--certificate-oidc-issuer","https://token.actions.githubusercontent.com",payload]);
+ if(v.status!==0)throw Error("COSIGN_ATTESTATION_VERIFY_FAILED");
+ return Buffer.from(await readFile(bundle)).toString("base64");
+}
 async function main(){
  await mkdir(REPORT_ROOT,{recursive:true});const entries=await findSkills(SKILL_ROOT);if(!entries.length)throw Error("NO_EXTERNAL_SKILLS_FOUND");
  const candidates=[];
