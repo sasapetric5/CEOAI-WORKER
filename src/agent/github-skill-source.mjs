@@ -140,7 +140,10 @@ export function createGitHubSkillSource({ repositories = [], fetchImpl = globalT
     if (!files.some(file => file.path === candidate.path)) return { ok: false, code: "SKILL_BUNDLE_MISSING_ENTRYPOINT" };
     const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(content));
     const contentSha256 = [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
-    return { ok: true, candidate, content, license: licenseId, files, contentSha256 };
+    const bundleManifest = files.map(file => file.path + "\\0" + file.sha + "\\0" + file.size).sort().join("\\n");
+    const bundleDigest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(bundleManifest));
+    const bundleSha256 = [...new Uint8Array(bundleDigest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+    return { ok: true, candidate, content, license: licenseId, files, contentSha256, bundleSha256 };
   }
   return Object.freeze({ discover, fetchCandidate, approvedRepositories: Object.freeze([...pins.keys()]) });
 }
