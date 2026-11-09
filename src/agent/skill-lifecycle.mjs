@@ -57,7 +57,7 @@ export function createSkillLifecycleManager({storage,now=()=>Date.now()}={}){
  async function recordFailure(id,{stage,code,severity="quarantine"}={}){
   if(!validId(id)||typeof stage!=="string"||!/^[a-z][a-z0-9_-]{0,47}$/.test(stage)||typeof code!=="string"||!/^[A-Z0-9_]{1,64}$/.test(code)||!["quarantine","degrade","reject"].includes(severity))return {ok:false,code:"INVALID_SKILL_FAILURE"};
   const record=await read(id);if(!record)return {ok:false,code:"SKILL_NOT_FOUND"};
-  if(["REVOKED","REJECTED"].includes(record.status))return {ok:false,code:"SKILL_NOT_ELIGIBLE"};
+  if(record.status==="REVOKED"||(record.status==="REJECTED"&&severity!=="reject"))return {ok:false,code:"SKILL_NOT_ELIGIBLE"};
   const at=now(),failure={stage,code,severity,at};
   const failures=[...(record.failures||[]),failure].slice(-20);
   const status=severity==="reject"?"REJECTED":severity==="degrade"?"DEGRADED":record.status==="ACTIVE"?"SUSPENDED":"QUARANTINED";
