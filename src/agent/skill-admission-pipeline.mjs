@@ -79,7 +79,7 @@ export function createSkillAdmissionPipeline({
 
     let quality;
     try {
-      quality = await qualityEvaluator.evaluate({ skillId: candidate.id, runId, taskCategory, cases });
+      quality = await qualityEvaluator.evaluate({ skillId: candidate.id, runId, taskCategory, cases, expectedContentSha256: contentSha256 });
     } catch {
       return isolate(candidate.id, "quality", "QUALITY_EVALUATOR_ERROR");
     }
