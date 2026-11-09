@@ -60,12 +60,14 @@ test("unknown costs and incomplete reviews remain quarantined",async()=>{
  const unknown=pipelineOptions({cost:"unknown"});
  const a=await unknown.pipeline.runBatch();
  assert.equal(a.ok,false);
- assert.equal((await unknown.lifecycle.get(candidate.id)).status,"QUARANTINED");\n assert.equal((await unknown.lifecycle.get(candidate.id)).failureCount,1);
+ assert.equal((await unknown.lifecycle.get(candidate.id)).status,"QUARANTINED");
+ assert.equal((await unknown.lifecycle.get(candidate.id)).failureCount,1);
  const incomplete=pipelineOptions({review:false});
  const b=await incomplete.pipeline.runBatch();
  assert.equal(b.ok,false);
  assert.equal(b.results[0].code,"SECURITY_REVIEW_INCOMPLETE");
- assert.equal((await incomplete.lifecycle.get(candidate.id)).securityReview,null);\n assert.equal((await incomplete.lifecycle.get(candidate.id)).lastFailure.code,"SECURITY_REVIEW_INCOMPLETE");
+ assert.equal((await incomplete.lifecycle.get(candidate.id)).securityReview,null);
+ assert.equal((await incomplete.lifecycle.get(candidate.id)).lastFailure.code,"SECURITY_REVIEW_INCOMPLETE");
 });
 
 test("functional output mismatch is recorded as degradation, never verified",async()=>{
@@ -82,5 +84,6 @@ test("paid skill is rejected before any security review or functional execution"
  const result=await pipeline.runBatch();
  assert.equal(result.ok,false);
  assert.equal(result.results[0].code,"PAID_SKILL_REJECTED");
- assert.equal((await lifecycle.get(candidate.id)).status,"REJECTED");\n assert.equal((await lifecycle.get(candidate.id)).lastFailure.code,"PAID_SKILL_REJECTED");
+ assert.equal((await lifecycle.get(candidate.id)).status,"REJECTED");
+ assert.equal((await lifecycle.get(candidate.id)).lastFailure.code,"PAID_SKILL_REJECTED");
 });
