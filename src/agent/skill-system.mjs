@@ -14,7 +14,7 @@ export function createBuiltinSkillSystem({toolRegistry,agentLoopFactory=null,max
 export async function createKVSkillSystem({
  kv,toolRegistry,agentLoopFactory=null,maxSelectedSkills=3,capabilityPolicy={},
  approvedSkillIds=BUILTIN_SKILLS.map(skill=>skill.id),categoryBySkillId={},
- categoryCapabilityPolicy={},indexKey,documentPrefix
+ categoryCapabilityPolicy={},indexKey,documentPrefix,skillLifecycle=null
 }={}){
  const registry=await createKVSkillRegistry({kv,toolRegistry,capabilityPolicy,approvedSkillIds,categoryBySkillId,categoryCapabilityPolicy,indexKey,documentPrefix});
  return compose({registry,toolRegistry,agentLoopFactory,maxSelectedSkills,skillLifecycle});
