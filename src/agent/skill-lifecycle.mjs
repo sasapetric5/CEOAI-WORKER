@@ -54,6 +54,19 @@ export function createSkillLifecycleManager({storage,now=()=>Date.now()}={}){
   const ok=await storage.compareAndSet(KEY(id),record.status,record.revision,next);
   return ok?{ok:true,record:copy(next)}:{ok:false,code:"SKILL_LIFECYCLE_CONFLICT"};
  }
+ async function recordFailure(id,{stage,code,severity="quarantine"}={}){
+  if(!validId(id)||typeof stage!=="string"||!/^[a-z][a-z0-9_-]{0,47}$/.test(stage)||typeof code!=="string"||!/^[A-Z0-9_]{1,64}$/.test(code)||!["quarantine","degrade","reject"].includes(severity))return {ok:false,code:"INVALID_SKILL_FAILURE"};
+  const record=await read(id);if(!record)return {ok:false,code:"SKILL_NOT_FOUND"};
+  if(["REVOKED","REJECTED"].includes(record.status))return {ok:false,code:"SKILL_NOT_ELIGIBLE"};
+  const at=now(),failure={stage,code,severity,at};
+  const failures=[...(record.failures||[]),failure].slice(-20);
+  const status=severity==="reject"?"REJECTED":severity==="degrade"?"DEGRADED":record.status==="ACTIVE"?"SUSPENDED":"QUARANTINED";
+  const next={...record,revision:record.revision+1,status,failures,failureCount:(record.failureCount||0)+1,lastFailure:failure,
+   ownerApproved:status==="ACTIVE"?record.ownerApproved:false,
+   reason:"Skill intake or security failure: "+stage+"/"+code,updatedAt:at};
+  const ok=await storage.compareAndSet(KEY(id),record.status,record.revision,next);
+  return ok?{ok:true,record:copy(next)}:{ok:false,code:"SKILL_LIFECYCLE_CONFLICT"};
+ }
  async function recordQualityResult(id,{passed,total,score=0,taskCategory="general",evidenceId=null}={}){
   if(!validId(id)||!Number.isSafeInteger(passed)||!Number.isSafeInteger(total)||total<1||total>100||passed<0||passed>total||typeof score!=="number"||!Number.isFinite(score)||score<0||score>1||typeof taskCategory!=="string"||taskCategory.length>48||(evidenceId!==null&&(typeof evidenceId!=="string"||evidenceId.length>128)))return {ok:false,code:"INVALID_QUALITY_RESULT"};
   const record=await read(id);if(!record)return {ok:false,code:"SKILL_NOT_FOUND"};
@@ -100,5 +113,5 @@ export function createSkillLifecycleManager({storage,now=()=>Date.now()}={}){
   return all.filter(x=>status===undefined||x.status===status).slice(0,limit).map(copy);
  }
  function isSelectable(record){return Boolean(record&&record.status==="ACTIVE"&&record.ownerApproved===true&&record.costStatus==="free"&&validReview(record.securityReview)&&record.quality.runs>0&&record.quality.consecutiveFailures===0&&record.quality.lastResult?.passed===record.quality.lastResult?.total&&record.quality.lastResult?.score>=0.8);}
- return Object.freeze({discover,classifyCost,recordSecurityReview,recordQualityResult,approveForActivation,beginRecovery,revoke,get,list,isSelectable});
+ return Object.freeze({discover,classifyCost,recordSecurityReview,recordFailure,recordQualityResult,approveForActivation,beginRecovery,revoke,get,list,isSelectable});
 }
