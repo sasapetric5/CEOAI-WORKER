@@ -71,7 +71,7 @@ export function createSkillLifecycleManager({storage,now=()=>Date.now()}={}){
  async function approveForActivation(id,{approvedByOwner=false}={}){
   if(!validId(id)||approvedByOwner!==true)return {ok:false,code:"EXPLICIT_OWNER_APPROVAL_REQUIRED"};
   const record=await read(id);if(!record)return {ok:false,code:"SKILL_NOT_FOUND"};
-  if(record.status!=="VERIFIED"||record.costStatus!=="free"||!validReview(record.securityReview)||record.quality.runs<1||record.quality.failures!==0)return {ok:false,code:"SKILL_NOT_VERIFIED"};
+  if(record.status!=="VERIFIED"||record.costStatus!=="free"||!validReview(record.securityReview)||record.quality.runs<1||record.quality.consecutiveFailures!==0||record.quality.lastResult?.passed!==record.quality.lastResult?.total||record.quality.lastResult?.score<0.8)return {ok:false,code:"SKILL_NOT_VERIFIED"};
   const next={...record,revision:record.revision+1,ownerApproved:true,updatedAt:now()};
   const ok=await storage.compareAndSet(KEY(id),record.status,record.revision,{...next,status:"ACTIVE",reason:"Owner-approved after verified free-cost, security and quality gates"});
   return ok?{ok:true,record:{...next,status:"ACTIVE",reason:"Owner-approved after verified free-cost, security and quality gates"}}:{ok:false,code:"SKILL_LIFECYCLE_CONFLICT"};
@@ -89,6 +89,6 @@ export function createSkillLifecycleManager({storage,now=()=>Date.now()}={}){
   const all=await storage.list("skill-lifecycle:v1:");
   return all.filter(x=>status===undefined||x.status===status).slice(0,limit).map(copy);
  }
- function isSelectable(record){return Boolean(record&&record.status==="ACTIVE"&&record.ownerApproved===true&&record.costStatus==="free"&&validReview(record.securityReview)&&record.quality.runs>0&&record.quality.failures===0);}
+ function isSelectable(record){return Boolean(record&&record.status==="ACTIVE"&&record.ownerApproved===true&&record.costStatus==="free"&&validReview(record.securityReview)&&record.quality.runs>0&&record.quality.consecutiveFailures===0&&record.quality.lastResult?.passed===record.quality.lastResult?.total&&record.quality.lastResult?.score>=0.8);}
  return Object.freeze({discover,classifyCost,recordSecurityReview,recordQualityResult,approveForActivation,revoke,get,list,isSelectable});
 }
