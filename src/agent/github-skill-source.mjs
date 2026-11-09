@@ -45,7 +45,7 @@ export function createGitHubSkillSource({ repositories = [], fetchImpl = globalT
       for (const entry of tree.tree) {
         if (entry.type !== "blob" || !validPath(entry.path) || !/(^|\/)SKILL\.md$/i.test(entry.path) || !SHA.test(entry.sha || "")) continue;
         const slug = (repository + "_" + entry.path).toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 36);
-        candidates.push(Object.freeze({ id: "ext_" + slug, repository, path: entry.path, commit, blobSha: entry.sha }));
+        candidates.push(Object.freeze({ id: "ext_" + slug + "_" + commit.slice(0, 8), repository, path: entry.path, commit, blobSha: entry.sha }));
         if (candidates.length >= limit) return candidates;
       }
     }
