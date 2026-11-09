@@ -1969,4 +1969,5 @@ export { createCloudflareCapabilityAuthority } from "./src/agent/cloudflare-capa
 export { createCloudflareDurableExecutionEngine } from "./src/agent/cloudflare-durable-runtime.mjs";
 
 export { createCapabilityRegistry } from "./src/agent/capability-registry.mjs";
+export { createCloudflareSkillLifecycleStore } from "./src/agent/cloudflare-skill-lifecycle-store.mjs";
 
