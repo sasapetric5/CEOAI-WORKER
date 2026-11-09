@@ -1270,7 +1270,9 @@ async function createRequestAgentSystem(env, maxAgents, capabilityContext, appro
   // This read-only tool has no external side effect and therefore needs no effect executor.
   const toolRegistry = createToolRegistry({
     tools: [createResearchReadTool()],
-    enabled: false,
+    // Registry availability is not authorization: all four signed grants and the
+    // persistent Durable Object check still run at the exact invocation.
+    enabled: true,
   });
   const authority = env?.CAPABILITY_AUTHORITY
     ? createCloudflareCapabilityAuthority(env.CAPABILITY_AUTHORITY)
@@ -1509,13 +1511,13 @@ export default {
         appId: auth.appId.toLowerCase(),
         callerId: "app_" + auth.appId.toLowerCase().replace(/[^a-z0-9_-]/g, "_"),
         operation: "execute",
-        resource: "",
+        resource: "public-web-search:duckduckgo",
         }, approvalTokens);
       } catch {
         return json({ success: false, error: "Bezbednosna konfiguracija ovlašćenja nije validna.", code: "CAPABILITY_GRANT_CONFIGURATION_INVALID" }, 503);
       }
       const result = await runCEOAIInternalAgentTask(env, {
-        system, task: safeTask, input: agentInput, limit, agentIds: policy.allowedAgentIds, allowedToolIds: [], allowToolExecution: false, allowNoToolAgentRun: true,
+        system, task: safeTask, input: agentInput, limit, agentIds: policy.allowedAgentIds, allowedToolIds: ["research_read"], allowToolExecution: true, allowNoToolAgentRun: true,
         maxToolCalls: 1, maxModelCalls: policy.maxModelCalls, synthesize: true,
         intent, runId: requestId ?? crypto.randomUUID(),
       });
