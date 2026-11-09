@@ -65,7 +65,7 @@ export function createSkillQualityEvaluator({
   if (typeof now !== "function") throw new TypeError("INVALID_CLOCK");
   if (!Number.isSafeInteger(maxCases) || maxCases < 1 || maxCases > MAX_CASES) throw new TypeError("INVALID_EVALUATION_LIMIT");
 
-  async function evaluate({ skillId, runId, taskCategory = "general", cases, expectedContentSha256 } = {}) {
+  async function evaluate({ skillId, runId, taskCategory = "general", cases, expectedContentSha256, candidateSkill } = {}) {
     if (typeof skillId !== "string" || !ID.test(skillId) || typeof runId !== "string" || !RUN_ID.test(runId) ||
         typeof taskCategory !== "string" || !/^[a-z][a-z0-9_-]{0,47}$/.test(taskCategory) ||
         (expectedContentSha256 !== undefined && (typeof expectedContentSha256 !== "string" || !/^[a-f0-9]{64}$/.test(expectedContentSha256))) ||
@@ -74,10 +74,19 @@ export function createSkillQualityEvaluator({
       return { ok: false, code: "INVALID_SKILL_EVALUATION_REQUEST" };
     }
 
-    const metadata = skillRegistry.get(skillId);
+    const stagedCandidate = candidateSkill !== undefined;
+    if (stagedCandidate && (!plain(candidateSkill) || candidateSkill.id !== skillId ||
+        typeof candidateSkill.version !== "string" || !/^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$/.test(candidateSkill.version) ||
+        typeof candidateSkill.description !== "string" || !candidateSkill.description.trim() || candidateSkill.description.length > 240 ||
+        typeof candidateSkill.content !== "string" || !candidateSkill.content.trim() ||
+        Object.keys(candidateSkill).some(key => !["id", "version", "description", "content", "source"].includes(key)))) {
+      return { ok: false, code: "INVALID_STAGED_SKILL_CANDIDATE" };
+    }
+    if (stagedCandidate && expectedContentSha256 === undefined) return { ok: false, code: "STAGED_SKILL_HASH_REQUIRED" };
+    const metadata = stagedCandidate ? candidateSkill : skillRegistry.get(skillId);
     if (!metadata) return { ok: false, code: "SKILL_NOT_FOUND" };
     let skill;
-    try { skill = await skillRegistry.load(skillId); }
+    try { skill = stagedCandidate ? candidateSkill : await skillRegistry.load(skillId); }
     catch { return { ok: false, code: "SKILL_CONTENT_UNAVAILABLE" }; }
     if (!skill || typeof skill.content !== "string" || !skill.content.trim()) {
       return { ok: false, code: "SKILL_CONTENT_UNAVAILABLE" };
