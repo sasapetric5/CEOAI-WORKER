@@ -14,13 +14,16 @@ const fail = code => Object.freeze({ ok: false, code });
 
 export function evaluateSkillSecurityReport(report, {
   expectedContentSha256,
+  expectedBundleSha256,
   expectedCandidate,
   policyVersion = "ceoai-skill-firewall-v1",
   requiredScanners = REQUIRED_SKILL_SCANNERS
 } = {}) {
   if (!SHA256.test(expectedContentSha256 || "")) return fail("EXPECTED_SKILL_HASH_REQUIRED");
+  if (!SHA256.test(expectedBundleSha256 || "")) return fail("EXPECTED_SKILL_BUNDLE_HASH_REQUIRED");
   if (!plain(expectedCandidate) || !plain(report) || report.schemaVersion !== 1 ||
       report.contentSha256 !== expectedContentSha256 ||
+      report.bundleSha256 !== expectedBundleSha256 ||
       report.policyVersion !== policyVersion ||
       !plain(report.candidate) || !plain(report.attestation) ||
       typeof report.attestation.envelope !== "string" || report.attestation.envelope.length < 16 ||
@@ -83,9 +86,9 @@ export function createSkillSecurityFirewall({
       new Set(requiredScanners).size !== requiredScanners.length) {
     throw new TypeError("INVALID_REQUIRED_SCANNER_SET");
   }
-  async function scan({ candidate, content, files, contentSha256 } = {}) {
+  async function scan({ candidate, content, files, contentSha256, bundleSha256 } = {}) {
     if (!plain(candidate) || typeof content !== "string" || !Array.isArray(files) ||
-        !SHA256.test(contentSha256 || "")) return fail("INVALID_SKILL_SCAN_INPUT");
+        !SHA256.test(contentSha256 || "") || !SHA256.test(bundleSha256 || "")) return fail("INVALID_SKILL_SCAN_INPUT");
     let report;
     try {
       report = await scanCandidate(Object.freeze({
@@ -93,6 +96,7 @@ export function createSkillSecurityFirewall({
         content,
         files: Object.freeze([...files]),
         contentSha256,
+        bundleSha256,
         executeCandidateCode: false,
         networkAccessForCandidate: false,
         secretAccessForCandidate: false
@@ -101,11 +105,11 @@ export function createSkillSecurityFirewall({
       return fail("SECURITY_SCANNER_EXECUTION_FAILED");
     }
     const validated = evaluateSkillSecurityReport(report, {
-      expectedContentSha256: contentSha256, expectedCandidate: candidate, policyVersion, requiredScanners
+      expectedContentSha256: contentSha256, expectedBundleSha256: bundleSha256, expectedCandidate: candidate, policyVersion, requiredScanners
     });
     if (!validated.ok) return validated;
     let trusted = false;
-    try { trusted = await verifyAttestation(report, { candidate, contentSha256, policyVersion }) === true; }
+    try { trusted = await verifyAttestation(report, { candidate, contentSha256, bundleSha256, policyVersion }) === true; }
     catch { trusted = false; }
     if (!trusted) return fail("UNTRUSTED_SCAN_ATTESTATION");
     return validated;
