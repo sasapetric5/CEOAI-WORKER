@@ -82,3 +82,19 @@ test("registered research tool stays blocked without explicit execution approval
   });
   assert.equal(noGrant.code, "TOOL_CAPABILITY_DENIED");
 });
+
+
+test("research reader propagates cancellation to the outbound fetch", async () => {
+  const controller = new AbortController();
+  let observedAbort = false;
+  const tool = createResearchReadTool({ fetchImpl: async (_url, init) => new Promise((resolve, reject) => {
+    init.signal.addEventListener("abort", () => {
+      observedAbort = true;
+      reject(new Error("aborted"));
+    }, { once: true });
+  }) });
+  const pending = tool.handler({ query: "public research" }, { signal: controller.signal });
+  controller.abort();
+  await assert.rejects(pending, /aborted/);
+  assert.equal(observedAbort, true);
+});
