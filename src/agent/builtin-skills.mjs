@@ -22,7 +22,7 @@ export function createBuiltinSkillRegistry({toolRegistry}={}){
  // when the tool is disabled, but strip that capability until the registry exposes it.
  const skills=BUILTIN_SKILLS.map(skill=>({
   ...skill,
-  allowedToolIds:skill.allowedToolIds.filter(id=>id!=="research_read"||toolRegistry.get(id))
+  allowedToolIds:skill.allowedToolIds.filter(id=>id!=="research_read"||(toolRegistry.enabled===true&&toolRegistry.get(id)))
  }));
  return createSkillRegistry({skills,toolRegistry});
 }
