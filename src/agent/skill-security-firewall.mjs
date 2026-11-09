@@ -65,7 +65,7 @@ export function evaluateSkillSecurityReport(report, {
   const blocking = findings.filter(f => f.severity === "high" || f.severity === "medium");
   if (blocking.length) return Object.freeze({ ...fail("SECURITY_FINDINGS_REQUIRE_QUARANTINE"), severity: "quarantine", findings });
   return Object.freeze({
-    ok: true, status: "clean", contentSha256: expectedContentSha256,
+    ok: true, status: "clean", contentSha256: expectedContentSha256, bundleSha256: expectedBundleSha256,
     scanners: Object.freeze(requiredScanners.map(id => Object.freeze({ scanner: id, version: byId.get(id).version }))),
     findings: Object.freeze(findings)
   });
