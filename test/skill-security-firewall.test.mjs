@@ -87,3 +87,18 @@ test("records scanners with explicit non-applicability separately from unavailab
  report.scans[0]={...report.scans[0],status:"unavailable"};
  assert.equal(evaluateSkillSecurityReport(report,{expectedContentSha256:digest,expectedBundleSha256:bundleDigest,expectedCandidate:candidate}).code,"SCANNER_UNAVAILABLE");
 });
+
+
+test("accepts real scanner version strings with bounded build metadata",()=>{
+ const report=cleanReport();
+ report.scans=report.scans.map((scan,index)=>({
+  ...scan,
+  version:["ClamAV 1.5.4/28178/Mon Nov 9 06:24:16 2026","1.184.0","CodeQL CLI v2.20.3","gitleaks version 8.24.2","depscan 6.3.1"][index],
+  status:index===1||index===2||index===4?"not_applicable":"clean",
+  ...(index===1?{applicabilityReason:"No source code"}:{}),
+  ...(index===2?{applicabilityReason:"No supported source"}:{}),
+  ...(index===4?{applicabilityReason:"No dependency manifest"}:{})
+ }));
+ const result=evaluateSkillSecurityReport(report,{expectedContentSha256:digest,expectedBundleSha256:bundleDigest,expectedCandidate:candidate});
+ assert.equal(result.ok,true);
+});
