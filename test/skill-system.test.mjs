@@ -7,6 +7,7 @@ import {createSkillSupervisor} from "../src/agent/skill-supervisor.mjs";
 import {createKVSkillRegistry,publishSkillCatalogToKV} from "../src/agent/skill-storage.mjs";
 import {createAgentLoop} from "../src/agent/agent-loop.mjs";
 import {createKVSkillSystem} from "../src/agent/skill-system.mjs";
+import {createMemorySkillLifecycleStore,createSkillLifecycleManager} from "../src/agent/skill-lifecycle.mjs";
 const tools={get:id=>id==="approved_lookup"?{id}:null,execute:async()=>({ok:false,code:"UNEXPECTED_TOOL_EXECUTION"})};
 
 test("built-in registry indexes eight skills and keeps content out of metadata",async()=>{
@@ -141,4 +142,23 @@ test("research skills receive the read-only capability only when explicitly enab
  const registry=createBuiltinSkillRegistry({toolRegistry:enabled});
  assert.deepEqual(registry.get("skill_public_research_read").allowedToolIds,["research_read"]);
  assert.deepEqual(registry.get("skill_find_skills").allowedToolIds,["research_read"]);
+});
+
+
+test("KV registry admits external Skills only after lifecycle verification and owner approval", async () => {
+ const values=new Map(),kv={async put(k,v){values.set(k,v);},async get(k){return values.get(k)??null;}};
+ const candidate={id:"external_candidate",version:"1.0.0",description:"External candidate",allowedToolIds:[],content:"Reviewed external skill instructions."};
+ await publishSkillCatalogToKV({kv,skills:[candidate],toolRegistry:tools,approvedSkillIds:[]});
+ const store=createMemorySkillLifecycleStore(),lifecycle=createSkillLifecycleManager({storage:store});
+ await lifecycle.discover({id:candidate.id,metadata:{repository:"owner/repo"}});
+ await lifecycle.classifyCost(candidate.id,"free");
+ const before=await createKVSkillRegistry({kv,toolRegistry:tools,approvedSkillIds:[],skillLifecycle:lifecycle});
+ assert.equal(before.get(candidate.id),null);
+ const review={sourcePinned:true,licenseVerified:true,hashVerified:true,dependenciesReviewed:true,scriptsReviewed:true,networkReviewed:true,credentialsReviewed:true};
+ await lifecycle.recordSecurityReview(candidate.id,review);
+ await lifecycle.recordQualityResult(candidate.id,{passed:2,total:2,score:1});
+ assert.equal((await lifecycle.approveForActivation(candidate.id,{approvedByOwner:true})).ok,true);
+ const after=await createKVSkillRegistry({kv,toolRegistry:tools,approvedSkillIds:[],skillLifecycle:lifecycle});
+ assert.equal(after.get(candidate.id).id,candidate.id);
+ assert.match((await after.load(candidate.id)).content,/Reviewed external/);
 });
