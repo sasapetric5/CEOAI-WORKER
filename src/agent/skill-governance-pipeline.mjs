@@ -21,7 +21,7 @@ function staticReview(files, content) {
   const names = paths.map(path => path.slice(path.lastIndexOf("/") + 1).toLowerCase());
   const manifests = names.filter(name => ["package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock",
     "requirements.txt", "pyproject.toml", "cargo.toml", "go.mod", "gemfile", "composer.json"].includes(name));
-  const executables = files.filter(path => /\.(sh|bash|ps1|bat|cmd|js|mjs|cjs|py|rb|php|go|rs)$/i.test(path));
+  const executables = paths.filter(path => /\.(sh|bash|ps1|bat|cmd|js|mjs|cjs|py|rb|php|go|rs)$/i.test(path));
   const codeFences = [...content.matchAll(/^\s*```(?:bash|sh|shell|powershell|javascript|js|python|py|ruby|php|go|rust)\s*$/gim)].length;
   return { dependenciesReviewed: manifests.length === 0, scriptsReviewed: executables.length === 0 && codeFences === 0,
     networkReviewed: executables.length === 0 && codeFences === 0,
