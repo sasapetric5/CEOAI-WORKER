@@ -329,3 +329,23 @@ test("KV agent composition forwards lifecycle admission to its actual multi-agen
  assert.equal(result.code,"NO_ACTIVE_VERIFIED_SKILL");
  assert.ok(seen.length > 0);
 });
+
+test("code-owned curated skill library remains usable while external intake lifecycle is closed", async () => {
+ const {createBuiltinAgentSystem}=await import("../src/agent/agent-system.mjs");
+ const {createSkillLifecycleManager,createMemorySkillLifecycleStore}=await import("../src/agent/skill-lifecycle.mjs");
+ const lifecycle=createSkillLifecycleManager({storage:createMemorySkillLifecycleStore()});
+ const toolRegistry=createToolRegistry({tools:[{
+  id:"research_read",description:"Bounded read-only public research",
+  inputSchema:{type:"object",properties:{query:{type:"string",maxLength:200}},required:["query"],additionalProperties:false},
+  handler:async()=>({results:[]})
+ }],enabled:false});
+ const system=createBuiltinAgentSystem({
+  toolRegistry,
+  skillLifecycle:lifecycle,
+  agentLoopFactory:({toolRegistry,skillRegistry})=>createAgentLoop({toolRegistry,skillRegistry})
+ });
+ const prepared=await system.multiAgentSupervisor.prepare({task:"HMAC replay security audit"});
+ assert.equal(prepared.ok,true);
+ assert.equal(prepared.agents[0].id,"security_reviewer");
+ assert.equal(prepared.agents[0].skillId,"skill_two_axis_code_review");
+});
