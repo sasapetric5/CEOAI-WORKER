@@ -3,21 +3,26 @@ import assert from "node:assert/strict";
 import { createSkillSecurityFirewall, evaluateSkillSecurityReport, REQUIRED_SKILL_SCANNERS } from "../src/agent/skill-security-firewall.mjs";
 
 const digest = "a".repeat(64);
+const candidate = { id: "candidate", repository: "trusted/skills", path: "skills/demo/SKILL.md", commit: "b".repeat(40), blobSha: "c".repeat(40) };
 const cleanReport = () => ({
   schemaVersion: 1,
+  policyVersion: "ceoai-skill-firewall-v1",
+  candidate,
+  runId: "scan-run-0001",
+  scannedAt: "2026-11-09T18:00:00.000Z",
   contentSha256: digest,
   scans: REQUIRED_SKILL_SCANNERS.map(scanner => ({ scanner, version: "1.0.0", status: "clean", findings: [] }))
 });
 
 test("accepts only complete clean scanner reports bound to the exact skill hash", () => {
-  const result = evaluateSkillSecurityReport(cleanReport(), { expectedContentSha256: digest });
+  const result = evaluateSkillSecurityReport(cleanReport(), { expectedContentSha256: digest, expectedCandidate: candidate });
   assert.equal(result.ok, true);
   assert.equal(result.status, "clean");
   assert.equal(result.scanners.length, REQUIRED_SKILL_SCANNERS.length);
 });
 
 test("rejects reports with a mismatched content hash or missing scanner", () => {
-  assert.equal(evaluateSkillSecurityReport(cleanReport(), { expectedContentSha256: "b".repeat(64) }).code,
+  assert.equal(evaluateSkillSecurityReport(cleanReport(), { expectedContentSha256: "b".repeat(64), expectedCandidate: candidate }).code,
     "INVALID_OR_UNBOUND_SECURITY_REPORT");
   const report = cleanReport();
   report.scans.pop();
@@ -44,6 +49,7 @@ test("unavailable scanners and inconsistent scanner outputs fail closed", () => 
 
 test("firewall treats scanner adapter failure as a closed gate and never requests candidate execution", async () => {
   const firewall = createSkillSecurityFirewall({
+    verifyAttestation: async () => true,
     scanCandidate: async input => {
       assert.equal(input.executeCandidateCode, false);
       assert.equal(input.networkAccessForCandidate, false);
@@ -53,7 +59,16 @@ test("firewall treats scanner adapter failure as a closed gate and never request
   });
   const result = await firewall.scan({ candidate: { id: "candidate" }, content: "untrusted", files: ["SKILL.md"], contentSha256: digest });
   assert.equal(result.ok, true);
-  const failing = createSkillSecurityFirewall({ scanCandidate: async () => { throw new Error("scanner offline"); } });
+  const failing = createSkillSecurityFirewall({ verifyAttestation: async () => true, scanCandidate: async () => { throw new Error("scanner offline"); } });
   assert.equal((await failing.scan({ candidate: { id: "candidate" }, content: "untrusted", files: [], contentSha256: digest })).code,
     "SECURITY_SCANNER_EXECUTION_FAILED");
+});
+
+test("rejects scanner reports without a valid trusted CI attestation", async()=>{
+ const firewall=createSkillSecurityFirewall({
+  scanCandidate:async()=>cleanReport(),
+  verifyAttestation:async()=>false
+ });
+ const result=await firewall.scan({candidate,content:"untrusted",files:["SKILL.md"],contentSha256:digest});
+ assert.equal(result.code,"UNTRUSTED_SCAN_ATTESTATION");
 });
