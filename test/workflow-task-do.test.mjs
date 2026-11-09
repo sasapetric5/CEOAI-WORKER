@@ -349,3 +349,19 @@ test("skill lifecycle Durable Object adapter rejects mismatched record identitie
  const store=createCloudflareSkillLifecycleStore(namespace);
  await assert.rejects(()=>store.putIfAbsent("skill-lifecycle:v1:expected_skill",{id:"other_skill",schemaVersion:1,revision:0}),/INVALID_SKILL_LIFECYCLE_KEY/);
 });
+
+test("durable skill lifecycle adapter persists intake failures through WorkflowTaskDO", async () => {
+  const { namespace } = makeDO();
+  const storage = createCloudflareSkillLifecycleStore(namespace);
+  const lifecycle = createSkillLifecycleManager({ storage, now: () => 1234 });
+  const created = await lifecycle.discover({ id: "durable_skill", metadata: { repository: "trusted/skills" } });
+  assert.equal(created.ok, true);
+  assert.equal((await lifecycle.classifyCost("durable_skill", "free")).ok, true);
+  const failed = await lifecycle.recordFailure("durable_skill", { stage: "security_review", code: "SECURITY_REVIEW_INCOMPLETE" });
+  assert.equal(failed.ok, true);
+  const record = await lifecycle.get("durable_skill");
+  assert.equal(record.status, "QUARANTINED");
+  assert.equal(record.failureCount, 1);
+  assert.equal(record.lastFailure.code, "SECURITY_REVIEW_INCOMPLETE");
+  assert.equal((await lifecycle.list({ status: "QUARANTINED" })).length, 1);
+});
