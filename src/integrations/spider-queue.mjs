@@ -60,7 +60,8 @@ function createLedger(env) {
       typeof env.SPIDER_LEDGER.get !== "function") throw new Error("SPIDER_LEDGER_UNAVAILABLE");
   return async (name, path, input) => {
     const parts = name.split(":");
-    const appId = parts[0] === "job" ? parts[1] : parts[1] === "app" ? parts[2] : parts[1] === "global" ? "GLOBAL" : null;
+    const appId = parts[0] === "job" ? parts[1] : parts[1] === "app" ? parts[2] :
+      parts[1] === "global" || (parts[0] === "quota" && parts.length === 2 && /^\\d{4}-\\d{2}-\\d{2}$/.test(parts[1])) ? "GLOBAL" : null;
     if (!appId) throw new Error("SPIDER_LEDGER_SCOPE_INVALID");
     if (input.appId !== undefined && input.appId !== appId) throw new Error("SPIDER_LEDGER_SCOPE_MISMATCH");
     const scopedInput = { ...input, appId };
@@ -126,9 +127,16 @@ export function createSpiderQueueHandler({
     // One account-wide date bucket is shared by all app callers and queue consumers.
     // Claim quota before creating a start lease so a quota-ledger outage cannot strand a job.
     const quotaDate = utcDate(now());
+    // Read pre-migration global and app ledgers. Combined claims merge them monotonically.
+    const [legacyGlobal, legacyApp] = await Promise.all([
+      ledger("quota:" + quotaDate, "/quota/get", { date: quotaDate }),
+      ledger("quota:app:" + message.appId + ":" + quotaDate, "/quota/get", { date: quotaDate }),
+    ]);
     const quota = await ledger("quota:global:" + quotaDate, "/quota/claim-combined", {
       quotaAppId: message.appId, date: quotaDate, id: message.id,
       appLimit: APP_DAILY_JOB_LIMITS[message.appId], globalLimit: GLOBAL_DAILY_JOB_LIMIT, now: now(),
+      legacyGlobalCount: legacyGlobal.count, legacyGlobalJobIds: legacyGlobal.jobIds,
+      legacyAppCount: legacyApp.count, legacyAppJobIds: legacyApp.jobIds,
     });
     if (!quota.allowed) {
       const overLimit = await ledger("job:" + message.appId + ":" + message.id, "/job/claim-start", {
