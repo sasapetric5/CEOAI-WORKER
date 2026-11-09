@@ -17,6 +17,15 @@ function environment(extra={}){
   KV_MEMORY:{async get(k){return memory.get(k)??null;},async put(k,v){memory.set(k,v);},async delete(k){memory.delete(k);}},
   RATE_LIMITER:{async limit({key}){return {success:true,key};}},
   SECURITY_DO:{idFromName(name){return name;},get(){return {async fetch(_url,options){const {appId,nonce}=JSON.parse(options.body),key=appId+":"+nonce;if(seen.has(key))return Response.json({error:"replay"},{status:409});seen.add(key);return Response.json({success:true});}};}},
+  WORKFLOW_TASKS:{idFromName(name){return name;},get(){return {async fetch(url,options){
+   const body=JSON.parse(options.body);
+   if(new URL(url).pathname!=="/skill/get")return Response.json({ok:false,code:"NOT_FOUND"},{status:404});
+   return Response.json({ok:true,record:{
+    schemaVersion:1,revision:1,id:body.skillId,status:"ACTIVE",costStatus:"free",ownerApproved:true,
+    securityReview:{sourcePinned:true,licenseVerified:true,hashVerified:true,dependenciesReviewed:true,scriptsReviewed:true,networkReviewed:true,credentialsReviewed:true},
+    quality:{runs:1,passes:1,failures:0,consecutiveFailures:0,lastResult:{passed:1,total:1,score:1}}
+   }});
+  }};}},
   ...extra,
  };
 }
