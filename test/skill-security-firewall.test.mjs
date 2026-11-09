@@ -26,25 +26,25 @@ test("rejects reports with a mismatched content hash or missing scanner", () => 
     "INVALID_OR_UNBOUND_SECURITY_REPORT");
   const report = cleanReport();
   report.scans.pop();
-  assert.equal(evaluateSkillSecurityReport(report, { expectedContentSha256: digest }).code, "REQUIRED_SCANNER_MISSING");
+  assert.equal(evaluateSkillSecurityReport(report, { expectedContentSha256: digest, expectedCandidate: candidate }).code, "REQUIRED_SCANNER_MISSING");
 });
 
 test("critical findings reject and high or medium findings quarantine", () => {
   const critical = cleanReport();
   critical.scans[0] = { ...critical.scans[0], status: "findings", findings: [{ severity: "critical", code: "MALWARE_SIGNATURE" }] };
-  assert.equal(evaluateSkillSecurityReport(critical, { expectedContentSha256: digest }).severity, "reject");
+  assert.equal(evaluateSkillSecurityReport(critical, { expectedContentSha256: digest, expectedCandidate: candidate }).severity, "reject");
   const high = cleanReport();
   high.scans[1] = { ...high.scans[1], status: "findings", findings: [{ severity: "high", code: "UNSAFE_EVAL" }] };
-  assert.equal(evaluateSkillSecurityReport(high, { expectedContentSha256: digest }).severity, "quarantine");
+  assert.equal(evaluateSkillSecurityReport(high, { expectedContentSha256: digest, expectedCandidate: candidate }).severity, "quarantine");
 });
 
 test("unavailable scanners and inconsistent scanner outputs fail closed", () => {
   const unavailable = cleanReport();
   unavailable.scans[0] = { ...unavailable.scans[0], status: "unavailable" };
-  assert.equal(evaluateSkillSecurityReport(unavailable, { expectedContentSha256: digest }).code, "SCANNER_UNAVAILABLE");
+  assert.equal(evaluateSkillSecurityReport(unavailable, { expectedContentSha256: digest, expectedCandidate: candidate }).code, "SCANNER_UNAVAILABLE");
   const inconsistent = cleanReport();
   inconsistent.scans[0] = { ...inconsistent.scans[0], findings: [{ severity: "low", code: "NOTE" }] };
-  assert.equal(evaluateSkillSecurityReport(inconsistent, { expectedContentSha256: digest }).code, "INCONSISTENT_SCANNER_RESULT");
+  assert.equal(evaluateSkillSecurityReport(inconsistent, { expectedContentSha256: digest, expectedCandidate: candidate }).code, "INCONSISTENT_SCANNER_RESULT");
 });
 
 test("firewall treats scanner adapter failure as a closed gate and never requests candidate execution", async () => {
@@ -57,7 +57,7 @@ test("firewall treats scanner adapter failure as a closed gate and never request
       return cleanReport();
     }
   });
-  const result = await firewall.scan({ candidate: { id: "candidate" }, content: "untrusted", files: ["SKILL.md"], contentSha256: digest });
+  const result = await firewall.scan({ candidate, content: "untrusted", files: ["SKILL.md"], contentSha256: digest });
   assert.equal(result.ok, true);
   const failing = createSkillSecurityFirewall({ verifyAttestation: async () => true, scanCandidate: async () => { throw new Error("scanner offline"); } });
   assert.equal((await failing.scan({ candidate: { id: "candidate" }, content: "untrusted", files: [], contentSha256: digest })).code,
