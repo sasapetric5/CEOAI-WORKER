@@ -29,7 +29,7 @@ export class WorkflowTaskDO {
     try {
       if (path === "/skill/list") {
         if (Object.keys(body).length !== 1) return json({ ok: false, code: "INVALID_SKILL_LIFECYCLE_REQUEST" }, 400);
-        const records = await this.ctx.storage.list({ prefix: "skillLifecycle:" });
+        const records = await this.ctx.storage.list({ prefix: "skillLifecycle:", limit: 500 });
         return json({ ok: true, records: [...records.values()] });
       }
       // Skill lifecycle records share this DO's transactional storage, but use a
