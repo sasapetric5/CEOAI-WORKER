@@ -1265,14 +1265,13 @@ const APP_AGENT_POLICIES = Object.freeze({
 });
 
 async function createRequestAgentSystem(env, maxAgents, capabilityContext, approvalTokens = []) {
-  // Register the bounded research reader for Supervisor discovery, but keep execution
-  // globally disabled until signed app/caller/agent/skill grants are provisioned and tested.
-  // This read-only tool has no external side effect and therefore needs no effect executor.
+  // Registration is safe, but execution additionally requires an explicit operator
+  // opt-in. Signed four-layer grants and the durable authority still gate every call.
+  // This flag is deliberately not set by repository code or deployment automation.
+  const researchReadEnabled = env?.RESEARCH_READ_ENABLED === "true";
   const toolRegistry = createToolRegistry({
     tools: [createResearchReadTool()],
-    // Registry availability is not authorization: all four signed grants and the
-    // persistent Durable Object check still run at the exact invocation.
-    enabled: true,
+    enabled: researchReadEnabled,
   });
   const authority = env?.CAPABILITY_AUTHORITY
     ? createCloudflareCapabilityAuthority(env.CAPABILITY_AUTHORITY)
@@ -1517,7 +1516,7 @@ export default {
         return json({ success: false, error: "Bezbednosna konfiguracija ovlašćenja nije validna.", code: "CAPABILITY_GRANT_CONFIGURATION_INVALID" }, 503);
       }
       const result = await runCEOAIInternalAgentTask(env, {
-        system, task: safeTask, input: agentInput, limit, agentIds: policy.allowedAgentIds, allowedToolIds: ["research_read"], allowToolExecution: true, allowNoToolAgentRun: true,
+        system, task: safeTask, input: agentInput, limit, agentIds: policy.allowedAgentIds, allowedToolIds: env?.RESEARCH_READ_ENABLED === "true" ? ["research_read"] : [], allowToolExecution: env?.RESEARCH_READ_ENABLED === "true", allowNoToolAgentRun: true,
         maxToolCalls: 1, maxModelCalls: policy.maxModelCalls, synthesize: true,
         intent, runId: requestId ?? crypto.randomUUID(),
       });
