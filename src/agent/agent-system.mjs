@@ -11,9 +11,12 @@ function attach(skillSystem,{toolRegistry,maxAgents,maxToolCalls,capabilityRegis
  return Object.freeze({...skillSystem,agents,multiAgentSupervisor:supervisor,mcpResources});
 }
 export function createBuiltinAgentSystem({toolRegistry,agentLoopFactory,maxAgents=3,maxToolCalls=4,capabilityRegistry=null,capabilityContext=null,approvalProvider=null,requireDurableAuthority=false,mcpAuthorize=null,mcpAudit=null,mcpPageSize=20,skillLifecycle=null}={}){
- const skills=createBuiltinSkillSystem({toolRegistry,agentLoopFactory,maxSelectedSkills:3,skillLifecycle});
+ // BUILTIN_SKILLS are code-owned, curated assets shipped with this Worker. They are
+ // not imported candidates, so they do not need an external-intake lifecycle record.
+ // External/KV skills continue to require ACTIVE owner-approved lifecycle records.
+ const skills=createBuiltinSkillSystem({toolRegistry,agentLoopFactory,maxSelectedSkills:3,skillLifecycle:null});
  if(!skills.agentLoop)throw new TypeError("AGENT_LOOP_FACTORY_REQUIRED");
- return attach(skills,{toolRegistry,maxAgents,maxToolCalls,capabilityRegistry,capabilityContext,approvalProvider,requireDurableAuthority,mcpAuthorize,mcpAudit,mcpPageSize,skillLifecycle});
+ return attach(skills,{toolRegistry,maxAgents,maxToolCalls,capabilityRegistry,capabilityContext,approvalProvider,requireDurableAuthority,mcpAuthorize,mcpAudit,mcpPageSize,skillLifecycle:null});
 }
 export async function createKVAgentSystem({
  kv,toolRegistry,agentLoopFactory,maxAgents=3,maxToolCalls=4,capabilityRegistry=null,capabilityContext=null,approvalProvider=null,requireDurableAuthority=false,capabilityPolicy={},
