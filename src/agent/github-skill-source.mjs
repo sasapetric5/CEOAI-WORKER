@@ -17,6 +17,37 @@ function decode(value) {
   const bytes = Uint8Array.from(binary, char => char.charCodeAt(0));
   return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
 }
+async function readBoundedResponse(response, maxBytes) {
+  const declared = Number(response.headers?.get?.("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) throw new Error("SKILL_BUNDLE_FILE_SIZE_LIMIT_EXCEEDED");
+  if (response.body?.getReader) {
+    const reader = response.body.getReader();
+    const chunks = [];
+    let total = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > maxBytes) {
+          await reader.cancel();
+          throw new Error("SKILL_BUNDLE_FILE_SIZE_LIMIT_EXCEEDED");
+        }
+        chunks.push(value);
+      }
+    } finally {
+      reader.releaseLock?.();
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    return bytes;
+  }
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.byteLength > maxBytes) throw new Error("SKILL_BUNDLE_FILE_SIZE_LIMIT_EXCEEDED");
+  return bytes;
+}
+
 export function createGitHubSkillSource({ repositories = [], fetchImpl = globalThis.fetch, maxCandidates = 100 } = {}) {
   if (!Array.isArray(repositories) || repositories.length < 1 || repositories.length > 20 ||
       typeof fetchImpl !== "function" || !Number.isSafeInteger(maxCandidates) || maxCandidates < 1 || maxCandidates > 500) {
@@ -99,7 +130,7 @@ export function createGitHubSkillSource({ repositories = [], fetchImpl = globalT
       const response = await fetchImpl(rawUrl, { method: "GET", redirect: "error" });
       if (!response?.ok) return { ok: false, code: "SKILL_BUNDLE_FILE_FETCH_FAILED" };
       let fileContent;
-      try { fileContent = new TextDecoder("utf-8", { fatal: true }).decode(await response.arrayBuffer()); }
+      try { fileContent = new TextDecoder("utf-8", { fatal: true }).decode(await readBoundedResponse(response, MAX_FILE_BYTES)); }
       catch { return { ok: false, code: "SKILL_BUNDLE_FILE_NOT_UTF8" }; }
       if (new TextEncoder().encode(fileContent).byteLength !== entry.size || fileContent.includes("\0")) {
         return { ok: false, code: "SKILL_BUNDLE_FILE_SIZE_OR_CONTENT_MISMATCH" };
