@@ -310,3 +310,22 @@ test("multi-agent supervisor fails closed when lifecycle storage cannot be read"
  });
  assert.equal((await supervisor.prepare({task:"storage test"})).code,"SKILL_LIFECYCLE_UNAVAILABLE");
 });
+
+test("KV agent composition forwards lifecycle admission to its actual multi-agent supervisor",async()=>{
+ const values=new Map(),kv={async put(k,v){values.set(k,v);},async get(k){return values.get(k)??null;}};
+ const toolRegistry=createToolRegistry({tools:[]});
+ await publishSkillCatalogToKV({kv,skills:BUILTIN_SKILLS,toolRegistry,approvedSkillIds:BUILTIN_SKILLS.map(skill=>skill.id)});
+ const seen=[];
+ const skillLifecycle={
+  get:async id=>{seen.push(id);return {id,status:"QUARANTINED"};},
+  isSelectable:()=>false
+ };
+ const system=await createKVAgentSystem({
+  kv,toolRegistry,skillLifecycle,
+  agentLoopFactory:({toolRegistry,skillRegistry})=>createAgentLoop({toolRegistry,skillRegistry})
+ });
+ const result=await system.multiAgentSupervisor.prepare({task:"HMAC replay security audit"});
+ assert.equal(result.ok,false);
+ assert.equal(result.code,"NO_ACTIVE_VERIFIED_SKILL");
+ assert.ok(seen.includes("skill_two_axis_code_review"));
+});
