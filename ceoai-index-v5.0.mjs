@@ -1976,3 +1976,5 @@ export { createCloudflareDurableExecutionEngine } from "./src/agent/cloudflare-d
 export { createCapabilityRegistry } from "./src/agent/capability-registry.mjs";
 export { createCloudflareSkillLifecycleStore } from "./src/agent/cloudflare-skill-lifecycle-store.mjs";
 
+
+export { createSkillQualityEvaluator } from "./src/agent/skill-quality-evaluator.mjs";
