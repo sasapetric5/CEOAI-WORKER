@@ -10,17 +10,17 @@ function attach(skillSystem,{toolRegistry,maxAgents,maxToolCalls,capabilityRegis
  const mcpResources=mcpAuthorize===null?null:createSkillMCPResources({skillRegistry:skillSystem.registry,authorize:mcpAuthorize,audit:mcpAudit,maxPageSize:mcpPageSize});
  return Object.freeze({...skillSystem,agents,multiAgentSupervisor:supervisor,mcpResources});
 }
-export function createBuiltinAgentSystem({toolRegistry,agentLoopFactory,maxAgents=3,maxToolCalls=4,capabilityRegistry=null,capabilityContext=null,approvalProvider=null,requireDurableAuthority=false,mcpAuthorize=null,mcpAudit=null,mcpPageSize=20}={}){
- const skills=createBuiltinSkillSystem({toolRegistry,agentLoopFactory,maxSelectedSkills:3});
+export function createBuiltinAgentSystem({toolRegistry,agentLoopFactory,maxAgents=3,maxToolCalls=4,capabilityRegistry=null,capabilityContext=null,approvalProvider=null,requireDurableAuthority=false,mcpAuthorize=null,mcpAudit=null,mcpPageSize=20,skillLifecycle=null}={}){
+ const skills=createBuiltinSkillSystem({toolRegistry,agentLoopFactory,maxSelectedSkills:3,skillLifecycle});
  if(!skills.agentLoop)throw new TypeError("AGENT_LOOP_FACTORY_REQUIRED");
  return attach(skills,{toolRegistry,maxAgents,maxToolCalls,capabilityRegistry,capabilityContext,approvalProvider,requireDurableAuthority,mcpAuthorize,mcpAudit,mcpPageSize});
 }
 export async function createKVAgentSystem({
  kv,toolRegistry,agentLoopFactory,maxAgents=3,maxToolCalls=4,capabilityRegistry=null,capabilityContext=null,approvalProvider=null,requireDurableAuthority=false,capabilityPolicy={},
  approvedSkillIds,categoryBySkillId={},categoryCapabilityPolicy={},indexKey,documentPrefix,
- mcpAuthorize=null,mcpAudit=null,mcpPageSize=20
+ mcpAuthorize=null,mcpAudit=null,mcpPageSize=20,skillLifecycle=null
 }={}){
- const skills=await createKVSkillSystem({kv,toolRegistry,agentLoopFactory,maxSelectedSkills:3,capabilityPolicy,approvedSkillIds,categoryBySkillId,categoryCapabilityPolicy,indexKey,documentPrefix});
+ const skills=await createKVSkillSystem({kv,toolRegistry,agentLoopFactory,maxSelectedSkills:3,capabilityPolicy,approvedSkillIds,categoryBySkillId,categoryCapabilityPolicy,indexKey,documentPrefix,skillLifecycle});
  if(!skills.agentLoop)throw new TypeError("AGENT_LOOP_FACTORY_REQUIRED");
  return attach(skills,{toolRegistry,maxAgents,maxToolCalls,capabilityRegistry,capabilityContext,approvalProvider,requireDurableAuthority,mcpAuthorize,mcpAudit,mcpPageSize});
 }
