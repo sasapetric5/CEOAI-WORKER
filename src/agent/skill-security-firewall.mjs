@@ -5,7 +5,8 @@ export const REQUIRED_SKILL_SCANNERS = Object.freeze([
 ]);
 const SHA256 = /^[a-f0-9]{64}$/;
 const SCANNER_ID = /^[a-z][a-z0-9_]{1,31}$/;
-const VERSION = /^[A-Za-z0-9][A-Za-z0-9._+:-]{0,63}$/;
+// Preserve bounded, human-readable scanner version output (e.g. ClamAV build/signature metadata).
+const VERSION = /^[A-Za-z0-9][A-Za-z0-9._+:/ -]{0,127}$/;
 const SEVERITIES = new Set(["critical", "high", "medium", "low", "info"]);
 const STATUSES = new Set(["clean", "findings", "not_applicable", "unavailable"]);
 const plain = value => value !== null && typeof value === "object" && !Array.isArray(value) &&
