@@ -76,7 +76,7 @@ export function createSkillQualityEvaluator({
 
     const stagedCandidate = candidateSkill !== undefined;
     if (stagedCandidate && (!plain(candidateSkill) || candidateSkill.id !== skillId ||
-        typeof candidateSkill.version !== "string" || !/^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$/.test(candidateSkill.version) ||
+        typeof candidateSkill.version !== "string" || !/^(0|[1-9]\d*)\\.(0|[1-9]\d*)\\.(0|[1-9]\d*)$/.test(candidateSkill.version) ||
         typeof candidateSkill.description !== "string" || !candidateSkill.description.trim() || candidateSkill.description.length > 240 ||
         typeof candidateSkill.content !== "string" || !candidateSkill.content.trim() ||
         Object.keys(candidateSkill).some(key => !["id", "version", "description", "content", "source"].includes(key)))) {
