@@ -17,7 +17,8 @@ async function hash(value) {
   return [...new Uint8Array(digest)].map(x => x.toString(16).padStart(2, "0")).join("");
 }
 function staticReview(files, content) {
-  const names = files.map(path => path.slice(path.lastIndexOf("/") + 1).toLowerCase());
+  const paths = files.map(file => typeof file === "string" ? file : file?.path).filter(path => typeof path === "string");
+  const names = paths.map(path => path.slice(path.lastIndexOf("/") + 1).toLowerCase());
   const manifests = names.filter(name => ["package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock",
     "requirements.txt", "pyproject.toml", "cargo.toml", "go.mod", "gemfile", "composer.json"].includes(name));
   const executables = files.filter(path => /\.(sh|bash|ps1|bat|cmd|js|mjs|cjs|py|rb|php|go|rs)$/i.test(path));
