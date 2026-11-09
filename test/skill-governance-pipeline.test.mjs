@@ -137,3 +137,25 @@ test("security firewall blocks intake and records quarantine before reviewer or 
  assert.equal(reviewerCalls,0);
  assert.equal(runnerCalls,0);
 });
+
+test("pinned source fetches bounded sibling files so scanners inspect scripts and manifests too",async()=>{
+ const skillBytes=new TextEncoder().encode(text);
+ const script="export const payload = 'no execution during scan';";
+ const scriptBytes=new TextEncoder().encode(script);
+ const b64=bytes=>Buffer.from(bytes).toString("base64");
+ const tree={truncated:false,tree:[
+  {type:"blob",path:path,sha:sha1,size:skillBytes.byteLength},
+  {type:"blob",path:"skills/demo/helper.mjs",sha:"d".repeat(40),size:scriptBytes.byteLength}
+ ]};
+ const source=createGitHubSkillSource({repositories:[{repository:repo,commit:sha1}],fetchImpl:async url=>{
+  if(url.includes("/contents/")) return {ok:true,json:async()=>({type:"file",sha:sha1,encoding:"base64",content:b64(skillBytes)})};
+  if(url.includes("/license")) return {ok:true,json:async()=>({license:{spdx_id:"MIT"}})};
+  if(url.includes("/git/trees/")) return {ok:true,json:async()=>tree};
+  if(url.includes("raw.githubusercontent.com")) return {ok:true,arrayBuffer:async()=>scriptBytes.buffer.slice(scriptBytes.byteOffset,scriptBytes.byteOffset+scriptBytes.byteLength)};
+  throw new Error("unexpected source URL");
+ }});
+ const fetched=await source.fetchCandidate(candidate);
+ assert.equal(fetched.ok,true);
+ assert.equal(fetched.files.length,2);
+ assert.equal(fetched.files.find(file=>file.path.endsWith("helper.mjs")).content,script);
+});
