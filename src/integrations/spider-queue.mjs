@@ -61,7 +61,7 @@ function createLedger(env) {
   return async (name, path, input) => {
     const parts = name.split(":");
     const appId = parts[0] === "job" ? parts[1] : parts[1] === "app" ? parts[2] :
-      parts[1] === "global" || (parts[0] === "quota" && parts.length === 2 && /^\\d{4}-\\d{2}-\\d{2}$/.test(parts[1])) ? "GLOBAL" : null;
+      parts[1] === "global" || (parts[0] === "quota" && parts.length === 2 && /^\d{4}-\d{2}-\d{2}$/.test(parts[1])) ? "GLOBAL" : null;
     if (!appId) throw new Error("SPIDER_LEDGER_SCOPE_INVALID");
     if (input.appId !== undefined && input.appId !== appId) throw new Error("SPIDER_LEDGER_SCOPE_MISMATCH");
     const scopedInput = { ...input, appId };
