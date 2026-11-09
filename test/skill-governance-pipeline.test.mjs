@@ -17,6 +17,7 @@ function pipelineOptions({cost="free",review=true,output="expected"}={}) {
   ok:true,candidate,content:text,license:"MIT",files:[path],contentSha256:hash(text)
  })};
  const pipeline=createSkillGovernancePipeline({
+  securityFirewall:{scan:async ({contentSha256})=>({ok:true,status:"clean",contentSha256})},
   source,lifecycle,
   costVerifier:async()=>({status:cost}),
   reviewCandidate:async()=>({dependenciesReviewed:review,scriptsReviewed:review,networkReviewed:review,credentialsReviewed:review}),
@@ -112,4 +113,27 @@ test("repeated scheduled quality failures degrade then suspend and stop automati
  assert.equal((await lifecycle.get(candidate.id)).quality.consecutiveFailures,2);
  const third=await pipeline.runBatch();
  assert.equal(third.results[0].code,"SKILL_SUSPENDED_REQUIRES_OWNER_RECOVERY");
+});
+
+test("security firewall blocks intake and records quarantine before reviewer or quality runner",async()=>{
+ const lifecycle=createSkillLifecycleManager({storage:createMemorySkillLifecycleStore(),now:()=>100});
+ let reviewerCalls=0;
+ let runnerCalls=0;
+ const source={approvedRepositories:[repo],discover:async()=>[candidate],fetchCandidate:async()=>({
+  ok:true,candidate,content:text,license:"MIT",files:[path],contentSha256:hash(text)
+ })};
+ const pipeline=createSkillGovernancePipeline({
+  source,lifecycle,
+  costVerifier:async()=>({status:"free"}),
+  securityFirewall:{scan:async()=>({ok:false,code:"SCANNER_UNAVAILABLE",severity:"quarantine"})},
+  reviewCandidate:async()=>{reviewerCalls++;return {dependenciesReviewed:true,scriptsReviewed:true,networkReviewed:true,credentialsReviewed:true};},
+  testCasesForSkill:async()=>[{id:"summary",input:{text:"hello"},expectedOutput:"expected"}],
+  executeCase:async()=>{runnerCalls++;return {output:"expected"};}
+ });
+ const result=await pipeline.runBatch();
+ assert.equal(result.ok,false);
+ assert.equal(result.results[0].code,"SCANNER_UNAVAILABLE");
+ assert.equal((await lifecycle.get(candidate.id)).status,"QUARANTINED");
+ assert.equal(reviewerCalls,0);
+ assert.equal(runnerCalls,0);
 });
