@@ -37,6 +37,8 @@ import { createCapabilityRegistry } from "./src/agent/capability-registry.mjs";
 import { createCloudflareCapabilityAuthority } from "./src/agent/cloudflare-capability-authority.mjs";
 import { createApprovalVerifier, loadVerifiedCapabilityGrants } from "./src/agent/capability-grants.mjs";
 import { createCapabilityApprovalProvider } from "./src/agent/capability-approval-provider.mjs";
+import { createCloudflareSkillLifecycleStore } from "./src/agent/cloudflare-skill-lifecycle-store.mjs";
+import { createSkillLifecycleManager } from "./src/agent/skill-lifecycle.mjs";
 const handleSpiderQueue = createSpiderQueueHandler();
 const PROVIDER_TIMEOUT_MS = 25000;
 const COOLDOWN_TTL = 3600;
@@ -1279,6 +1281,7 @@ async function createRequestAgentSystem(env, maxAgents, capabilityContext, appro
   // No grants are provisioned yet: DCA is wired, but all tool execution remains denied.
   const grants = await loadVerifiedCapabilityGrants(env);
   const approvalProvider = createCapabilityApprovalProvider(approvalTokens);
+  const skillLifecycle = env?.WORKFLOW_TASKS ? createSkillLifecycleManager({ storage: createCloudflareSkillLifecycleStore(env.WORKFLOW_TASKS) }) : null;
   const capabilityRegistry = createCapabilityRegistry({
     grants,
     authority,
@@ -1290,6 +1293,7 @@ async function createRequestAgentSystem(env, maxAgents, capabilityContext, appro
     capabilityContext,
     approvalProvider,
     requireDurableAuthority: true,
+    skillLifecycle,
     maxAgents,
     maxToolCalls: 1,
     agentLoopFactory: ({ toolRegistry, skillRegistry }) =>
