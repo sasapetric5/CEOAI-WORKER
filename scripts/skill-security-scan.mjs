@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { evaluateSkillSecurityReport, REQUIRED_SKILL_SCANNERS } from "../src/agent/skill-security-firewall.mjs";
+import { validatePinnedSkillCandidate } from "../src/agent/skill-candidate-provenance.mjs";
 
 const ROOT=process.cwd();
 const SKILL_ROOT=path.resolve(ROOT,process.env.SKILL_SCAN_ROOT||"skills/catalog/external");
@@ -13,6 +14,19 @@ const selectedId=process.env.SKILL_CANDIDATE_ID||"";
 const selectedRepository=process.env.SKILL_CANDIDATE_REPOSITORY||"";
 const selectedCommit=process.env.SKILL_CANDIDATE_COMMIT||"";
 const selectedBlobSha=process.env.SKILL_CANDIDATE_BLOB_SHA||"";
+const externalCandidate=process.env.GITHUB_EVENT_NAME==="workflow_dispatch";
+const GIT_SHA1=/^[a-f0-9]{40}$/i;
+function gitAt(root,args,timeout=30000){const r=run("git",["-C",root,...args],timeout);if(r.status!==0)throw new Error("SOURCE_GIT_VERIFICATION_FAILED");return r.stdout.trim();}
+function selectedSkillEntry(){
+ const normalized=validatePinnedSkillCandidate({id:selectedId,repository:selectedRepository,commit:selectedCommit,path:selectedPath,blobSha:selectedBlobSha});
+ const root=path.resolve(SOURCE_ROOT),entry=path.resolve(root,normalized.path),relative=path.relative(root,entry);
+ if(!relative||relative.startsWith(".."+path.sep)||relative===".."||path.isAbsolute(relative))throw new Error("CANDIDATE_PATH_OUTSIDE_SOURCE");
+ if(gitAt(root,["rev-parse","HEAD"]).toLowerCase()!==normalized.commit)throw new Error("CANDIDATE_COMMIT_MISMATCH");
+ const treeLine=gitAt(root,["ls-tree","-r",normalized.commit,"--",normalized.path]);
+ const match=treeLine.match(/^([0-7]{6}) blob ([a-f0-9]{40})\\t(.+)$/i);
+ if(!match||match[3]!==normalized.path||match[2].toLowerCase()!==normalized.blobSha)throw new Error("CANDIDATE_GIT_BLOB_MISMATCH");
+ return {entry,normalized};
+}
 const sha256=value=>createHash("sha256").update(value).digest("hex");
 const safeCode=value=>String(value||"SCANNER_FINDING").toUpperCase().replace(/[^A-Z0-9_:-]/g,"_").slice(0,96)||"SCANNER_FINDING";
 function run(command,args,timeout=240000){
@@ -81,7 +95,7 @@ async function attest(unsigned,outDir,repo,ref){
  if(verify.status!==0)throw new Error("COSIGN_ATTESTATION_VERIFY_FAILED");
  return Buffer.from(await readFile(bundle)).toString("base64");
 }
-async function scanOne(entry,versions,sarif){
+async function scanOne(entry,versions,sarif,pinned=null){
  const folder=path.dirname(entry),files=await walk(folder);let total=0;const items=[];
  for(const file of files){const st=await lstat(file);if(st.size>65536)throw new Error("SKILL_FILE_SIZE_LIMIT");total+=st.size;if(total>262144)throw new Error("SKILL_BUNDLE_SIZE_LIMIT");
   const rel=path.relative(ROOT,file).split(path.sep).join("/"),blob=run("git",["hash-object",file],10000);
@@ -91,9 +105,10 @@ async function scanOne(entry,versions,sarif){
  const rel=path.relative(ROOT,entry).split(path.sep).join("/"),main=items.find(x=>x.file===entry);
  const content=await readFile(entry,"utf8"),contentSha256=sha256(content);
  const bundleSha256=sha256(items.map(x=>x.path+"\0"+x.blobSha+"\0"+x.size).sort().join("\n"));
- const commit=process.env.GITHUB_SHA||run("git",["rev-parse","HEAD"],10000).stdout.trim();
- const repo=process.env.GITHUB_REPOSITORY||"local/scan";
- const candidate={id:"ci_"+sha256(rel).slice(0,32),repository:repo,path:rel,commit,blobSha:main.blobSha};
+ const commit=pinned?.normalized.commit||(process.env.GITHUB_SHA||run("git",["rev-parse","HEAD"],10000).stdout.trim());
+ const repo=pinned?.normalized.repository||(process.env.GITHUB_REPOSITORY||"local/scan");
+ const candidate=pinned?{...pinned.normalized,blobSha:main.blobSha}:{id:"ci_"+sha256(rel).slice(0,32),repository:repo,path:rel,commit,blobSha:main.blobSha};
+ if(pinned&&main.blobSha.toLowerCase()!==pinned.normalized.blobSha)throw new Error("CANDIDATE_CONTENT_BLOB_MISMATCH");
  const dir=path.join(REPORT_ROOT,candidate.id);await mkdir(dir,{recursive:true});
  const sources=codeFiles(items.map(x=>x.file)),deps=hasDeps(items.map(x=>x.file));
  const clam=await scanner("clamav",versions.clamav,async()=>{
@@ -137,7 +152,9 @@ async function scanOne(entry,versions,sarif){
  return output;
 }
 async function main(){
- await mkdir(REPORT_ROOT,{recursive:true});const entries=await findSkills(SKILL_ROOT);
+ await mkdir(REPORT_ROOT,{recursive:true});
+ const pinned=externalCandidate?selectedSkillEntry():null;
+ const entries=pinned?[pinned.entry]:await findSkills(SKILL_ROOT);
  if(!entries.length)throw new Error("NO_EXTERNAL_SKILLS_FOUND");
  const versions={clamav:version("clamscan"),semgrep:version("semgrep"),codeql:version("codeql",["version"]),gitleaks:version("gitleaks"),owasp_dep_scan:version("depscan",["--version"])};
  const sarif=await json(process.env.CODEQL_SARIF||path.join(REPORT_ROOT,"codeql.sarif"));
@@ -150,14 +167,14 @@ async function main(){
    if(index>=entries.length)return;
    const entry=entries[index];
    console.log("[skill-security] "+(index+1)+"/"+entries.length+" "+path.relative(ROOT,entry));
-   try{results[index]=await scanOne(entry,versions,sarif);}
+   try{results[index]=await scanOne(entry,versions,sarif,pinned);}
    catch(e){results[index]={candidatePath:path.relative(ROOT,entry),decision:"QUARANTINED",error:safeCode(e?.message)};}
    completed++;
    console.log("[skill-security] completed "+completed+"/"+entries.length+" decision="+results[index].decision);
   }
  }
  await Promise.all(Array.from({length:Math.min(concurrency,entries.length)},()=>worker()));
- const summary={schemaVersion:1,commit:process.env.GITHUB_SHA||"local",scanned:results.length,
+ const summary={schemaVersion:1,commit:process.env.GITHUB_SHA||"local",sourceCandidateId:pinned?.normalized.id||null,sourceRepository:pinned?.normalized.repository||null,sourceCommit:pinned?.normalized.commit||null,scanned:results.length,
   cleanPendingQuality:results.filter(x=>x.decision==="SCANNED_CLEAN_PENDING_QUALITY").length,
   quarantined:results.filter(x=>x.decision==="QUARANTINED").length,rejected:results.filter(x=>x.decision==="REJECTED").length,results};
  await writeFile(path.join(REPORT_ROOT,"summary.json"),JSON.stringify(summary,null,2)+"\n",{mode:0o600});
