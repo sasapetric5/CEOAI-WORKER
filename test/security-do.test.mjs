@@ -103,7 +103,7 @@ test("TUF metadata cache persists atomically with monotonic root version and CAS
   const durable = new SecurityOrchestratorDO({ storage });
   const namespace = {
     idFromName(name) { assert.equal(name, "sigstore-tuf-global"); return name; },
-    get(id) { return { fetch: request => durable.fetch(request) }; },
+    get(id) { return { fetch: (input, init) => durable.fetch(new Request(input, init)) }; },
   };
   const cacheStore = createCloudflareTufMetadataStore(namespace);
   const empty = await cacheStore.load();
