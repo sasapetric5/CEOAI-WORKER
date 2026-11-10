@@ -8,7 +8,7 @@ const review = {
   dependenciesReviewed: true, scriptsReviewed: true, networkReviewed: true,
   credentialsReviewed: true
 };
-function fixture({ security = { ok: true }, quality = { ok: true, qualityPassed: true, lifecycleStatus: "VERIFIED" }, refreshRegistry = null } = {}) {
+function fixture({ security = null, quality = { ok: true, qualityPassed: true, lifecycleStatus: "VERIFIED" }, refreshRegistry = null } = {}) {
   const calls = [];
   const records = new Map();
   const lifecycle = {
@@ -33,7 +33,7 @@ function fixture({ security = { ok: true }, quality = { ok: true, qualityPassed:
     isSelectable: record => record?.status === "ACTIVE" && record.ownerApproved === true
   };
   const pipeline = createSkillAdmissionPipeline({
-    securityFirewall: { scan: async () => { calls.push("firewall"); return security; } },
+    securityFirewall: { scan: async ({ contentSha256, bundleSha256 }) => { calls.push("firewall"); return security ?? { ok: true, status: "clean", contentSha256, bundleSha256 }; } },
     skillLifecycle: lifecycle,
     qualityEvaluator: { evaluate: async () => { calls.push("evaluator"); return quality; } },
     verifyIntakeReview: async () => { calls.push("verify-review"); return review; },
