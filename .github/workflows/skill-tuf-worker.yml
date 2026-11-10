@@ -1,0 +1,32 @@
+name: CEOAI Sigstore TUF Worker verification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "security/tuf-worker/**"
+      - ".github/workflows/skill-tuf-worker.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "security/tuf-worker/**"
+      - ".github/workflows/skill-tuf-worker.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tuf-worker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pinned commit
+        uses: actions/checkout@v4
+      - name: Install Rust and WASM target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Run TUF trust-chain regression tests
+        run: cargo test --manifest-path security/tuf-worker/Cargo.toml
+      - name: Compile Worker-compatible WASM target
+        run: cargo check --manifest-path security/tuf-worker/Cargo.toml --target wasm32-unknown-unknown

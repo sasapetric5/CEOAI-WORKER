@@ -1,0 +1,26 @@
+[package]
+name = "ceoai-sigstore-tuf-worker"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+base64 = "=0.22.1"
+futures = { version = "=0.3.31", default-features = false, features = ["executor"] }
+jiff = "=0.2.15"
+p256 = { version = "=0.13.2", default-features = false, features = ["ecdsa", "std"] }
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.145"
+sha2 = { version = "=0.10.9", default-features = false }
+sigstore-crypto = { version = "=0.15.1", default-features = false }
+sigstore-tuf = { version = "=0.15.1", default-features = false }
+sigstore-types = { version = "=0.15.1", default-features = false }
+
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = "s"
+panic = "abort"
