@@ -105,8 +105,9 @@ export async function fetchSigstoreTufInputs({
     return readBounded(response, maxBytes, label);
   }
 
-  // The embedded bootstrap root is version 16. Fetch only its sequential successors;
-  // the TUF engine, not this downloader, decides whether each candidate root is trusted.
+  // The embedded bootstrap root is version 16. Fetch only sequentially named successors;
+  // the TUF engine decides whether each candidate root is trusted. No unversioned root.json
+  // is accepted as a replacement for the pinned bootstrap root.
   for (let version = ROOT_BOOTSTRAP_VERSION + 1;
        version <= ROOT_BOOTSTRAP_VERSION + MAX_ROOT_ROTATIONS; version++) {
     const bytes = await get(version + ".root.json", MAX_ROOT_BYTES, "ROOT_" + version, true);
@@ -116,9 +117,6 @@ export async function fetchSigstoreTufInputs({
       throw new Error("TUF_ROOT_ROTATION_LIMIT_REACHED");
     }
   }
-
-  const root = await get("root.json", MAX_ROOT_BYTES, "ROOT_CURRENT");
-  metadataBytes["root.json"] = root;
 
   const timestamp = await get("timestamp.json", MAX_TIMESTAMP_BYTES, "TIMESTAMP");
   metadataBytes["timestamp.json"] = timestamp;
