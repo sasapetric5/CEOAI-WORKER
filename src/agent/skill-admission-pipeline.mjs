@@ -34,6 +34,7 @@ export function createSkillAdmissionPipeline({
   } = {}) {
     if (!plain(candidate) || typeof candidate.id !== "string" ||
         typeof content !== "string" || !Array.isArray(files) ||
+        typeof bundleSha256 !== "string" || !/^[a-f0-9]{64}$/.test(bundleSha256) ||
         !["free", "paid", "unknown"].includes(costStatus)) {
       return { ok: false, code: "INVALID_SKILL_ADMISSION_REQUEST", isolated: false };
     }
@@ -71,9 +72,10 @@ export function createSkillAdmissionPipeline({
     } catch {
       return isolate(candidate.id, "security", "SECURITY_FIREWALL_ERROR");
     }
-    if (!security?.ok) {
+    if (!security?.ok || security.status !== "clean" ||
+        security.contentSha256 !== verifiedContentSha256 || security.bundleSha256 !== bundleSha256) {
       const severity = security?.severity === "reject" || security?.code === "CRITICAL_SECURITY_FINDING" ? "reject" : "quarantine";
-      return isolate(candidate.id, "security", security?.code || "SECURITY_FIREWALL_REJECTED", severity);
+      return isolate(candidate.id, "security", security?.code || "SECURITY_REPORT_BINDING_FAILED", severity);
     }
 
     let review;
