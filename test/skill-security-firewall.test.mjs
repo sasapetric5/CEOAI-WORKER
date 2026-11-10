@@ -53,7 +53,15 @@ test("unavailable scanners and inconsistent scanner outputs fail closed", () => 
 
 test("firewall treats scanner adapter failure as a closed gate and never requests candidate execution", async () => {
   const firewall = createSkillSecurityFirewall({
-    verifyAttestation: async () => true,
+    trustRootProvider: { async loadTrustedRoot({ candidateId }) {
+      assert.equal(candidateId, candidate.id);
+      return { ok: true, target: new Uint8Array([1, 2, 3]), rootVersion: 16, cacheRevision: 1 };
+    } },
+    verifyAttestation: async (_report, context) => {
+      assert.deepEqual(context.trustedRoot, new Uint8Array([1, 2, 3]));
+      assert.equal(context.trustedRootVersion, 16);
+      return true;
+    },
     scanCandidate: async input => {
       assert.equal(input.executeCandidateCode, false);
       assert.equal(input.networkAccessForCandidate, false);
@@ -63,15 +71,20 @@ test("firewall treats scanner adapter failure as a closed gate and never request
   });
   const result = await firewall.scan({ candidate, content: "untrusted", files: ["SKILL.md"], contentSha256: digest, bundleSha256: bundleDigest });
   assert.equal(result.ok, true);
-  const failing = createSkillSecurityFirewall({ verifyAttestation: async () => true, scanCandidate: async () => { throw new Error("scanner offline"); } });
+  const failing = createSkillSecurityFirewall({
+    trustRootProvider: { async loadTrustedRoot() { return { ok: true, target: new Uint8Array([1]) }; } },
+    verifyAttestation: async () => true,
+    scanCandidate: async () => { throw new Error("scanner offline"); }
+  });
   assert.equal((await failing.scan({ candidate, content: "untrusted", files: [], contentSha256: digest, bundleSha256: bundleDigest })).code,
     "SECURITY_SCANNER_EXECUTION_FAILED");
 });
 
 test("rejects scanner reports without a valid trusted CI attestation", async()=>{
  const firewall=createSkillSecurityFirewall({
+  trustRootProvider:{async loadTrustedRoot(){return {ok:true,target:new Uint8Array([1]),rootVersion:16,cacheRevision:2};}},
   scanCandidate:async()=>cleanReport(),
-  verifyAttestation:async()=>false
+  verifyAttestation:async(_report,context)=>{assert.deepEqual(context.trustedRoot,new Uint8Array([1]));return false;}
  });
  const result=await firewall.scan({candidate,content:"untrusted",files:["SKILL.md"],contentSha256:digest,bundleSha256:bundleDigest});
  assert.equal(result.code,"UNTRUSTED_SCAN_ATTESTATION");
@@ -101,4 +114,30 @@ test("accepts real scanner version strings with bounded build metadata",()=>{
  }));
  const result=evaluateSkillSecurityReport(report,{expectedContentSha256:digest,expectedBundleSha256:bundleDigest,expectedCandidate:candidate});
  assert.equal(result.ok,true);
+});
+
+
+test("firewall fails closed before Sigstore verification when TUF trust root cannot be verified", async () => {
+  let verifierCalled = false;
+  const firewall = createSkillSecurityFirewall({
+    trustRootProvider: { async loadTrustedRoot() { const error = new Error("TUF_METADATA_VERIFICATION_FAILED"); error.code = error.message; throw error; } },
+    scanCandidate: async () => cleanReport(),
+    verifyAttestation: async () => { verifierCalled = true; return true; },
+  });
+  const result = await firewall.scan({ candidate, content: "untrusted", files: ["SKILL.md"], contentSha256: digest, bundleSha256: bundleDigest });
+  assert.equal(result.code, "TUF_METADATA_VERIFICATION_FAILED");
+  assert.equal(verifierCalled, false);
+});
+
+test("firewall requires the TUF trust-root provider and a bounded verified target", async () => {
+  assert.throws(() => createSkillSecurityFirewall({
+    scanCandidate: async () => cleanReport(), verifyAttestation: async () => true,
+  }), /SIGSTORE_TUF_TRUST_ROOT_PROVIDER_REQUIRED/);
+  const firewall = createSkillSecurityFirewall({
+    trustRootProvider: { async loadTrustedRoot() { return { ok: true, target: new Uint8Array(0), rootVersion: 16 }; } },
+    scanCandidate: async () => cleanReport(),
+    verifyAttestation: async () => true,
+  });
+  const result = await firewall.scan({ candidate, content: "untrusted", files: ["SKILL.md"], contentSha256: digest, bundleSha256: bundleDigest });
+  assert.equal(result.code, "SIGSTORE_TUF_TRUST_ROOT_INVALID");
 });
