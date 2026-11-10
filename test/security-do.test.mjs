@@ -6,6 +6,7 @@ function makeStore() {
   const values = new Map();
   return {
     values,
+    async get(key) { return values.get(key); },
     async transaction(callback) {
       return callback({
         async get(key) { return values.get(key); },
