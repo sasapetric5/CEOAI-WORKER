@@ -179,6 +179,26 @@ const localResponse = await worker.fetch(new Request('http://localhost:8787/api/
 }), localEnv);
 assert.equal(localResponse.status, 204);
 
+// Same-origin HTTPS requests must work when the panel is opened on the Worker
+// hostname, even when that hostname is not listed as a cross-origin caller.
+{
+  const workerOrigin = "https://ceoai-worker.sasapetric5.workers.dev";
+  const workerOriginEnv = makeEnv({ AI_ENABLED: "false" });
+  const { cookie: workerCookie } = await getSession(workerOriginEnv, workerOrigin);
+  const workerOriginResponse = await worker.fetch(new Request(workerOrigin + "/api/chat", {
+    method: "POST",
+    headers: {
+      Origin: workerOrigin,
+      "Content-Type": "application/json",
+      Cookie: workerCookie,
+      "CF-Connecting-IP": "198.51.100.23",
+    },
+    body: JSON.stringify({ prompt: "test 123" }),
+  }), workerOriginEnv);
+  assert.equal(workerOriginResponse.status, 503, "same-origin request passes origin guard and reaches AI policy");
+  assert.match((await workerOriginResponse.json()).error, /AI je isključen/);
+}
+
 // 17: fallback proceeds from a rate-limited Gemini candidate to a mocked OpenRouter success.
 const originalFetch3 = globalThis.fetch;
 const fallbackCalls = [];
