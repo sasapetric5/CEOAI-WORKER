@@ -192,3 +192,29 @@ export function createCloudflareSkillGovernancePipeline({
   });
   return Object.freeze({ pipeline, lifecycle, source });
 }
+
+
+// Production composition: the governance pipeline receives the compiled-WASM
+// TUF + real Sigstore firewall, sharing the same lifecycle store for quarantine.
+export async function createCloudflareSkillGovernancePipelineWithSigstoreTuf({
+  env, repositories, costVerifier, scanCandidate, reviewCandidate,
+  testCasesForSkill, executeCase, fetchImpl, now = () => Date.now()
+} = {}) {
+  if (!env?.WORKFLOW_TASKS || typeof env.WORKFLOW_TASKS.idFromName !== "function" ||
+      typeof env.WORKFLOW_TASKS.get !== "function") throw new TypeError("WORKFLOW_TASKS_BINDING_REQUIRED");
+  if (!env?.SECURITY_DO || typeof env.SECURITY_DO.idFromName !== "function" ||
+      typeof env.SECURITY_DO.get !== "function") throw new TypeError("SECURITY_DO_BINDING_REQUIRED");
+
+  const storage = createCloudflareSkillLifecycleStore(env.WORKFLOW_TASKS);
+  const lifecycle = createSkillLifecycleManager({ storage, now });
+  const source = createGitHubSkillSource({ repositories, fetchImpl });
+  const runtime = await import("./worker-tuf-runtime.mjs");
+  const securityFirewall = await runtime.createWorkerSigstoreTufFirewall({
+    env, scanCandidate, skillLifecycle: lifecycle,
+  });
+  const pipeline = createSkillGovernancePipeline({
+    source, lifecycle, costVerifier, securityFirewall, reviewCandidate,
+    testCasesForSkill, executeCase, now,
+  });
+  return Object.freeze({ pipeline, lifecycle, source, securityFirewall });
+}
