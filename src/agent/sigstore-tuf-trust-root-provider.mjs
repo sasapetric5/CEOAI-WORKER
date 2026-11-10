@@ -65,16 +65,31 @@ export function createWasmTufVerifier(instance) {
   };
 }
 
-export async function instantiateWasmTufVerifier(wasmBindgenInit, wasmBytesOrModule) {
-  if (typeof wasmBindgenInit !== "function") throw new TypeError("TUF_WASM_BINDGEN_INITIALIZER_REQUIRED");
-  if (!(wasmBytesOrModule instanceof WebAssembly.Module) &&
-      !(wasmBytesOrModule instanceof ArrayBuffer) && !ArrayBuffer.isView(wasmBytesOrModule)) {
-    throw new TypeError("TUF_WASM_MODULE_OR_BYTES_REQUIRED");
+export async function instantiateWasmTufVerifier(module, {
+  cryptoProvider = globalThis.crypto,
+  imports = {},
+} = {}) {
+  if (!(module instanceof WebAssembly.Module)) throw new TypeError("TUF_WASM_MODULE_REQUIRED");
+  if (!cryptoProvider || typeof cryptoProvider.getRandomValues !== "function") {
+    throw new TypeError("TUF_WEBCRYPTO_REQUIRED");
   }
-  // wasm-bindgen supplies the required getrandom/WebCrypto JS imports for the
-  // raw Rust cdylib. The returned object exposes the stable C ABI functions.
-  const exports = await wasmBindgenInit(wasmBytesOrModule);
-  return createWasmTufVerifier({ exports });
+  let memory;
+  const hostEntropy = (pointer, length) => {
+    if (!memory || !Number.isSafeInteger(pointer) || !Number.isSafeInteger(length) ||
+        pointer < 0 || length < 0 || length > 1024 * 1024 ||
+        pointer + length > memory.buffer.byteLength) {
+      throw new Error("TUF_WASM_ENTROPY_BOUNDS_INVALID");
+    }
+    const view = new Uint8Array(memory.buffer, pointer, length);
+    for (let offset = 0; offset < view.length; offset += 65536) {
+      cryptoProvider.getRandomValues(view.subarray(offset, Math.min(offset + 65536, view.length)));
+    }
+  };
+  const envImports = { ...(imports.env || {}), ceoai_getrandom_fill: hostEntropy };
+  const instantiated = await WebAssembly.instantiate(module, { ...imports, env: envImports });
+  const instance = instantiated instanceof WebAssembly.Instance ? instantiated : instantiated.instance;
+  memory = instance.exports.memory;
+  return createWasmTufVerifier(instance);
 }
 
 // The only public result is a target whose metadata chain and content hash were
