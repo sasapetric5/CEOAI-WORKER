@@ -132,7 +132,7 @@ async function runFirewallIntegration({
       if (attestationVerifier) {
         try { return await attestationVerifier(attestedReport, context); }
         catch (error) {
-          console.error("ACTUAL_SIGSTORE_VERIFIER_FAILURE", error?.code || "", error?.message || String(error));
+          console.error("ACTUAL_SIGSTORE_VERIFIER_FAILURE", error?.code || "", error?.message || String(error), JSON.stringify(error?.fields || []), error?.stack || "");
           throw error;
         }
       }
