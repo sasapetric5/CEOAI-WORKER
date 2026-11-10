@@ -114,6 +114,7 @@ test("TUF metadata cache persists atomically with monotonic root version and CAS
     "root_history/16.root.json": btoa("root-v16"),
     "root_history/17.root.json": btoa("root-v17"),
     "timestamp.json": btoa("timestamp-v1"),
+    "targets/trusted_root.json": btoa("trusted-root-v1"),
   };
   const committed = await cacheStore.commit({ expectedRevision: 0, rootVersion: 16, cache });
   assert.equal(committed.revision, 1);
