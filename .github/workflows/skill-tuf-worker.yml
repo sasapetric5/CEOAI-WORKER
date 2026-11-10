@@ -17,7 +17,11 @@ on:
       - "scripts/verify-tuf-wasm.mjs"
       - "scripts/create-tuf-sigstore-test-fixture.mjs"
       - "src/agent/sigstore-bundle-verifier.mjs"
+      - "src/agent/worker-tuf-runtime.mjs"
       - "test/sigstore-bundle-verifier.test.mjs"
+      - "ceoai-index-v5.0.mjs"
+      - "wrangler.toml"
+      - "package.json"
       - ".github/workflows/skill-tuf-worker.yml"
   pull_request:
     branches: [main]
@@ -33,6 +37,13 @@ on:
       - "test/security-do.test.mjs"
       - "test/skill-security-firewall.test.mjs"
       - "scripts/verify-tuf-wasm.mjs"
+      - "scripts/create-tuf-sigstore-test-fixture.mjs"
+      - "src/agent/sigstore-bundle-verifier.mjs"
+      - "src/agent/worker-tuf-runtime.mjs"
+      - "test/sigstore-bundle-verifier.test.mjs"
+      - "ceoai-index-v5.0.mjs"
+      - "wrangler.toml"
+      - "package.json"
       - ".github/workflows/skill-tuf-worker.yml"
   workflow_dispatch:
 
