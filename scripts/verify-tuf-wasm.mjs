@@ -129,7 +129,13 @@ async function runFirewallIntegration({
       assert.deepEqual(Buffer.from(context.trustedRoot), Buffer.from(trustedRootBytes));
       assert.equal(context.trustedRootVersion, 16);
       assert.equal(context.trustedRootCacheRevision, 1);
-      if (attestationVerifier) return attestationVerifier(attestedReport, context);
+      if (attestationVerifier) {
+        try { return await attestationVerifier(attestedReport, context); }
+        catch (error) {
+          console.error("ACTUAL_SIGSTORE_VERIFIER_FAILURE", error?.code || "", error?.message || String(error));
+          throw error;
+        }
+      }
       return true;
     },
   });
