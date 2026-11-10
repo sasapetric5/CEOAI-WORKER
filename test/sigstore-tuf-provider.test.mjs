@@ -39,9 +39,10 @@ function dependencies(overrides = {}) {
       return { revision: 5, rootVersion: 17 };
     },
   };
-  const fetchInputs = async ({ cache }) => {
+  const fetchInputs = async ({ cache, rootVersion }) => {
     events.push("metadata_fetch");
     assert.deepEqual(cache, snapshot.cache);
+    assert.equal(rootVersion, 10, "legacy version-16 cache must be migrated from pinned root 10");
     return { metadata: { "timestamp.json": "dGVzdA==" }, targets: {}, targetPath: "trusted_root.json" };
   };
   const verifyTuf = input => {
