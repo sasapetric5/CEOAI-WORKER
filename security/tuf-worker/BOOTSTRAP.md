@@ -6,6 +6,7 @@ The embedded bootstrap is **Sigstore Public Good TUF root version 10**.
 - Upstream path: `metadata/root_history/10.root.json`
 - Pinned upstream commit: `03f9c7e0023c917b60eb7431e87f47e6a636f37a`
 - Upstream Git blob SHA-1: `3f18ee74ca6415a3a8dbdc30be69fc1b1703c02f`
+- Embedded file SHA-256: `836bff947925edfc23eb9ce17af66fb1e43bb5e2bdd240520985ae52b585eae9` (enforced by Rust before parsing)
 - TUF root threshold: 3 of 5 root-role keys
 - Root metadata expiry: 2025-02-19T08:04:32Z
 
