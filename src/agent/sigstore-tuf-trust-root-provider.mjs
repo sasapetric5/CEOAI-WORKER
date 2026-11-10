@@ -65,11 +65,16 @@ export function createWasmTufVerifier(instance) {
   };
 }
 
-export async function instantiateWasmTufVerifier(module, imports = {}) {
-  if (!(module instanceof WebAssembly.Module)) throw new TypeError("TUF_WASM_MODULE_REQUIRED");
-  const instantiated = await WebAssembly.instantiate(module, imports);
-  const instance = instantiated instanceof WebAssembly.Instance ? instantiated : instantiated.instance;
-  return createWasmTufVerifier(instance);
+export async function instantiateWasmTufVerifier(wasmBindgenInit, wasmBytesOrModule) {
+  if (typeof wasmBindgenInit !== "function") throw new TypeError("TUF_WASM_BINDGEN_INITIALIZER_REQUIRED");
+  if (!(wasmBytesOrModule instanceof WebAssembly.Module) &&
+      !(wasmBytesOrModule instanceof ArrayBuffer) && !ArrayBuffer.isView(wasmBytesOrModule)) {
+    throw new TypeError("TUF_WASM_MODULE_OR_BYTES_REQUIRED");
+  }
+  // wasm-bindgen supplies the required getrandom/WebCrypto JS imports for the
+  // raw Rust cdylib. The returned object exposes the stable C ABI functions.
+  const exports = await wasmBindgenInit(wasmBytesOrModule);
+  return createWasmTufVerifier({ exports });
 }
 
 // The only public result is a target whose metadata chain and content hash were
