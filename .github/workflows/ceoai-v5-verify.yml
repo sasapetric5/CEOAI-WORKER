@@ -20,7 +20,7 @@ jobs:
   verify:
     name: Fast syntax and regression suite
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - name: Check out main
         uses: actions/checkout@v4
@@ -35,6 +35,12 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Run one consolidated verification pass
         run: npm run verify
+      - name: Install Rust and WASM target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Build TUF verifier for Worker bundling
+        run: npm run build:tuf
       - name: Validate production bindings with Wrangler 4 (dry run only)
         shell: bash
         run: |
