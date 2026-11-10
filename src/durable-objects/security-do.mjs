@@ -59,7 +59,7 @@ export class SecurityOrchestratorDO {
         return Response.json({ ok: false, code: "INVALID_TUF_CACHE_REQUEST" }, { status: 400 });
       }
       const entries = Object.entries(input.cache);
-      const validName = name => /^(?:root|timestamp|(?:[0-9]+\.)?(?:snapshot|targets))\.json$|^root_history\/[0-9]+\.root\.json$/.test(name);
+      const validName = name => /^(?:root|timestamp|(?:[0-9]+\.)?(?:snapshot|targets))\.json$|^root_history\/[0-9]+\.root\.json$|^targets\/trusted_root\.json$/.test(name);
       let total = 0;
       if (entries.length < 1 || entries.length > 128) {
         return Response.json({ ok: false, code: "INVALID_TUF_CACHE_ENTRIES" }, { status: 400 });
