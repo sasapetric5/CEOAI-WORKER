@@ -1850,6 +1850,13 @@ export default {
       let sawRateLimit = false;
       let sawQuotaExhaustion = false;
       let sawCooldownSkip = false;
+      let cooldownSkipCount = 0;
+      let inFlightSkipCount = 0;
+      let providerAttemptCount = 0;
+      const cooldownSkippedProviders = [];
+      const inFlightSkippedProviders = [];
+      const attemptedProviders = [];
+      let providerDeadlineExhausted = false;
       let quotaRetryAfter = QUOTA_COOLDOWN_TTL;
       let usedProviderId = null;
       // Sequential failover: on quota/rate-limit the provider is cooled down and the next
@@ -1857,18 +1864,30 @@ export default {
       const providerDeadline = Date.now() + 24000;
       for (const candidate of candidates) {
         const remainingMs = providerDeadline - Date.now();
-        if (remainingMs < 2000) break;
+        if (remainingMs < 2000) { providerDeadlineExhausted = true; break; }
         const cooldownKey = `cooldown:${candidate.id}`;
         let coolingDown = false;
         try { coolingDown = Boolean(await env.KV_MEMORY.get(cooldownKey)); } catch {
           return json({ success: false, error: "Servis privremenih ograničenja je nedostupan." }, 503, corsHeaders(origin));
         }
-        if (coolingDown) { sawCooldownSkip = true; continue; }
+        if (coolingDown) {
+          sawCooldownSkip = true;
+          cooldownSkipCount++;
+          cooldownSkippedProviders.push(candidate.id);
+          continue;
+        }
 
         // Avoid a same-isolate burst against a provider while its first attempt is unresolved.
         // This is intentionally best-effort; separate Worker isolates can still race.
-        if (inFlightProviders.has(candidate.id)) { sawCooldownSkip = true; continue; }
+        if (inFlightProviders.has(candidate.id)) {
+          sawCooldownSkip = true;
+          inFlightSkipCount++;
+          inFlightSkippedProviders.push(candidate.id);
+          continue;
+        }
         inFlightProviders.add(candidate.id);
+        providerAttemptCount++;
+        attemptedProviders.push(candidate.id);
         try {
           reply = redactSensitiveText(await executeModel(candidate, messages, remainingMs), env, MAX_REPLY_CHARS);
           if (!reply.trim()) throw new Error("Prazan odgovor");
@@ -1915,6 +1934,19 @@ export default {
       }
 
       if (!providerSucceeded) {
+        console.warn("CEOAI_DIAG provider_routing_exhausted", JSON.stringify({
+          candidateCount: candidates.length,
+          attemptedCount: providerAttemptCount,
+          attemptedProviders,
+          cooldownSkipCount,
+          cooldownSkippedProviders,
+          inFlightSkipCount,
+          inFlightSkippedProviders,
+          sawRateLimit,
+          sawQuotaExhaustion,
+          providerDeadlineExhausted,
+          lastStatus,
+        }));
         const rateLimited = sawRateLimit || sawCooldownSkip || sawQuotaExhaustion;
         const message = sawQuotaExhaustion
           ? "Besplatne kvote aktivnih AI provajdera su trenutno potrošene. Sistem će automatski prebaciti na druge kada cooldown istekne. Pokušajte kasnije."
