@@ -11,7 +11,7 @@
     "test": "node test-ceoai-v5.0.mjs && node --test test/*.test.mjs",
     "check:secrets": "node scripts/check-no-secrets.mjs",
     "verify": "npm run check:secrets && npm run check && npm test",
-    "build:tuf": "rustup target add wasm32-unknown-unknown && cargo build --release --manifest-path security/tuf-worker/Cargo.toml --target wasm32-unknown-unknown"
+    "build:tuf": "rustup target add wasm32-unknown-unknown && cargo build --release --manifest-path security/tuf-worker/Cargo.toml --target wasm32-unknown-unknown && mkdir -p security/tuf-worker/pkg && cp security/tuf-worker/target/wasm32-unknown-unknown/release/ceoai_sigstore_tuf_worker.wasm security/tuf-worker/pkg/ceoai_sigstore_tuf_worker.wasm"
   },
   "dependencies": {
     "@sigstore/bundle": "5.0.1",
