@@ -98,7 +98,7 @@ export function createSigstoreTufTrustRootProvider({
       }
 
       stage = "metadata_fetch";
-      const remote = await fetchInputs({ cache: previous.cache });
+      const remote = await fetchInputs({ cache: previous.cache, rootVersion: previous.rootVersion });
       if (!remote || !remote.metadata || !remote.targets || remote.targetPath !== "trusted_root.json") {
         throw new Error("TUF_REMOTE_INPUT_INVALID");
       }
