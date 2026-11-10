@@ -17,6 +17,12 @@ const b64 = bytes => Buffer.from(bytes).toString("base64");
 const trustedRootBytes = await read("trusted_root.json");
 const validInputs = {
   metadata: {
+    "11.root.json": b64(await read("11.root.json")),
+    "12.root.json": b64(await read("12.root.json")),
+    "13.root.json": b64(await read("13.root.json")),
+    "14.root.json": b64(await read("14.root.json")),
+    "15.root.json": b64(await read("15.root.json")),
+    "16.root.json": b64(await read("16.root.json")),
     "timestamp.json": b64(await read("timestamp.json")),
     "166.snapshot.json": b64(await read("snapshot.json")),
     "14.targets.json": b64(await read("targets.json")),
