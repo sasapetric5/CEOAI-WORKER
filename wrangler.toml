@@ -75,3 +75,10 @@ class_name = "CapabilityAuthorityDO"
 [[migrations]]
 tag = "v4-capability-authority"
 new_sqlite_classes = ["CapabilityAuthorityDO"]
+
+
+# Compile the Rust Sigstore TUF verifier as a Worker WebAssembly module.
+[[rules]]
+type = "CompiledWasm"
+globs = ["security/tuf-worker/target/wasm32-unknown-unknown/release/ceoai_sigstore_tuf_worker.wasm"]
+fallthrough = true
