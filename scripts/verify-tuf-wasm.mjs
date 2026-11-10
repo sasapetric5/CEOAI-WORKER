@@ -9,7 +9,7 @@ assert.deepEqual(imports, [
   { module: "env", name: "ceoai_getrandom_fill", kind: "function" },
 ], "WASM must expose only the explicit WebCrypto entropy host import");
 let memory;
-const { instance } = await WebAssembly.instantiate(module, {
+const instance = await WebAssembly.instantiate(module, {
   env: {
     ceoai_getrandom_fill(pointer, length) {
       assert.ok(memory, "WASM memory must be initialized before entropy use");
