@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { fetchSigstoreTufInputs } from "../src/agent/sigstore-tuf-repository-fetcher.mjs";
 import { createSigstoreTufTrustRootProvider, createWasmTufVerifier } from "../src/agent/sigstore-tuf-trust-root-provider.mjs";
 
 const targetBytes = new TextEncoder().encode('{"mediaType":"application/vnd.dev.sigstore.trustedroot+json;version=0.1"}');
@@ -124,4 +126,53 @@ test("WASM ABI adapter rejects a malformed packed return value", () => {
     exports: { memory, alloc: () => 8, free_buffer() {}, verify_tuf: () => 7 },
   });
   assert.throws(() => verify({ target_path: "trusted_root.json" }), /TUF_WASM_ABI_INVALID_POINTER/);
+});
+
+
+test("Sigstore TUF fetcher requests only fixed-host sequential roots and hash-addressed target", async () => {
+  const target = Buffer.from('{"trusted":"root"}');
+  const hash = createHash("sha256").update(target).digest("hex");
+  const fixtures = new Map([
+    ["https://tuf-repo-cdn.sigstore.dev/17.root.json", Buffer.from('{"signed":{"version":17}}')],
+    ["https://tuf-repo-cdn.sigstore.dev/timestamp.json", Buffer.from(JSON.stringify({ signed: { meta: { "snapshot.json": { version: 12 } } } }))],
+    ["https://tuf-repo-cdn.sigstore.dev/12.snapshot.json", Buffer.from(JSON.stringify({ signed: { meta: { "targets.json": { version: 13 } } } }))],
+    ["https://tuf-repo-cdn.sigstore.dev/13.targets.json", Buffer.from(JSON.stringify({ signed: { targets: { "trusted_root.json": { length: target.length, hashes: { sha256: hash } } } } }))],
+    ["https://tuf-repo-cdn.sigstore.dev/targets/" + hash + ".trusted_root.json", target],
+  ]);
+  const requested = [];
+  const result = await fetchSigstoreTufInputs({
+    fetchImpl: async (url, options) => {
+      requested.push(url);
+      assert.equal(options.redirect, "error");
+      assert.equal(options.cache, "no-store");
+      if (url.endsWith("/18.root.json")) return new Response(null, { status: 404 });
+      const bytes = fixtures.get(url);
+      assert.ok(bytes, "unexpected URL " + url);
+      return new Response(bytes, { status: 200 });
+    },
+  });
+  assert.equal(result.targetPath, "trusted_root.json");
+  assert.deepEqual(requested, [
+    "https://tuf-repo-cdn.sigstore.dev/17.root.json",
+    "https://tuf-repo-cdn.sigstore.dev/18.root.json",
+    "https://tuf-repo-cdn.sigstore.dev/timestamp.json",
+    "https://tuf-repo-cdn.sigstore.dev/12.snapshot.json",
+    "https://tuf-repo-cdn.sigstore.dev/13.targets.json",
+    "https://tuf-repo-cdn.sigstore.dev/targets/" + hash + ".trusted_root.json",
+  ]);
+  assert.equal(Buffer.from(result.targets[hash + ".trusted_root.json"], "base64").toString(), target.toString());
+});
+
+test("Sigstore TUF fetcher rejects redirects and oversized root metadata", async () => {
+  await assert.rejects(() => fetchSigstoreTufInputs({
+    fetchImpl: async url => {
+      const response = new Response("redirected", { status: 200 });
+      Object.defineProperty(response, "url", { value: "https://attacker.invalid/root.json" });
+      return response;
+    },
+  }), /TUF_REMOTE_REDIRECT_REJECTED/);
+
+  await assert.rejects(() => fetchSigstoreTufInputs({
+    fetchImpl: async () => new Response(new Uint8Array(512 * 1024 + 1), { status: 200 }),
+  }), /TUF_REMOTE_RESPONSE_TOO_LARGE_ROOT_17/);
 });
