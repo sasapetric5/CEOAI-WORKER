@@ -2002,3 +2002,38 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
     console.info = originalInfo;
   }
 }
+
+
+// Dashboard flag values with surrounding whitespace are normalized without weakening
+// free-tier confirmation: GLM remains the only eligible external provider in this fixture.
+{
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url: String(url), options });
+    return new Response(JSON.stringify({ choices: [{ message: { content: "GLM flag normalization passed." } }] }), {
+      status: 200, headers: { "Content-Type": "application/json" },
+    });
+  };
+  try {
+    const env = makeEnv({
+      AI_ENABLED: " true ",
+      ZAI_GLM_FLASH_ONLY: " true ",
+      ZAI_GLM_FLASH_FREE_CONFIRMED: "true ",
+      ZAI_GLM_FLASH_KEY_1: "test-glm-whitespace-flag",
+      ZAI_GLM_FLASH_KEY_2: "",
+      GEMINI_API_KEY_PRIMARY: "",
+      GEMINI_KEY_1: "",
+      OPENROUTER_API_KEY: "",
+      OPENROUTER_KEY: "",
+    });
+    const { cookie } = await getSession(env);
+    const response = await worker.fetch(apiRequest(cookie, JSON.stringify({ prompt: "Provera normalizacije zastavica" })), env);
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).reply, "GLM flag normalization passed.");
+    assert.equal(calls.length, 1);
+    assert.ok(calls[0].url.includes("api.z.ai"), "GLM-only mode must not call another provider");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
