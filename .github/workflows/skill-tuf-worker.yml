@@ -15,6 +15,9 @@ on:
       - "test/security-do.test.mjs"
       - "test/skill-security-firewall.test.mjs"
       - "scripts/verify-tuf-wasm.mjs"
+      - "scripts/create-tuf-sigstore-test-fixture.mjs"
+      - "src/agent/sigstore-bundle-verifier.mjs"
+      - "test/sigstore-bundle-verifier.test.mjs"
       - ".github/workflows/skill-tuf-worker.yml"
   pull_request:
     branches: [main]
@@ -35,6 +38,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   tuf-worker:
@@ -48,6 +52,15 @@ jobs:
           node-version: "24"
       - name: Install locked dependencies without lifecycle scripts
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install Cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@v3.8.2
+      - name: Prepare keyless Sigstore verification fixture
+        if: github.event_name != 'pull_request'
+        run: node scripts/create-tuf-sigstore-test-fixture.mjs
+      - name: Sign fixture with GitHub OIDC and Rekor
+        if: github.event_name != 'pull_request'
+        run: cosign sign-blob --yes --bundle .reports/tuf-sigstore-test/cosign.bundle.json .reports/tuf-sigstore-test/unsigned.json
       - name: Install Rust and WASM target
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -58,5 +71,10 @@ jobs:
         run: cargo test --manifest-path security/tuf-worker/Cargo.toml
       - name: Compile optimized Worker WASM artifact
         run: cargo build --release --manifest-path security/tuf-worker/Cargo.toml --target wasm32-unknown-unknown
-      - name: Exercise the real WASM ABI in Node
+      - name: Exercise TUF WASM, Durable Object cache, quarantine, and Sigstore verification
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF: ${{ github.ref }}
+          SIGSTORE_TEST_BUNDLE_PATH: ${{ github.event_name == 'pull_request' && '' || '.reports/tuf-sigstore-test/cosign.bundle.json' }}
+          SIGSTORE_TEST_REPORT_PATH: ${{ github.event_name == 'pull_request' && '' || '.reports/tuf-sigstore-test/report.json' }}
         run: node scripts/verify-tuf-wasm.mjs
