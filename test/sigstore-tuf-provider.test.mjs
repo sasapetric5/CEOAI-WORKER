@@ -133,7 +133,7 @@ test("Sigstore TUF fetcher requests only fixed-host sequential roots and hash-ad
   const target = Buffer.from('{"trusted":"root"}');
   const hash = createHash("sha256").update(target).digest("hex");
   const fixtures = new Map([
-    ["https://tuf-repo-cdn.sigstore.dev/17.root.json", Buffer.from('{"signed":{"version":17}}')],
+    ["https://tuf-repo-cdn.sigstore.dev/11.root.json", Buffer.from('{"signed":{"version":17}}')],
     ["https://tuf-repo-cdn.sigstore.dev/timestamp.json", Buffer.from(JSON.stringify({ signed: { meta: { "snapshot.json": { version: 12 } } } }))],
     ["https://tuf-repo-cdn.sigstore.dev/12.snapshot.json", Buffer.from(JSON.stringify({ signed: { meta: { "targets.json": { version: 13 } } } }))],
     ["https://tuf-repo-cdn.sigstore.dev/13.targets.json", Buffer.from(JSON.stringify({ signed: { targets: { "trusted_root.json": { length: target.length, hashes: { sha256: hash } } } } }))],
@@ -145,7 +145,7 @@ test("Sigstore TUF fetcher requests only fixed-host sequential roots and hash-ad
       requested.push(url);
       assert.equal(options.redirect, "error");
       assert.equal(options.cache, "no-store");
-      if (url.endsWith("/18.root.json")) return new Response(null, { status: 404 });
+      if (url.endsWith("/12.root.json")) return new Response(null, { status: 404 });
       const bytes = fixtures.get(url);
       assert.ok(bytes, "unexpected URL " + url);
       return new Response(bytes, { status: 200 });
@@ -153,8 +153,8 @@ test("Sigstore TUF fetcher requests only fixed-host sequential roots and hash-ad
   });
   assert.equal(result.targetPath, "trusted_root.json");
   assert.deepEqual(requested, [
-    "https://tuf-repo-cdn.sigstore.dev/17.root.json",
-    "https://tuf-repo-cdn.sigstore.dev/18.root.json",
+    "https://tuf-repo-cdn.sigstore.dev/11.root.json",
+    "https://tuf-repo-cdn.sigstore.dev/12.root.json",
     "https://tuf-repo-cdn.sigstore.dev/timestamp.json",
     "https://tuf-repo-cdn.sigstore.dev/12.snapshot.json",
     "https://tuf-repo-cdn.sigstore.dev/13.targets.json",
@@ -174,5 +174,5 @@ test("Sigstore TUF fetcher rejects redirects and oversized root metadata", async
 
   await assert.rejects(() => fetchSigstoreTufInputs({
     fetchImpl: async () => new Response(new Uint8Array(512 * 1024 + 1), { status: 200 }),
-  }), /TUF_REMOTE_RESPONSE_TOO_LARGE_ROOT_17/);
+  }), /TUF_REMOTE_RESPONSE_TOO_LARGE_ROOT_11/);
 });
