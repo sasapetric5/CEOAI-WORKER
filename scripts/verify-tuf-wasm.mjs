@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createCloudflareSigstoreTufFirewall } from "../src/agent/cloudflare-sigstore-tuf-firewall.mjs";
 import { REQUIRED_SKILL_SCANNERS } from "../src/agent/skill-security-firewall.mjs";
