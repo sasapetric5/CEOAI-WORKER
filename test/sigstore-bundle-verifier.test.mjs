@@ -5,7 +5,7 @@ import { createSigstoreBundleAttestationVerifier } from "../src/agent/sigstore-b
 const report = {
   schemaVersion: 1,
   policyVersion: "ceoai-skill-firewall-v1",
-  candidate: { repository: "sasapetric5/CEOAI-WORKER" },
+  candidate: { id: "ext_demo", repository: "trusted/skills", path: "skills/demo/SKILL.md", commit: "c".repeat(40), blobSha: "d".repeat(40) },
   runId: "42783511303",
   scannedAt: "2026-11-10T08:30:00.000Z",
   contentSha256: "a".repeat(64),
@@ -18,6 +18,7 @@ const context = {
   policyVersion: "ceoai-skill-firewall-v1",
   contentSha256: report.contentSha256,
   bundleSha256: report.bundleSha256,
+  candidate: { ...report.candidate },
   trustedRoot: new TextEncoder().encode(JSON.stringify({
     mediaType: "application/vnd.dev.sigstore.trustedroot+json;version=0.1",
   })),
@@ -35,7 +36,7 @@ test("Sigstore verifier pins repository, workflow and main ref identity", () => 
 test("Sigstore verifier rejects wrong report binding before parsing bundle", async () => {
   const verify = createSigstoreBundleAttestationVerifier();
   await assert.rejects(
-    () => verify({ ...report, candidate: { repository: "attacker/other" } }, context),
+    () => verify({ ...report, candidate: { ...report.candidate, repository: "attacker/other" } }, context),
     /SIGSTORE_REPORT_BINDING_INVALID/
   );
   await assert.rejects(
