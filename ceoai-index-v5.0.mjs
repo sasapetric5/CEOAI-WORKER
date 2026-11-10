@@ -1983,3 +1983,4 @@ export { createGitHubSkillSource } from "./src/agent/github-skill-source.mjs";
 export { createSkillGovernancePipeline } from "./src/agent/skill-governance-pipeline.mjs";
 
 export { createCloudflareSkillGovernancePipeline } from "./src/agent/skill-governance-pipeline.mjs";
+export { createCloudflareSigstoreTufFirewall } from "./src/agent/cloudflare-sigstore-tuf-firewall.mjs";
