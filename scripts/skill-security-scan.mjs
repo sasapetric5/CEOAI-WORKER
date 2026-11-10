@@ -17,7 +17,7 @@ const selectedBlobSha=process.env.SKILL_CANDIDATE_BLOB_SHA||"";
 const externalCandidate=process.env.GITHUB_EVENT_NAME==="workflow_dispatch";
 const GIT_SHA1=/^[a-f0-9]{40}$/i;
 function gitAt(root,args,timeout=30000){const r=run("git",["-C",root,...args],timeout);if(r.status!==0)throw new Error("SOURCE_GIT_VERIFICATION_FAILED");return r.stdout.trim();}
-function selectedSkillEntry(){
+async function selectedSkillEntry(){
  const normalized=validatePinnedSkillCandidate({id:selectedId,repository:selectedRepository,commit:selectedCommit,path:selectedPath,blobSha:selectedBlobSha});
  const root=path.resolve(SOURCE_ROOT),entry=path.resolve(root,normalized.path),relative=path.relative(root,entry);
  if(!relative||relative.startsWith(".."+path.sep)||relative===".."||path.isAbsolute(relative))throw new Error("CANDIDATE_PATH_OUTSIDE_SOURCE");
@@ -26,6 +26,8 @@ function selectedSkillEntry(){
  const [metadata,treePath]=treeLine.split("\\t");
  const [mode,type,treeBlob]=String(metadata||"").split(" ");
  if(type!=="blob"||!/^([0-7]{6})$/.test(mode||"")||treePath!==normalized.path||!GIT_SHA1.test(treeBlob||"")||treeBlob.toLowerCase()!==normalized.blobSha)throw new Error("CANDIDATE_GIT_BLOB_MISMATCH");
+ const entryStat=await lstat(entry);
+ if(!entryStat.isFile())throw new Error("CANDIDATE_SKILL_NOT_REGULAR_FILE");
  return {entry,normalized};
 }
 const sha256=value=>createHash("sha256").update(value).digest("hex");
@@ -154,7 +156,7 @@ async function scanOne(entry,versions,sarif,pinned=null){
 }
 async function main(){
  await mkdir(REPORT_ROOT,{recursive:true});
- const pinned=externalCandidate?selectedSkillEntry():null;
+ const pinned=externalCandidate?await selectedSkillEntry():null;
  const entries=pinned?[pinned.entry]:await findSkills(SKILL_ROOT);
  if(!entries.length)throw new Error("NO_EXTERNAL_SKILLS_FOUND");
  const versions={clamav:version("clamscan"),semgrep:version("semgrep"),codeql:version("codeql",["version"]),gitleaks:version("gitleaks"),owasp_dep_scan:version("depscan",["--version"])};
@@ -182,4 +184,13 @@ async function main(){
  console.log(JSON.stringify({scanned:summary.scanned,cleanPendingQuality:summary.cleanPendingQuality,quarantined:summary.quarantined,rejected:summary.rejected}));
  if(summary.quarantined||summary.rejected)process.exitCode=1;
 }
-main().catch(e=>{console.error("Skill security scan failed closed:",e?.message||e);process.exitCode=2;});
+main().catch(async e=>{
+ const code=safeCode(e?.message);
+ if(externalCandidate){
+  await mkdir(REPORT_ROOT,{recursive:true}).catch(()=>{});
+  const summary={schemaVersion:1,commit:process.env.GITHUB_SHA||"local",scanned:1,cleanPendingQuality:0,quarantined:1,rejected:0,results:[{candidateId:selectedId||null,candidateRepository:selectedRepository||null,candidatePath:selectedPath||null,decision:"QUARANTINED",error:code}]};
+  await writeFile(path.join(REPORT_ROOT,"summary.json"),JSON.stringify(summary,null,2)+"\\n",{mode:0o600}).catch(()=>{});
+  console.error(JSON.stringify({decision:"QUARANTINED",error:code}));
+ }
+ console.error("Skill security scan failed closed:",e?.message||e);process.exitCode=2;
+});
