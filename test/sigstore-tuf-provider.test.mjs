@@ -177,3 +177,40 @@ test("Sigstore TUF fetcher rejects redirects and oversized root metadata", async
     fetchImpl: async () => new Response(new Uint8Array(512 * 1024 + 1), { status: 200 }),
   }), /TUF_REMOTE_RESPONSE_TOO_LARGE_ROOT_11/);
 });
+
+
+test("TUF provider retries from pinned root 10 when a cached root-history link fails verification", async () => {
+  const rootCache = { "root.json": Buffer.from("root16").toString("base64") };
+  for (let version = 11; version <= 16; version++) {
+    rootCache["root_history/" + version + ".root.json"] = Buffer.from("root" + version).toString("base64");
+  }
+  const hints = [];
+  let verifyCount = 0;
+  let committed = false;
+  const provider = createSigstoreTufTrustRootProvider({
+    metadataStore: {
+      async load() { return { revision: 9, rootVersion: 16, cache: rootCache }; },
+      async commit({ expectedRevision, rootVersion }) {
+        committed = true;
+        assert.equal(expectedRevision, 9);
+        assert.equal(rootVersion, 17);
+        return { revision: 10, rootVersion: 17 };
+      },
+    },
+    fetchInputs: async ({ rootVersion }) => {
+      hints.push(rootVersion);
+      return { metadata: { "timestamp.json": "dGVzdA==" }, targets: {}, targetPath: "trusted_root.json" };
+    },
+    verifyTuf: async () => {
+      verifyCount++;
+      return verifyCount === 1
+        ? { ok: false, code: "TUF_METADATA_VERIFICATION_FAILED" }
+        : verified;
+    },
+  });
+  const result = await provider.loadTrustedRoot({ candidateId: "ci_recovery" });
+  assert.deepEqual(hints, [16, 10]);
+  assert.equal(verifyCount, 2);
+  assert.equal(committed, true);
+  assert.equal(result.rootVersion, 17);
+});
