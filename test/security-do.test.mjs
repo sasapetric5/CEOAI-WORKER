@@ -109,10 +109,16 @@ test("TUF metadata cache persists atomically with monotonic root version and CAS
   const cacheStore = createCloudflareTufMetadataStore(namespace);
   const empty = await cacheStore.load();
   assert.equal(empty.revision, 0);
-  const cache = { "root.json": btoa("root-v1"), "timestamp.json": btoa("timestamp-v1") };
+  const cache = {
+    "root.json": btoa("root-v1"),
+    "root_history/16.root.json": btoa("root-v16"),
+    "root_history/17.root.json": btoa("root-v17"),
+    "timestamp.json": btoa("timestamp-v1"),
+  };
   const committed = await cacheStore.commit({ expectedRevision: 0, rootVersion: 16, cache });
   assert.equal(committed.revision, 1);
   assert.equal((await cacheStore.load()).cache["root.json"], cache["root.json"]);
+  assert.equal((await cacheStore.load()).cache["root_history/17.root.json"], cache["root_history/17.root.json"]);
   await assert.rejects(() => cacheStore.commit({ expectedRevision: 0, rootVersion: 16, cache }), /TUF_CACHE_REVISION_CONFLICT/);
   await assert.rejects(() => cacheStore.commit({ expectedRevision: 1, rootVersion: 15, cache }), /TUF_ROOT_ROLLBACK_REJECTED/);
   assert.equal((await cacheStore.load()).rootVersion, 16);
