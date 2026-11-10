@@ -186,3 +186,30 @@ test("clean reviewed code Skills are scanned rather than rejected only for conta
  assert.equal(reviewerSawCode,true);
  assert.equal(result.results[0].status,"VERIFIED");
 });
+
+
+test("quarantine persistence failure is reported as blocked and never counted as isolated",async()=>{
+ const lifecycle=createSkillLifecycleManager({storage:createMemorySkillLifecycleStore(),now:()=>100});
+ const source={approvedRepositories:[repo],discover:async()=>[candidate],fetchCandidate:async()=>({
+  ok:true,candidate,content:text,license:"MIT",files:[path],contentSha256:hash(text),bundleSha256:hash("bundle:"+path)
+ })};
+ const wrapped={
+  ...lifecycle,
+  recordFailure:async()=>{throw new Error("durable storage unavailable");}
+ };
+ const pipeline=createSkillGovernancePipeline({
+  source,lifecycle:wrapped,costVerifier:async()=>({status:"unknown"}),
+  securityFirewall:{scan:async()=>{throw new Error("must not run");}},
+  reviewCandidate:async()=>{throw new Error("must not run");},
+  testCasesForSkill:async()=>[{id:"summary",input:{text:"hello"},expectedOutput:"expected"}],
+  executeCase:async()=>({output:"expected"})
+ });
+ const result=await pipeline.runBatch();
+ assert.equal(result.ok,false);
+ assert.equal(result.quarantined,0);
+ assert.equal(result.blocked,1);
+ assert.equal(result.results[0].code,"SKILL_QUARANTINE_PERSISTENCE_FAILED");
+ assert.equal(result.results[0].failureCode,"COST_UNVERIFIED_QUARANTINED");
+ assert.equal(result.results[0].isolated,false);
+ assert.equal((await lifecycle.get(candidate.id)).status,"QUARANTINED");
+});
