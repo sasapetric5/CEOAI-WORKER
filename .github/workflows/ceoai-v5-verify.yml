@@ -30,7 +30,9 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Run one consolidated verification pass
         run: npm run verify
       - name: Validate production bindings with Wrangler 4 (dry run only)
