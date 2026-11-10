@@ -347,6 +347,27 @@ mod tests {
     }
 
     #[test]
+    fn rejects_a_missing_sequential_root_rotation() {
+        let mut input: serde_json::Value = serde_json::from_slice(&fixture_input()).unwrap();
+        input["metadata"].as_object_mut().unwrap().remove("12.root.json");
+        let result: VerifyOutput = serde_json::from_slice(&encode_output(verify(&serde_json::to_vec(&input).unwrap()))).unwrap();
+        assert!(!result.ok);
+        assert_eq!(result.code, "TUF_METADATA_VERIFICATION_FAILED");
+    }
+
+    #[test]
+    fn rejects_a_tampered_intermediate_root_signature() {
+        let mut input: serde_json::Value = serde_json::from_slice(&fixture_input()).unwrap();
+        let encoded = input["metadata"]["12.root.json"].as_str().unwrap();
+        let mut bytes = BASE64.decode(encoded).unwrap();
+        bytes[20] ^= 1;
+        input["metadata"]["12.root.json"] = serde_json::Value::String(BASE64.encode(bytes));
+        let result: VerifyOutput = serde_json::from_slice(&encode_output(verify(&serde_json::to_vec(&input).unwrap()))).unwrap();
+        assert!(!result.ok);
+        assert_eq!(result.code, "TUF_METADATA_VERIFICATION_FAILED");
+    }
+
+    #[test]
     fn rejects_tampered_timestamp_signature() {
         let mut input: serde_json::Value = serde_json::from_slice(&fixture_input()).unwrap();
         let encoded = input["metadata"]["timestamp.json"].as_str().unwrap();
