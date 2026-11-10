@@ -24,6 +24,12 @@ use sigstore_tuf::{
 use sigstore_types::HashAlgorithm;
 
 const BOOTSTRAP_ROOT: &[u8] = include_bytes!("../bootstrap-root.json");
+const BOOTSTRAP_ROOT_SHA256: [u8; 32] = [
+    0x83, 0x6b, 0xff, 0x94, 0x79, 0x25, 0xed, 0xfc,
+    0x23, 0xeb, 0x9c, 0xe1, 0x7a, 0xf6, 0x6f, 0xb1,
+    0xe4, 0x3b, 0xb5, 0xe2, 0xbd, 0xd2, 0x40, 0x52,
+    0x09, 0x85, 0xae, 0x52, 0xb5, 0x85, 0xea, 0xe9,
+];
 const MAX_INPUT_BYTES: usize = 16 * 1024 * 1024;
 const MAX_CACHE_ENTRIES: usize = 128;
 const MAX_REMOTE_ENTRIES: usize = 96;
@@ -207,6 +213,9 @@ fn decode_map(input: HashMap<String, String>, max_entries: usize) -> Result<Hash
 }
 
 fn verify(input_bytes: &[u8]) -> VerifyOutput {
+    if Sha256::digest(BOOTSTRAP_ROOT).as_slice() != BOOTSTRAP_ROOT_SHA256 {
+        return error_output("TUF_BOOTSTRAP_ROOT_DIGEST_MISMATCH");
+    }
     if input_bytes.len() > MAX_INPUT_BYTES { return error_output("TUF_INPUT_TOO_LARGE"); }
     let input: VerifyInput = match serde_json::from_slice(input_bytes) {
         Ok(value) => value, Err(_) => return error_output("INVALID_TUF_INPUT"),
@@ -314,6 +323,13 @@ mod tests {
         targets.insert("6494e21ea73fa7ee769f85f57d5a3e6a08725eae1e38c755fc3517c9e6bc0b66.trusted_root.json".into(),
             BASE64.encode(include_bytes!("../testdata/trusted_root.json")));
         serde_json::to_vec(&serde_json::json!({"metadata":metadata,"targets":targets,"target_path":"trusted_root.json"})).unwrap()
+    }
+
+    #[test]
+    fn bootstrap_root_is_the_pinned_official_sigstore_version_10() {
+        assert_eq!(Sha256::digest(BOOTSTRAP_ROOT).as_slice(), BOOTSTRAP_ROOT_SHA256);
+        let root: serde_json::Value = serde_json::from_slice(BOOTSTRAP_ROOT).unwrap();
+        assert_eq!(root["signed"]["version"], 10);
     }
 
     #[test]
