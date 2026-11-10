@@ -93,7 +93,7 @@ export function createSigstoreBundleAttestationVerifier({
     const verifier = new Verifier(toTrustMaterial(trustedRoot), {
       tlogThreshold: 1,
       ctlogThreshold: 1,
-      timestampThreshold: 1,
+      timestampThreshold: 0, // Rekor integrated time is required; RFC3161 timestamp authorities are optional.
     });
     verifier.verify(toSignedEntity(bundle, payload), {
       subjectAlternativeName: identity,
