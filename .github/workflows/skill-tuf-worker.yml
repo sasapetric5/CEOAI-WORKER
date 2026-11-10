@@ -42,6 +42,12 @@ jobs:
     steps:
       - name: Checkout pinned commit
         uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Install Rust and WASM target
         uses: dtolnay/rust-toolchain@stable
         with:
