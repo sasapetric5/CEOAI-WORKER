@@ -103,6 +103,7 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: javascript-typescript
+          source-root: ${{ github.event_name == 'workflow_dispatch' && '.scanner-source' || '.' }}
 
       - name: Analyze repository with CodeQL
         uses: github/codeql-action/analyze@v3
