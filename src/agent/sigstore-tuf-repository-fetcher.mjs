@@ -76,10 +76,14 @@ async function readBounded(response, maxBytes, label) {
 
 export async function fetchSigstoreTufInputs({
   cache = {},
+  rootVersion = ROOT_BOOTSTRAP_VERSION,
   fetchImpl = globalThis.fetch,
   timeoutMs = 7000,
 } = {}) {
   if (typeof fetchImpl !== "function") throw new TypeError("TUF_FETCH_ADAPTER_REQUIRED");
+  if (!Number.isSafeInteger(rootVersion) || rootVersion < 0 || rootVersion > Number.MAX_SAFE_INTEGER - MAX_ROOT_ROTATIONS) {
+    throw new TypeError("INVALID_TUF_ROOT_VERSION_HINT");
+  }
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 15000) {
     throw new TypeError("INVALID_TUF_FETCH_TIMEOUT");
   }
@@ -105,11 +109,12 @@ export async function fetchSigstoreTufInputs({
     return readBounded(response, maxBytes, label);
   }
 
-  // The embedded bootstrap root is version 16. Fetch only sequentially named successors;
-  // the TUF engine decides whether each candidate root is trusted. No unversioned root.json
-  // is accepted as a replacement for the pinned bootstrap root.
-  for (let version = ROOT_BOOTSTRAP_VERSION + 1;
-       version <= ROOT_BOOTSTRAP_VERSION + MAX_ROOT_ROTATIONS; version++) {
+  // The embedded bootstrap root is version 16. The DO's last committed root version
+  // is only a fetch hint; the Rust updater independently re-verifies cached root history.
+  // Fetch only sequential successors and never accept unversioned root.json as bootstrap.
+  const startVersion = Math.max(ROOT_BOOTSTRAP_VERSION, rootVersion);
+  for (let version = startVersion + 1;
+       version <= startVersion + MAX_ROOT_ROTATIONS; version++) {
     const bytes = await get(version + ".root.json", MAX_ROOT_BYTES, "ROOT_" + version, true);
     if (bytes === null) break;
     metadataBytes[version + ".root.json"] = bytes;
