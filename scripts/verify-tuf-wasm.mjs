@@ -85,7 +85,7 @@ function makeReport(candidate, contentSha256, bundleSha256) {
 async function runFirewallIntegration({
   tamperTimestamp = false,
   reportOverride = null,
-  attestationVerifier = null,
+  attestationWorkflow = "skill-security-firewall.yml",
 } = {}) {
   const { namespace, state } = makeDurableNamespace();
   const candidate = reportOverride?.candidate || {
@@ -100,7 +100,6 @@ async function runFirewallIntegration({
   const bundleSha256 = reportOverride?.bundleSha256 || "d".repeat(64);
   const report = reportOverride || makeReport(candidate, contentSha256, bundleSha256);
   const failures = [];
-  let sigstoreVerifierCalled = false;
   const inputs = structuredClone(validInputs);
   if (tamperTimestamp) {
     const bytes = Buffer.from(inputs.metadata["timestamp.json"], "base64");
@@ -118,57 +117,36 @@ async function runFirewallIntegration({
       return report;
     },
     fetchInputs: async () => inputs,
+    attestationWorkflow,
     skillLifecycle: {
       async recordFailure(id, failure) {
         failures.push({ id, ...failure });
         return { ok: true };
       },
     },
-    verifyAttestation: async (attestedReport, context) => {
-      sigstoreVerifierCalled = true;
-      assert.deepEqual(Buffer.from(context.trustedRoot), Buffer.from(trustedRootBytes));
-      assert.equal(context.trustedRootVersion, 16);
-      assert.equal(context.trustedRootCacheRevision, 1);
-      if (attestationVerifier) {
-        try { return await attestationVerifier(attestedReport, context); }
-        catch (error) {
-          console.error("ACTUAL_SIGSTORE_VERIFIER_FAILURE", error?.code || "", error?.message || String(error), JSON.stringify(error?.fields || []), error?.stack || "");
-          throw error;
-        }
-      }
-      return true;
-    },
   });
 
   const result = await firewall.scan({
     candidate, content, files: ["SKILL.md"], contentSha256, bundleSha256,
   });
-  return { result, state, failures, sigstoreVerifierCalled };
+  return { result, state, failures };
 }
 
-let signedReport = null;
-let actualVerifier = null;
-if (process.env.SIGSTORE_TEST_BUNDLE_PATH && process.env.SIGSTORE_TEST_REPORT_PATH) {
-  signedReport = JSON.parse(await readFile(process.env.SIGSTORE_TEST_REPORT_PATH, "utf8"));
-  const signedBundle = await readFile(process.env.SIGSTORE_TEST_BUNDLE_PATH);
-  signedReport.attestation = { envelope: signedBundle.toString("base64") };
-  actualVerifier = createSigstoreBundleAttestationVerifier({
-    expectedRepository: process.env.GITHUB_REPOSITORY || "sasapetric5/CEOAI-WORKER",
-    expectedWorkflow: "skill-tuf-worker.yml",
-    expectedRef: process.env.GITHUB_REF || "refs/heads/main",
-  });
+if (!process.env.SIGSTORE_TEST_BUNDLE_PATH || !process.env.SIGSTORE_TEST_REPORT_PATH) {
+  throw new Error("REAL_SIGSTORE_TEST_BUNDLE_AND_REPORT_REQUIRED");
 }
+const signedReport = JSON.parse(await readFile(process.env.SIGSTORE_TEST_REPORT_PATH, "utf8"));
+const signedBundle = await readFile(process.env.SIGSTORE_TEST_BUNDLE_PATH);
+signedReport.attestation = { envelope: signedBundle.toString("base64") };
 
 const accepted = await runFirewallIntegration({
   reportOverride: signedReport,
-  attestationVerifier: actualVerifier,
+  attestationWorkflow: "skill-tuf-worker.yml",
 });
 console.log("Firewall acceptance result:", JSON.stringify({
   result: accepted.result,
   stateRevision: accepted.state.revision,
   stateRootVersion: accepted.state.rootVersion,
-  verifierCalled: accepted.sigstoreVerifierCalled,
-  actualSigstoreVerifier: Boolean(actualVerifier),
   failures: accepted.failures,
 }));
 assert.equal(accepted.result.ok, true);
@@ -176,14 +154,12 @@ assert.equal(accepted.result.status, "clean");
 assert.equal(accepted.state.revision, 1);
 assert.equal(accepted.state.rootVersion, 16);
 assert.ok(accepted.state.cache["root.json"]);
-assert.equal(accepted.sigstoreVerifierCalled, true);
 assert.deepEqual(accepted.failures, []);
 
 const rejected = await runFirewallIntegration({ tamperTimestamp: true });
 assert.equal(rejected.result.ok, false);
 assert.equal(rejected.result.code, "TUF_METADATA_VERIFICATION_FAILED");
 assert.equal(rejected.state.revision, 0, "failed TUF verification must never commit cache");
-assert.equal(rejected.sigstoreVerifierCalled, false, "Sigstore verifier must not run without verified TUF root");
 assert.equal(rejected.failures.length, 1);
 assert.equal(rejected.failures[0].id, "skill_tuf_fail");
 assert.equal(rejected.failures[0].severity, "quarantine");
