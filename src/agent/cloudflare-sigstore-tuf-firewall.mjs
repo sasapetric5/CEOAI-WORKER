@@ -12,7 +12,8 @@ export async function createCloudflareSigstoreTufFirewall({
   env,
   wasmModule,
   scanCandidate,
-  verifyAttestation = createSigstoreBundleAttestationVerifier(),
+  attestationWorkflow = "skill-security-firewall.yml",
+  attestationRef = "refs/heads/main",
   skillLifecycle,
   fetchInputs,
   now,
@@ -21,9 +22,15 @@ export async function createCloudflareSigstoreTufFirewall({
   if (!skillLifecycle || typeof skillLifecycle.recordFailure !== "function") {
     throw new TypeError("SKILL_LIFECYCLE_QUARANTINE_ADAPTER_REQUIRED");
   }
-  if (typeof scanCandidate !== "function" || typeof verifyAttestation !== "function") {
-    throw new TypeError("SKILL_FIREWALL_ADAPTERS_REQUIRED");
+  if (typeof scanCandidate !== "function") throw new TypeError("SKILL_FIREWALL_ADAPTERS_REQUIRED");
+  if (!["skill-security-firewall.yml", "skill-tuf-worker.yml"].includes(attestationWorkflow) ||
+      attestationRef !== "refs/heads/main") {
+    throw new TypeError("SIGSTORE_ATTESTATION_WORKFLOW_POLICY_INVALID");
   }
+  const verifyAttestation = createSigstoreBundleAttestationVerifier({
+    expectedWorkflow: attestationWorkflow,
+    expectedRef: attestationRef,
+  });
 
   const metadataStore = createCloudflareTufMetadataStore(env.SECURITY_DO);
   const verifyTuf = await instantiateWasmTufVerifier(wasmModule);
