@@ -127,7 +127,8 @@ async function scanOne(entry,versions,sarif){
  const unsigned={schemaVersion:1,policyVersion:"ceoai-skill-firewall-v1",candidate,
   runId:String(process.env.GITHUB_RUN_ID||"local-run"),scannedAt:new Date().toISOString(),
   contentSha256,bundleSha256,scans:[clam,sem,ql,leak,dep]};
- const envelope=await attest(unsigned,dir,repo,process.env.GITHUB_REF||"refs/heads/local");
+ const signerRepository=process.env.GITHUB_REPOSITORY||"sasapetric5/CEOAI-WORKER";
+ const envelope=await attest(unsigned,dir,signerRepository,process.env.GITHUB_REF||"refs/heads/local");
  const report={...unsigned,attestation:{envelope}};
  const evaluation=evaluateSkillSecurityReport(report,{expectedContentSha256:contentSha256,expectedBundleSha256:bundleSha256,expectedCandidate:candidate});
  const decision=evaluation.ok?"SCANNED_CLEAN_PENDING_QUALITY":evaluation.severity==="reject"?"REJECTED":"QUARANTINED";
