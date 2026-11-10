@@ -29,6 +29,25 @@ const MAX_CACHE_ENTRIES: usize = 128;
 const MAX_REMOTE_ENTRIES: usize = 96;
 const MAX_SINGLE_BLOB: usize = 8 * 1024 * 1024;
 
+// Narrow entropy bridge for the getrandom 0.2 dependency graph. The Worker host
+// supplies this function from crypto.getRandomValues; no candidate code can call it.
+#[cfg(target_arch = "wasm32")]
+#[link(wasm_import_module = "env")]
+extern "C" {
+    fn ceoai_getrandom_fill(pointer: *mut u8, length: u32);
+}
+
+#[cfg(target_arch = "wasm32")]
+fn worker_getrandom(destination: &mut [u8]) -> Result<(), getrandom::Error> {
+    if destination.is_empty() { return Ok(()); }
+    if destination.len() > u32::MAX as usize { return Err(getrandom::Error::UNSUPPORTED); }
+    unsafe { ceoai_getrandom_fill(destination.as_mut_ptr(), destination.len() as u32); }
+    Ok(())
+}
+
+#[cfg(target_arch = "wasm32")]
+getrandom::register_custom_getrandom!(worker_getrandom);
+
 #[derive(Debug)]
 enum HashState { Sha256(Sha256), Sha384(Sha384), Sha512(Sha512) }
 
