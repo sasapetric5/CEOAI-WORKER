@@ -1,4 +1,4 @@
-import wasmModule from "../../security/tuf-worker/target/wasm32-unknown-unknown/release/ceoai_sigstore_tuf_worker.wasm";
+import wasmModule from "../../security/tuf-worker/pkg/ceoai_sigstore_tuf_worker.wasm";
 import { createCloudflareSigstoreTufFirewall } from "./cloudflare-sigstore-tuf-firewall.mjs";
 
 // Wrangler binds the compiled Rust artifact as a WebAssembly.Module.
