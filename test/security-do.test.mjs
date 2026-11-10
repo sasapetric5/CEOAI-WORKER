@@ -95,3 +95,35 @@ test("Durable Object rejects a nonce record still inside its replay retention wi
   }));
   assert.equal(response.status, 409);
 });
+
+import { createCloudflareTufMetadataStore } from "../src/agent/cloudflare-tuf-metadata-store.mjs";
+
+test("TUF metadata cache persists atomically with monotonic root version and CAS revision", async () => {
+  const storage = makeStore();
+  const durable = new SecurityOrchestratorDO({ storage });
+  const namespace = {
+    idFromName(name) { assert.equal(name, "sigstore-tuf-global"); return name; },
+    get(id) { return { fetch: request => durable.fetch(request) }; },
+  };
+  const cacheStore = createCloudflareTufMetadataStore(namespace);
+  const empty = await cacheStore.load();
+  assert.equal(empty.revision, 0);
+  const cache = { "root.json": btoa("root-v1"), "timestamp.json": btoa("timestamp-v1") };
+  const committed = await cacheStore.commit({ expectedRevision: 0, rootVersion: 16, cache });
+  assert.equal(committed.revision, 1);
+  assert.equal((await cacheStore.load()).cache["root.json"], cache["root.json"]);
+  await assert.rejects(() => cacheStore.commit({ expectedRevision: 0, rootVersion: 16, cache }), /TUF_CACHE_REVISION_CONFLICT/);
+  await assert.rejects(() => cacheStore.commit({ expectedRevision: 1, rootVersion: 15, cache }), /TUF_ROOT_ROLLBACK_REJECTED/);
+  assert.equal((await cacheStore.load()).rootVersion, 16);
+});
+
+test("TUF metadata cache rejects unsafe names, missing root and malformed base64", async () => {
+  const storage = makeStore();
+  const durable = new SecurityOrchestratorDO({ storage });
+  const namespace = { idFromName: name => name, get: () => ({ fetch: request => durable.fetch(request) }) };
+  const cacheStore = createCloudflareTufMetadataStore(namespace);
+  await assert.rejects(() => cacheStore.commit({ expectedRevision: 0, rootVersion: 1, cache: { "../evil.json": btoa("x") } }), /INVALID_TUF_CACHE/);
+  await assert.rejects(() => cacheStore.commit({ expectedRevision: 0, rootVersion: 1, cache: { "timestamp.json": btoa("x") } }), /INVALID_TUF_CACHE/);
+  await assert.rejects(() => cacheStore.commit({ expectedRevision: 0, rootVersion: 1, cache: { "root.json": "not base64!" } }), /INVALID_TUF_CACHE/);
+  assert.equal((await cacheStore.load()).revision, 0);
+});

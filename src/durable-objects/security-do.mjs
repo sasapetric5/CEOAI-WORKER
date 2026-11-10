@@ -27,6 +27,75 @@ export class SecurityOrchestratorDO {
       });
       return Response.json(result, { status: result.allowed ? 200 : 429, headers: { "Cache-Control": "no-store" } });
     }
+    if (url.pathname === "/tuf/cache/read" && request.method === "POST") {
+      try {
+        const record = await this.ctx.storage.get("tuf:metadata:v1");
+        return Response.json({
+          ok: true,
+          revision: Number.isSafeInteger(record?.revision) ? record.revision : 0,
+          rootVersion: Number.isSafeInteger(record?.rootVersion) ? record.rootVersion : 0,
+          cache: record?.cache && typeof record.cache === "object" ? record.cache : {},
+        }, { headers: { "Cache-Control": "no-store" } });
+      } catch {
+        return Response.json({ ok: false, code: "TUF_CACHE_UNAVAILABLE" }, { status: 503 });
+      }
+    }
+
+    if (url.pathname === "/tuf/cache/commit" && request.method === "POST") {
+      let input;
+      try {
+        const raw = await request.text();
+        if (raw.length > 18 * 1024 * 1024) return Response.json({ ok: false, code: "TUF_CACHE_TOO_LARGE" }, { status: 413 });
+        input = JSON.parse(raw);
+      } catch {
+        return Response.json({ ok: false, code: "INVALID_TUF_CACHE_REQUEST" }, { status: 400 });
+      }
+      const keys = input && typeof input === "object" && !Array.isArray(input)
+        ? Object.keys(input) : [];
+      if (keys.some(key => !["expectedRevision", "rootVersion", "cache"].includes(key)) ||
+          !Number.isSafeInteger(input?.expectedRevision) || input.expectedRevision < 0 ||
+          !Number.isSafeInteger(input?.rootVersion) || input.rootVersion < 1 ||
+          !input.cache || typeof input.cache !== "object" || Array.isArray(input.cache)) {
+        return Response.json({ ok: false, code: "INVALID_TUF_CACHE_REQUEST" }, { status: 400 });
+      }
+      const entries = Object.entries(input.cache);
+      const validName = name => /^(?:root|timestamp|(?:[0-9]+\.)?(?:snapshot|targets))\.json$/.test(name);
+      let total = 0;
+      if (entries.length < 1 || entries.length > 128) {
+        return Response.json({ ok: false, code: "INVALID_TUF_CACHE_ENTRIES" }, { status: 400 });
+      }
+      for (const [name, encoded] of entries) {
+        if (!validName(name) || typeof encoded !== "string" ||
+            encoded.length < 4 || encoded.length > 11 * 1024 * 1024 ||
+            !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) {
+          return Response.json({ ok: false, code: "INVALID_TUF_CACHE_ENTRY" }, { status: 400 });
+        }
+        total += encoded.length;
+        if (total > 16 * 1024 * 1024) return Response.json({ ok: false, code: "TUF_CACHE_TOO_LARGE" }, { status: 413 });
+      }
+      if (!Object.hasOwn(input.cache, "root.json")) {
+        return Response.json({ ok: false, code: "TUF_CACHE_ROOT_REQUIRED" }, { status: 400 });
+      }
+      try {
+        const result = await this.ctx.storage.transaction(async txn => {
+          const current = await txn.get("tuf:metadata:v1") || { revision: 0, rootVersion: 0, cache: {} };
+          if (current.revision !== input.expectedRevision) return { ok: false, code: "TUF_CACHE_REVISION_CONFLICT", revision: current.revision };
+          if (input.rootVersion < current.rootVersion) return { ok: false, code: "TUF_ROOT_ROLLBACK_REJECTED", revision: current.revision };
+          const next = {
+            revision: current.revision + 1,
+            rootVersion: input.rootVersion,
+            cache: input.cache,
+            updatedAt: Date.now(),
+          };
+          await txn.put("tuf:metadata:v1", next);
+          return { ok: true, revision: next.revision, rootVersion: next.rootVersion };
+        });
+        return Response.json(result, { status: result.ok ? 200 : 409, headers: { "Cache-Control": "no-store" } });
+      } catch {
+        return Response.json({ ok: false, code: "TUF_CACHE_PERSISTENCE_FAILED" }, { status: 503 });
+      }
+    }
+
     if (url.pathname !== "/nonce/check" || request.method !== "POST") {
       return new Response("Not Found", { status: 404 });
     }
