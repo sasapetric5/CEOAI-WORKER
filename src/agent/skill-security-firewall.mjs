@@ -78,11 +78,15 @@ export function evaluateSkillSecurityReport(report, {
 export function createSkillSecurityFirewall({
   scanCandidate,
   verifyAttestation,
+  trustRootProvider,
   policyVersion = "ceoai-skill-firewall-v1",
   requiredScanners = REQUIRED_SKILL_SCANNERS
 } = {}) {
   if (typeof scanCandidate !== "function") throw new TypeError("TRUSTED_SECURITY_SCAN_ADAPTER_REQUIRED");
   if (typeof verifyAttestation !== "function") throw new TypeError("TRUSTED_SCAN_ATTESTATION_VERIFIER_REQUIRED");
+  if (!trustRootProvider || typeof trustRootProvider.loadTrustedRoot !== "function") {
+    throw new TypeError("SIGSTORE_TUF_TRUST_ROOT_PROVIDER_REQUIRED");
+  }
   if (!Array.isArray(requiredScanners) || requiredScanners.length < 1 ||
       requiredScanners.some(id => typeof id !== "string" || !SCANNER_ID.test(id)) ||
       new Set(requiredScanners).size !== requiredScanners.length) {
@@ -110,9 +114,26 @@ export function createSkillSecurityFirewall({
       expectedContentSha256: contentSha256, expectedBundleSha256: bundleSha256, expectedCandidate: candidate, policyVersion, requiredScanners
     });
     if (!validated.ok) return validated;
+    let trustedRoot;
+    try {
+      trustedRoot = await trustRootProvider.loadTrustedRoot({ candidateId: candidate.id });
+    } catch (error) {
+      return fail(error?.code && /^[A-Z0-9_]{1,80}$/.test(error.code)
+        ? error.code : "SIGSTORE_TUF_TRUST_ROOT_FAILED");
+    }
+    if (!trustedRoot || trustedRoot.ok !== true || !(trustedRoot.target instanceof Uint8Array) ||
+        trustedRoot.target.byteLength < 1 || trustedRoot.target.byteLength > 2 * 1024 * 1024) {
+      return fail("SIGSTORE_TUF_TRUST_ROOT_INVALID");
+    }
     let trusted = false;
-    try { trusted = await verifyAttestation(report, { candidate, contentSha256, bundleSha256, policyVersion }) === true; }
-    catch { trusted = false; }
+    try {
+      trusted = await verifyAttestation(report, {
+        candidate, contentSha256, bundleSha256, policyVersion,
+        trustedRoot: trustedRoot.target,
+        trustedRootVersion: trustedRoot.rootVersion,
+        trustedRootCacheRevision: trustedRoot.cacheRevision,
+      }) === true;
+    } catch { trusted = false; }
     if (!trusted) return fail("UNTRUSTED_SCAN_ATTESTATION");
     return validated;
   }
