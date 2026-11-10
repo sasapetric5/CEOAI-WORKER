@@ -22,6 +22,11 @@ async function selectedSkillEntry(){
  const root=path.resolve(SOURCE_ROOT),entry=path.resolve(root,normalized.path),relative=path.relative(root,entry);
  if(!relative||relative.startsWith(".."+path.sep)||relative===".."||path.isAbsolute(relative))throw new Error("CANDIDATE_PATH_OUTSIDE_SOURCE");
  if(gitAt(root,["rev-parse","HEAD"]).toLowerCase()!==normalized.commit)throw new Error("CANDIDATE_COMMIT_MISMATCH");
+ let origin=gitAt(root,["remote","get-url","origin"]);
+ if(origin.startsWith("https://github.com/"))origin=origin.slice(19);
+ else if(origin.startsWith("git@github.com:"))origin=origin.slice(15);
+ origin=origin.replace(/\\.git$/i,"");
+ if(origin.toLowerCase()!==normalized.repository.toLowerCase())throw new Error("CANDIDATE_REPOSITORY_MISMATCH");
  const treeLine=gitAt(root,["ls-tree","-r",normalized.commit,"--",normalized.path]);
  const [metadata,treePath]=treeLine.split("\\t");
  const [mode,type,treeBlob]=String(metadata||"").split(" ");
