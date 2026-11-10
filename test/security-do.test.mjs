@@ -120,7 +120,7 @@ test("TUF metadata cache persists atomically with monotonic root version and CAS
 test("TUF metadata cache rejects unsafe names, missing root and malformed base64", async () => {
   const storage = makeStore();
   const durable = new SecurityOrchestratorDO({ storage });
-  const namespace = { idFromName: name => name, get: () => ({ fetch: request => durable.fetch(request) }) };
+  const namespace = { idFromName: name => name, get: () => ({ fetch: (input, init) => durable.fetch(new Request(input, init)) }) };
   const cacheStore = createCloudflareTufMetadataStore(namespace);
   await assert.rejects(() => cacheStore.commit({ expectedRevision: 0, rootVersion: 1, cache: { "../evil.json": btoa("x") } }), /INVALID_TUF_CACHE/);
   await assert.rejects(() => cacheStore.commit({ expectedRevision: 0, rootVersion: 1, cache: { "timestamp.json": btoa("x") } }), /INVALID_TUF_CACHE/);
