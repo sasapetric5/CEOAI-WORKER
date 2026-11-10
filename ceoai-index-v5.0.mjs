@@ -1984,3 +1984,9 @@ export { createSkillGovernancePipeline } from "./src/agent/skill-governance-pipe
 
 export { createCloudflareSkillGovernancePipeline } from "./src/agent/skill-governance-pipeline.mjs";
 export { createCloudflareSigstoreTufFirewall } from "./src/agent/cloudflare-sigstore-tuf-firewall.mjs";
+
+// Load the compiled WASM-backed firewall only when the skill intake runtime is created.
+export async function createWorkerSigstoreTufFirewall(options = {}) {
+  const runtime = await import("./src/agent/worker-tuf-runtime.mjs");
+  return runtime.createWorkerSigstoreTufFirewall(options);
+}
