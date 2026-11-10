@@ -119,3 +119,24 @@ test("owner approval refreshes the live runtime Skill Registry", async () => {
   assert.equal(result.selectable, true);
   assert.equal(refreshed, 1);
 });
+
+
+test("admission requires a valid bundle hash before lifecycle or scanner work", async () => {
+  const { pipeline, calls } = fixture();
+  const result = await pipeline.admit({ ...request, bundleSha256: "invalid" });
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "INVALID_SKILL_ADMISSION_REQUEST");
+  assert.deepEqual(calls, []);
+});
+
+test("admission quarantines scanner reports not bound to recomputed content and bundle hashes", async () => {
+  const { pipeline, calls, records } = fixture({
+    security: { ok: true, status: "clean", contentSha256: request.contentSha256, bundleSha256: "c".repeat(64) }
+  });
+  const result = await pipeline.admit(request);
+  assert.equal(result.ok, false);
+  assert.equal(result.code, "SECURITY_REPORT_BINDING_FAILED");
+  assert.equal(result.isolated, true);
+  assert.equal(records.get("sample_skill").status, "QUARANTINED");
+  assert.equal(calls.includes("evaluator"), false);
+});
