@@ -120,10 +120,10 @@ export function createSigstoreTufTrustRootProvider({
         throw new Error("TUF_CACHE_SNAPSHOT_INVALID");
       }
 
-      const cacheHasCompleteRootChain = previous.rootVersion >= SIGSTORE_TUF_BOOTSTRAP_ROOT_VERSION &&
-        Array.from(
-          { length: previous.rootVersion - SIGSTORE_TUF_BOOTSTRAP_ROOT_VERSION },
-          (_, index) => SIGSTORE_TUF_BOOTSTRAP_ROOT_VERSION + index + 1
+      const cachedRootRotations = previous.rootVersion - SIGSTORE_TUF_BOOTSTRAP_ROOT_VERSION;
+      const cacheHasCompleteRootChain = cachedRootRotations >= 0 && cachedRootRotations <= 128 &&
+        Array.from({ length: cachedRootRotations }, (_, index) =>
+          SIGSTORE_TUF_BOOTSTRAP_ROOT_VERSION + index + 1
         ).every(version => Object.hasOwn(previous.cache, "root_history/" + version + ".root.json"));
       const rootVersionHint = cacheHasCompleteRootChain
         ? previous.rootVersion : SIGSTORE_TUF_BOOTSTRAP_ROOT_VERSION;
