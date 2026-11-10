@@ -1,6 +1,6 @@
 // Strict metadata validation for externally supplied Skill candidates.
 const SHA1 = /^[a-f0-9]{40}$/i;
-const REPOSITORY = /^[A-Za-z0-9_.-]{1,100}\\/[A-Za-z0-9_.-]{1,100}$/;
+const REPOSITORY = new RegExp("^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$");
 export function validatePinnedSkillCandidate(input = {}) {
   const { id, repository, commit, path, blobSha } = input;
   if (typeof id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(id)) throw new Error("CANDIDATE_ID_INVALID");
