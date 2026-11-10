@@ -120,6 +120,7 @@ test("TUF metadata cache persists atomically with monotonic root version and CAS
   assert.equal(committed.revision, 1);
   assert.equal((await cacheStore.load()).cache["root.json"], cache["root.json"]);
   assert.equal((await cacheStore.load()).cache["root_history/17.root.json"], cache["root_history/17.root.json"]);
+  assert.equal((await cacheStore.load()).cache["targets/trusted_root.json"], cache["targets/trusted_root.json"]);
   await assert.rejects(() => cacheStore.commit({ expectedRevision: 0, rootVersion: 16, cache }), /TUF_CACHE_REVISION_CONFLICT/);
   await assert.rejects(() => cacheStore.commit({ expectedRevision: 1, rootVersion: 15, cache }), /TUF_ROOT_ROLLBACK_REJECTED/);
   assert.equal((await cacheStore.load()).rootVersion, 16);
