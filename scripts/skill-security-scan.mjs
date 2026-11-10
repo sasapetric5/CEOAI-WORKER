@@ -25,10 +25,10 @@ async function selectedSkillEntry(){
  let origin=gitAt(root,["remote","get-url","origin"]);
  if(origin.startsWith("https://github.com/"))origin=origin.slice(19);
  else if(origin.startsWith("git@github.com:"))origin=origin.slice(15);
- origin=origin.replace(/\\.git$/i,"");
+ if(origin.toLowerCase().endsWith(".git"))origin=origin.slice(0,-4);
  if(origin.toLowerCase()!==normalized.repository.toLowerCase())throw new Error("CANDIDATE_REPOSITORY_MISMATCH");
  const treeLine=gitAt(root,["ls-tree","-r",normalized.commit,"--",normalized.path]);
- const [metadata,treePath]=treeLine.split("\\t");
+ const [metadata,treePath]=treeLine.split(String.fromCharCode(9));
  const [mode,type,treeBlob]=String(metadata||"").split(" ");
  if(type!=="blob"||!/^([0-7]{6})$/.test(mode||"")||treePath!==normalized.path||!GIT_SHA1.test(treeBlob||"")||treeBlob.toLowerCase()!==normalized.blobSha)throw new Error("CANDIDATE_GIT_BLOB_MISMATCH");
  const entryStat=await lstat(entry);
@@ -185,7 +185,7 @@ async function main(){
  const summary={schemaVersion:1,commit:process.env.GITHUB_SHA||"local",sourceCandidateId:pinned?.normalized.id||null,sourceRepository:pinned?.normalized.repository||null,sourceCommit:pinned?.normalized.commit||null,scanned:results.length,
   cleanPendingQuality:results.filter(x=>x.decision==="SCANNED_CLEAN_PENDING_QUALITY").length,
   quarantined:results.filter(x=>x.decision==="QUARANTINED").length,rejected:results.filter(x=>x.decision==="REJECTED").length,results};
- await writeFile(path.join(REPORT_ROOT,"summary.json"),JSON.stringify(summary,null,2)+"\n",{mode:0o600});
+  await writeFile(path.join(REPORT_ROOT,"summary.json"),JSON.stringify(summary,null,2)+String.fromCharCode(10),{mode:0o600}).catch(()=>{});
  console.log(JSON.stringify({scanned:summary.scanned,cleanPendingQuality:summary.cleanPendingQuality,quarantined:summary.quarantined,rejected:summary.rejected}));
  if(summary.quarantined||summary.rejected)process.exitCode=1;
 }
@@ -194,7 +194,7 @@ main().catch(async e=>{
  if(externalCandidate){
   await mkdir(REPORT_ROOT,{recursive:true}).catch(()=>{});
   const summary={schemaVersion:1,commit:process.env.GITHUB_SHA||"local",scanned:1,cleanPendingQuality:0,quarantined:1,rejected:0,results:[{candidateId:selectedId||null,candidateRepository:selectedRepository||null,candidatePath:selectedPath||null,decision:"QUARANTINED",error:code}]};
-  await writeFile(path.join(REPORT_ROOT,"summary.json"),JSON.stringify(summary,null,2)+"\\n",{mode:0o600}).catch(()=>{});
+  await writeFile(path.join(REPORT_ROOT,"summary.json"),JSON.stringify(summary,null,2)+String.fromCharCode(10),{mode:0o600}).catch(()=>{});
   console.error(JSON.stringify({decision:"QUARANTINED",error:code}));
  }
  console.error("Skill security scan failed closed:",e?.message||e);process.exitCode=2;
