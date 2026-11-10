@@ -301,6 +301,12 @@ mod tests {
 
     fn fixture_input() -> Vec<u8> {
         let mut metadata: HashMap<String, String> = HashMap::new();
+        metadata.insert("11.root.json".into(), BASE64.encode(include_bytes!("../testdata/11.root.json")));
+        metadata.insert("12.root.json".into(), BASE64.encode(include_bytes!("../testdata/12.root.json")));
+        metadata.insert("13.root.json".into(), BASE64.encode(include_bytes!("../testdata/13.root.json")));
+        metadata.insert("14.root.json".into(), BASE64.encode(include_bytes!("../testdata/14.root.json")));
+        metadata.insert("15.root.json".into(), BASE64.encode(include_bytes!("../testdata/15.root.json")));
+        metadata.insert("16.root.json".into(), BASE64.encode(include_bytes!("../testdata/16.root.json")));
         metadata.insert("timestamp.json".into(), BASE64.encode(include_bytes!("../testdata/timestamp.json")));
         metadata.insert("166.snapshot.json".into(), BASE64.encode(include_bytes!("../testdata/snapshot.json")));
         metadata.insert("14.targets.json".into(), BASE64.encode(include_bytes!("../testdata/targets.json")));
