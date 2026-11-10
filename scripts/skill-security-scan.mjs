@@ -138,7 +138,7 @@ async function scanOne(entry,versions,sarif,pinned=null){
  const ql=await scanner("codeql",versions.codeql,async()=>{
   if(!sources.length)return {na:true,reason:"No CodeQL-supported source files in Skill bundle"};
   if(!sarif)throw new Error("CODEQL_SARIF_MISSING");
-  return {findings:codeql(sarif,rel)};
+  return {findings:codeql(sarif,pinned?.normalized.path||rel)};
  });
  const unsigned={schemaVersion:1,policyVersion:"ceoai-skill-firewall-v1",candidate,
   runId:String(process.env.GITHUB_RUN_ID||"local-run"),scannedAt:new Date().toISOString(),
