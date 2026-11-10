@@ -6,7 +6,13 @@ import { evaluateSkillSecurityReport, REQUIRED_SKILL_SCANNERS } from "../src/age
 
 const ROOT=process.cwd();
 const SKILL_ROOT=path.resolve(ROOT,process.env.SKILL_SCAN_ROOT||"skills/catalog/external");
+const SOURCE_ROOT=path.resolve(ROOT,process.env.SKILL_SCAN_SOURCE_ROOT||SKILL_ROOT);
 const REPORT_ROOT=path.resolve(ROOT,process.env.SKILL_SCAN_REPORTS||".reports/skill-security");
+const selectedPath=process.env.SKILL_CANDIDATE_PATH||"";
+const selectedId=process.env.SKILL_CANDIDATE_ID||"";
+const selectedRepository=process.env.SKILL_CANDIDATE_REPOSITORY||"";
+const selectedCommit=process.env.SKILL_CANDIDATE_COMMIT||"";
+const selectedBlobSha=process.env.SKILL_CANDIDATE_BLOB_SHA||"";
 const sha256=value=>createHash("sha256").update(value).digest("hex");
 const safeCode=value=>String(value||"SCANNER_FINDING").toUpperCase().replace(/[^A-Z0-9_:-]/g,"_").slice(0,96)||"SCANNER_FINDING";
 function run(command,args,timeout=240000){
@@ -67,7 +73,7 @@ function depscan(report){
 async function attest(unsigned,outDir,repo,ref){
  const payload=path.join(outDir,"unsigned.json"),bundle=path.join(outDir,"cosign.bundle.json");
  await writeFile(payload,JSON.stringify(unsigned,null,2)+"\n",{mode:0o600});
- const sign=run("cosign",["sign-blob","--yes","--bundle",bundle,payload],120000);
+ const sign=run("cosign",["sign-blob","--new-bundle-format","--yes","--bundle",bundle,payload],120000);
  if(sign.status!==0)throw new Error("COSIGN_SIGN_FAILED");
  const repoPattern=repo.replace(/\./g,"\\."),refPattern=ref.replace(/\./g,"\\.");
  const identity="^https://github\\.com/"+repoPattern+"/.github/workflows/skill-security-firewall\\.yml@"+refPattern+"$";
