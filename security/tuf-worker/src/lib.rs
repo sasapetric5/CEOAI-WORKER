@@ -281,11 +281,11 @@ mod tests {
     use super::*;
 
     fn fixture_input() -> Vec<u8> {
-        let mut metadata = HashMap::new();
+        let mut metadata: HashMap<String, String> = HashMap::new();
         metadata.insert("timestamp.json".into(), BASE64.encode(include_bytes!("../testdata/timestamp.json")));
         metadata.insert("166.snapshot.json".into(), BASE64.encode(include_bytes!("../testdata/snapshot.json")));
         metadata.insert("14.targets.json".into(), BASE64.encode(include_bytes!("../testdata/targets.json")));
-        let mut targets = HashMap::new();
+        let mut targets: HashMap<String, String> = HashMap::new();
         targets.insert("6494e21ea73fa7ee769f85f57d5a3e6a08725eae1e38c755fc3517c9e6bc0b66.trusted_root.json".into(),
             BASE64.encode(include_bytes!("../testdata/trusted_root.json")));
         serde_json::to_vec(&serde_json::json!({"metadata":metadata,"targets":targets,"target_path":"trusted_root.json"})).unwrap()
