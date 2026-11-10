@@ -158,7 +158,7 @@ test("pinned source fetches bounded sibling files so scanners inspect scripts an
  assert.equal(fetched.ok,true);
  assert.equal(fetched.files.length,2);
  assert.match(fetched.bundleSha256,/^[a-f0-9]{64}$/);
- const expectedManifest=fetched.files.map(file=>file.path+"\\0"+file.sha+"\\0"+file.size).sort().join("\\n");
+ const expectedManifest=fetched.files.map(file=>file.path+"\0"+file.sha+"\0"+file.size).sort().join("\n");
  assert.equal(fetched.bundleSha256,hash(expectedManifest),"source and scanner must use identical NUL/newline bundle-manifest encoding");
  assert.equal(fetched.files.find(file=>file.path.endsWith("helper.mjs")).content,script);
 });
