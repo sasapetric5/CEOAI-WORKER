@@ -26,6 +26,6 @@ opt-level = "s"
 panic = "abort"
 
 # getrandom 0.2 is pulled transitively by the pinned crypto/TUF dependency graph.
-# Cloudflare Workers expose Web Crypto; enable the wasm-bindgen JS entropy backend.
+# Use a narrow host import backed by Cloudflare Web Crypto instead of wasm-bindgen glue.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-getrandom = { version = "=0.2.17", features = ["js"] }
+getrandom = { version = "=0.2.17", features = ["custom"] }
