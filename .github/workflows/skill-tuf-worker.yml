@@ -26,9 +26,13 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
+      - name: Install matching wasm-bindgen CLI
+        run: cargo install wasm-bindgen-cli --version 0.2.130 --locked
       - name: Run TUF trust-chain regression tests
         run: cargo test --manifest-path security/tuf-worker/Cargo.toml
       - name: Compile optimized Worker WASM artifact
         run: cargo build --release --manifest-path security/tuf-worker/Cargo.toml --target wasm32-unknown-unknown
+      - name: Generate JavaScript glue for WebCrypto imports
+        run: wasm-bindgen --target web --out-dir security/tuf-worker/pkg --out-name ceoai_sigstore_tuf_worker security/tuf-worker/target/wasm32-unknown-unknown/release/ceoai_sigstore_tuf_worker.wasm
       - name: Exercise the real WASM ABI in Node
         run: node scripts/verify-tuf-wasm.mjs
