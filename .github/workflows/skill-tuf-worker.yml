@@ -71,7 +71,7 @@ jobs:
         run: node scripts/create-tuf-sigstore-test-fixture.mjs
       - name: Sign fixture with GitHub OIDC and Rekor
         if: github.event_name != 'pull_request'
-        run: cosign sign-blob --yes --bundle .reports/tuf-sigstore-test/cosign.bundle.json .reports/tuf-sigstore-test/unsigned.json
+        run: cosign sign-blob --new-bundle-format --yes --bundle .reports/tuf-sigstore-test/cosign.bundle.json .reports/tuf-sigstore-test/unsigned.json
       - name: Install Rust and WASM target
         uses: dtolnay/rust-toolchain@stable
         with:
