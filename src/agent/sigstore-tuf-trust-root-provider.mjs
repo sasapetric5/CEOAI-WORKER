@@ -1,4 +1,7 @@
-import { fetchSigstoreTufInputs } from "./sigstore-tuf-repository-fetcher.mjs";
+import {
+  fetchSigstoreTufInputs,
+  SIGSTORE_TUF_BOOTSTRAP_ROOT_VERSION,
+} from "./sigstore-tuf-repository-fetcher.mjs";
 
 const MAX_WASM_INPUT_BYTES = 16 * 1024 * 1024;
 const MAX_WASM_OUTPUT_BYTES = 16 * 1024 * 1024;
@@ -117,20 +120,50 @@ export function createSigstoreTufTrustRootProvider({
         throw new Error("TUF_CACHE_SNAPSHOT_INVALID");
       }
 
+      const cacheHasCompleteRootChain = previous.rootVersion >= SIGSTORE_TUF_BOOTSTRAP_ROOT_VERSION &&
+        Array.from(
+          { length: previous.rootVersion - SIGSTORE_TUF_BOOTSTRAP_ROOT_VERSION },
+          (_, index) => SIGSTORE_TUF_BOOTSTRAP_ROOT_VERSION + index + 1
+        ).every(version => Object.hasOwn(previous.cache, "root_history/" + version + ".root.json"));
+      const rootVersionHint = cacheHasCompleteRootChain
+        ? previous.rootVersion : SIGSTORE_TUF_BOOTSTRAP_ROOT_VERSION;
+
       stage = "metadata_fetch";
-      const remote = await fetchInputs({ cache: previous.cache, rootVersion: previous.rootVersion });
+      let remote = await fetchInputs({ cache: previous.cache, rootVersion: rootVersionHint });
       if (!remote || !remote.metadata || !remote.targets || remote.targetPath !== "trusted_root.json") {
         throw new Error("TUF_REMOTE_INPUT_INVALID");
       }
 
       stage = "tuf_verify";
-      const verified = await verifyTuf({
+      const verificationInput = {
         cache: previous.cache,
         metadata: remote.metadata,
         targets: remote.targets,
         target_path: remote.targetPath,
         now_unix_seconds: now(),
-      });
+      };
+      let verified = await verifyTuf(verificationInput);
+
+      // Migration/recovery path: an older cache may have been created from a
+      // later bootstrap, or its sequential root history may be damaged. Retry
+      // once from the pinned bootstrap root with the complete root chain. The
+      // Rust updater still authenticates every cached root before adopting it.
+      if ((!verified || verified.ok !== true) && rootVersionHint > SIGSTORE_TUF_BOOTSTRAP_ROOT_VERSION) {
+        stage = "metadata_fetch";
+        remote = await fetchInputs({
+          cache: previous.cache,
+          rootVersion: SIGSTORE_TUF_BOOTSTRAP_ROOT_VERSION,
+        });
+        if (!remote || !remote.metadata || !remote.targets || remote.targetPath !== "trusted_root.json") {
+          throw new Error("TUF_REMOTE_INPUT_INVALID");
+        }
+        stage = "tuf_verify";
+        verified = await verifyTuf({
+          ...verificationInput,
+          metadata: remote.metadata,
+          targets: remote.targets,
+        });
+      }
       if (!verified || verified.ok !== true || verified.code !== "TUF_CHAIN_VERIFIED" ||
           !Number.isSafeInteger(verified.root_version) || verified.root_version < previous.rootVersion ||
           !Number.isSafeInteger(verified.timestamp_version) ||
