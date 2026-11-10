@@ -64,7 +64,9 @@ export function createSigstoreBundleAttestationVerifier({
   return async function verifySigstoreBundle(report, context = {}) {
     if (!report || report.schemaVersion !== 1 ||
         report.policyVersion !== context.policyVersion ||
-        report.candidate?.repository !== expectedRepository ||
+        !context.candidate ||
+        ["id", "repository", "path", "commit", "blobSha"].some(key =>
+          report.candidate?.[key] !== context.candidate[key]) ||
         report.contentSha256 !== context.contentSha256 ||
         report.bundleSha256 !== context.bundleSha256 ||
         !Array.isArray(report.scans) || report.scans.length !== 5 ||
