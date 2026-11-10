@@ -479,7 +479,7 @@ async function readProviderError(response, provider, env = {}) {
 async function executeModel(provider, messages, timeoutMs = PROVIDER_TIMEOUT_MS) {
   let response;
   if (provider.provider === "workers-ai") {
-    if (!provider.enabled || !provider.env?.AI || provider.!isTrueFlag(env.WORKERS_AI_ENABLED)) {
+    if (!provider.enabled || !provider.env?.AI || !isTrueFlag(provider.env.WORKERS_AI_ENABLED)) {
       throw new Error("Workers AI nije omogućen ili trenutno nije dostupan");
     }
     let timeout;
