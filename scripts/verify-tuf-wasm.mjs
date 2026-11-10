@@ -135,6 +135,13 @@ async function runFirewallIntegration({ tamperTimestamp = false } = {}) {
 }
 
 const accepted = await runFirewallIntegration();
+console.log("Firewall acceptance result:", JSON.stringify({
+  result: accepted.result,
+  stateRevision: accepted.state.revision,
+  stateRootVersion: accepted.state.rootVersion,
+  verifierCalled: accepted.sigstoreVerifierCalled,
+  failures: accepted.failures,
+}));
 assert.equal(accepted.result.ok, true);
 assert.equal(accepted.result.status, "clean");
 assert.equal(accepted.state.revision, 1);
