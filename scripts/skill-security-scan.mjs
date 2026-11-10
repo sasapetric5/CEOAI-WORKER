@@ -23,8 +23,9 @@ function selectedSkillEntry(){
  if(!relative||relative.startsWith(".."+path.sep)||relative===".."||path.isAbsolute(relative))throw new Error("CANDIDATE_PATH_OUTSIDE_SOURCE");
  if(gitAt(root,["rev-parse","HEAD"]).toLowerCase()!==normalized.commit)throw new Error("CANDIDATE_COMMIT_MISMATCH");
  const treeLine=gitAt(root,["ls-tree","-r",normalized.commit,"--",normalized.path]);
- const match=treeLine.match(/^([0-7]{6}) blob ([a-f0-9]{40})\\t(.+)$/i);
- if(!match||match[3]!==normalized.path||match[2].toLowerCase()!==normalized.blobSha)throw new Error("CANDIDATE_GIT_BLOB_MISMATCH");
+ const [metadata,treePath]=treeLine.split("\\t");
+ const [mode,type,treeBlob]=String(metadata||"").split(" ");
+ if(type!=="blob"||!/^([0-7]{6})$/.test(mode||"")||treePath!==normalized.path||!GIT_SHA1.test(treeBlob||"")||treeBlob.toLowerCase()!==normalized.blobSha)throw new Error("CANDIDATE_GIT_BLOB_MISMATCH");
  return {entry,normalized};
 }
 const sha256=value=>createHash("sha256").update(value).digest("hex");
