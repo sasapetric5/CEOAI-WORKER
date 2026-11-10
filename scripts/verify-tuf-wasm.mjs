@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createCloudflareSigstoreTufFirewall } from "../src/agent/cloudflare-sigstore-tuf-firewall.mjs";
-import { createSigstoreBundleAttestationVerifier } from "../src/agent/sigstore-bundle-verifier.mjs";
 import { REQUIRED_SKILL_SCANNERS } from "../src/agent/skill-security-firewall.mjs";
 
 const wasmPath = new URL("../security/tuf-worker/target/wasm32-unknown-unknown/release/ceoai_sigstore_tuf_worker.wasm", import.meta.url);
