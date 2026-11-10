@@ -1,5 +1,6 @@
 import { createCloudflareTufMetadataStore } from "./cloudflare-tuf-metadata-store.mjs";
 import { createSkillSecurityFirewall } from "./skill-security-firewall.mjs";
+import { createSigstoreBundleAttestationVerifier } from "./sigstore-bundle-verifier.mjs";
 import {
   createSigstoreTufTrustRootProvider,
   instantiateWasmTufVerifier,
@@ -11,7 +12,7 @@ export async function createCloudflareSigstoreTufFirewall({
   env,
   wasmModule,
   scanCandidate,
-  verifyAttestation,
+  verifyAttestation = createSigstoreBundleAttestationVerifier(),
   skillLifecycle,
   fetchInputs,
   now,
