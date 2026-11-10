@@ -1,19 +1,19 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const wasmPath = new URL("../security/tuf-worker/target/wasm32-unknown-unknown/release/ceoai_sigstore_tuf_worker.wasm", import.meta.url);
+const wasmPath = new URL("../security/tuf-worker/pkg/ceoai_sigstore_tuf_worker_bg.wasm", import.meta.url);
+const gluePath = new URL("../security/tuf-worker/pkg/ceoai_sigstore_tuf_worker.js", import.meta.url);
 const wasmBytes = await readFile(wasmPath);
 const module = await WebAssembly.compile(wasmBytes);
 const imports = WebAssembly.Module.imports(module);
-const exports = WebAssembly.Module.exports(module);
+const glue = await import(gluePath.href);
+assert.equal(typeof glue.default, "function", "wasm-bindgen initializer missing");
+const wasmExports = await glue.default(wasmBytes);
 const required = ["memory", "alloc", "free_buffer", "verify_tuf"];
 for (const name of required) {
-  assert.ok(exports.some(item => item.name === name), "WASM export missing: " + name);
+  assert.ok(name in wasmExports, "WASM export missing: " + name);
 }
-assert.deepEqual(imports, [], "WASM module requires JS glue imports: " + JSON.stringify(imports));
-
-const { instance } = await WebAssembly.instantiate(module, {});
-const { memory, alloc, free_buffer, verify_tuf } = instance.exports;
+const { memory, alloc, free_buffer, verify_tuf } = wasmExports;
 const base = new URL("../security/tuf-worker/testdata/", import.meta.url);
 const read = async name => new Uint8Array(await readFile(new URL(name, base)));
 const b64 = bytes => Buffer.from(bytes).toString("base64");
