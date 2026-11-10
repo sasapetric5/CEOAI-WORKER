@@ -5,12 +5,30 @@ on:
     branches: [main]
     paths:
       - "security/tuf-worker/**"
+      - "src/agent/cloudflare-tuf-metadata-store.mjs"
+      - "src/agent/sigstore-tuf-repository-fetcher.mjs"
+      - "src/agent/sigstore-tuf-trust-root-provider.mjs"
+      - "src/agent/skill-security-firewall.mjs"
+      - "src/agent/cloudflare-sigstore-tuf-firewall.mjs"
+      - "src/durable-objects/security-do.mjs"
+      - "test/sigstore-tuf-provider.test.mjs"
+      - "test/security-do.test.mjs"
+      - "test/skill-security-firewall.test.mjs"
       - "scripts/verify-tuf-wasm.mjs"
       - ".github/workflows/skill-tuf-worker.yml"
   pull_request:
     branches: [main]
     paths:
       - "security/tuf-worker/**"
+      - "src/agent/cloudflare-tuf-metadata-store.mjs"
+      - "src/agent/sigstore-tuf-repository-fetcher.mjs"
+      - "src/agent/sigstore-tuf-trust-root-provider.mjs"
+      - "src/agent/skill-security-firewall.mjs"
+      - "src/agent/cloudflare-sigstore-tuf-firewall.mjs"
+      - "src/durable-objects/security-do.mjs"
+      - "test/sigstore-tuf-provider.test.mjs"
+      - "test/security-do.test.mjs"
+      - "test/skill-security-firewall.test.mjs"
       - "scripts/verify-tuf-wasm.mjs"
       - ".github/workflows/skill-tuf-worker.yml"
   workflow_dispatch:
