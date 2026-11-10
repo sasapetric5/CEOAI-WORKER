@@ -6,6 +6,27 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      candidate_id:
+        description: "Immutable CEOAI candidate ID"
+        required: true
+        type: string
+      repository:
+        description: "Approved public source repository owner/name"
+        required: true
+        type: string
+      skill_path:
+        description: "Exact SKILL.md path inside the pinned source repository"
+        required: true
+        type: string
+      commit:
+        description: "Full immutable source commit SHA"
+        required: true
+        type: string
+      blob_sha:
+        description: "Git blob SHA of the exact SKILL.md"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -18,7 +39,7 @@ concurrency:
 
 jobs:
   scan:
-    name: Scan external Skill bundles
+    name: Scan each pinned external Skill candidate
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -27,6 +48,15 @@ jobs:
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
+
+      - name: Checkout exact external Skill source
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repository }}
+          ref: ${{ inputs.commit }}
+          path: .scanner-source
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -87,7 +117,14 @@ jobs:
           GITHUB_REF: ${{ github.ref }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           CODEQL_SARIF: .reports/skill-security/codeql.sarif
-        run: node scripts/skill-security-scan-batch.mjs
+          SKILL_SCAN_ROOT: ${{ github.event_name == 'workflow_dispatch' && '.scanner-source' || 'skills/catalog/external' }}
+          SKILL_SCAN_SOURCE_ROOT: ${{ github.event_name == 'workflow_dispatch' && '.scanner-source' || '.' }}
+          SKILL_CANDIDATE_ID: ${{ inputs.candidate_id }}
+          SKILL_CANDIDATE_REPOSITORY: ${{ inputs.repository }}
+          SKILL_CANDIDATE_PATH: ${{ inputs.skill_path }}
+          SKILL_CANDIDATE_COMMIT: ${{ inputs.commit }}
+          SKILL_CANDIDATE_BLOB_SHA: ${{ inputs.blob_sha }}
+        run: node scripts/skill-security-scan.mjs
 
       - name: Preserve signed Skill scan reports
         if: always()
