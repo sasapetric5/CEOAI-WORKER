@@ -34,6 +34,12 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Run complete Worker verification (including Spider, Queue, HMAC and Security DO tests)
         run: npm run verify
+      - name: Install Rust and WASM target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Build TUF verifier for Worker bundling
+        run: npm run build:tuf
       - name: Validate Cloudflare bindings with Wrangler 4
         shell: bash
         run: |
@@ -65,6 +71,12 @@ jobs:
           node-version: 24
       - name: Install locked dependencies without lifecycle scripts
         run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install Rust and WASM target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Build TUF verifier for Worker bundling
+        run: npm run build:tuf
       - name: Validate Cloudflare credentials are configured
         env:
           CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
