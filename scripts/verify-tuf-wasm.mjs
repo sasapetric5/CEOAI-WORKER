@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createCloudflareSigstoreTufFirewall } from "../src/agent/cloudflare-sigstore-tuf-firewall.mjs";
+import { createSigstoreBundleAttestationVerifier } from "../src/agent/sigstore-bundle-verifier.mjs";
 import { REQUIRED_SKILL_SCANNERS } from "../src/agent/skill-security-firewall.mjs";
 
 const wasmPath = new URL("../security/tuf-worker/target/wasm32-unknown-unknown/release/ceoai_sigstore_tuf_worker.wasm", import.meta.url);
@@ -81,9 +82,13 @@ function makeReport(candidate, contentSha256, bundleSha256) {
   };
 }
 
-async function runFirewallIntegration({ tamperTimestamp = false } = {}) {
+async function runFirewallIntegration({
+  tamperTimestamp = false,
+  reportOverride = null,
+  attestationVerifier = null,
+} = {}) {
   const { namespace, state } = makeDurableNamespace();
-  const candidate = {
+  const candidate = reportOverride?.candidate || {
     id: tamperTimestamp ? "skill_tuf_fail" : "skill_tuf_ok",
     repository: "trusted/skills",
     path: "skills/demo/SKILL.md",
@@ -91,9 +96,9 @@ async function runFirewallIntegration({ tamperTimestamp = false } = {}) {
     blobSha: "c".repeat(40),
   };
   const content = "candidate remains inert data";
-  const contentSha256 = "a".repeat(64);
-  const bundleSha256 = "d".repeat(64);
-  const report = makeReport(candidate, contentSha256, bundleSha256);
+  const contentSha256 = reportOverride?.contentSha256 || "a".repeat(64);
+  const bundleSha256 = reportOverride?.bundleSha256 || "d".repeat(64);
+  const report = reportOverride || makeReport(candidate, contentSha256, bundleSha256);
   const failures = [];
   let sigstoreVerifierCalled = false;
   const inputs = structuredClone(validInputs);
@@ -119,11 +124,12 @@ async function runFirewallIntegration({ tamperTimestamp = false } = {}) {
         return { ok: true };
       },
     },
-    verifyAttestation: async (_report, context) => {
+    verifyAttestation: async (attestedReport, context) => {
       sigstoreVerifierCalled = true;
       assert.deepEqual(Buffer.from(context.trustedRoot), Buffer.from(trustedRootBytes));
       assert.equal(context.trustedRootVersion, 16);
       assert.equal(context.trustedRootCacheRevision, 1);
+      if (attestationVerifier) return attestationVerifier(attestedReport, context);
       return true;
     },
   });
@@ -134,12 +140,29 @@ async function runFirewallIntegration({ tamperTimestamp = false } = {}) {
   return { result, state, failures, sigstoreVerifierCalled };
 }
 
-const accepted = await runFirewallIntegration();
+let signedReport = null;
+let actualVerifier = null;
+if (process.env.SIGSTORE_TEST_BUNDLE_PATH && process.env.SIGSTORE_TEST_REPORT_PATH) {
+  signedReport = JSON.parse(await readFile(process.env.SIGSTORE_TEST_REPORT_PATH, "utf8"));
+  const signedBundle = await readFile(process.env.SIGSTORE_TEST_BUNDLE_PATH);
+  signedReport.attestation = { envelope: signedBundle.toString("base64") };
+  actualVerifier = createSigstoreBundleAttestationVerifier({
+    expectedRepository: process.env.GITHUB_REPOSITORY || "sasapetric5/CEOAI-WORKER",
+    expectedWorkflow: "skill-tuf-worker.yml",
+    expectedRef: process.env.GITHUB_REF || "refs/heads/main",
+  });
+}
+
+const accepted = await runFirewallIntegration({
+  reportOverride: signedReport,
+  attestationVerifier: actualVerifier,
+});
 console.log("Firewall acceptance result:", JSON.stringify({
   result: accepted.result,
   stateRevision: accepted.state.revision,
   stateRootVersion: accepted.state.rootVersion,
   verifierCalled: accepted.sigstoreVerifierCalled,
+  actualSigstoreVerifier: Boolean(actualVerifier),
   failures: accepted.failures,
 }));
 assert.equal(accepted.result.ok, true);
@@ -159,5 +182,5 @@ assert.equal(rejected.failures.length, 1);
 assert.equal(rejected.failures[0].id, "skill_tuf_fail");
 assert.equal(rejected.failures[0].severity, "quarantine");
 
-console.log("Real TUF WASM → Security DO cache → skill firewall → Sigstore verifier handoff passed.");
+console.log("TUF WASM → Security DO cache → skill firewall → Sigstore verifier handoff passed.");
 console.log("Failure path passed: invalid TUF signature → no cache commit → no Sigstore call → automatic quarantine.");
