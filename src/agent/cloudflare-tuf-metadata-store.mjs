@@ -2,7 +2,7 @@
 // This stores only verifier-produced metadata bytes; it does not make cached bytes trusted.
 // The TUF engine must re-verify every cached object against the pinned bootstrap root.
 const MAX_CACHE_BYTES = 16 * 1024 * 1024;
-const ALLOWED_NAME = /^(?:root|timestamp|(?:[0-9]+\.)?(?:snapshot|targets))\.json$/;
+const ALLOWED_NAME = /^(?:root|timestamp|(?:[0-9]+\.)?(?:snapshot|targets))\.json$|^root_history\/[0-9]+\.root\.json$/;
 
 function validateSnapshot(value) {
   if (!value || value.ok !== true || !Number.isSafeInteger(value.revision) ||
