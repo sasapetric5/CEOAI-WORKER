@@ -54,8 +54,15 @@ export function createSkillGovernancePipeline({
     const c = candidate;
     const metadata = { repository: c.repository, path: c.path, commit: c.commit, blobSha: c.blobSha };
     async function failure(stage, code, severity = "quarantine") {
-      try { await lifecycle.recordFailure(c.id, { stage, code, severity }); } catch {}
-      return fail(code);
+      let persisted;
+      try { persisted = await lifecycle.recordFailure(c.id, { stage, code, severity }); }
+      catch {
+        return { ...fail("SKILL_QUARANTINE_PERSISTENCE_FAILED"), failureCode: code, isolated: false };
+      }
+      if (persisted?.ok !== true) {
+        return { ...fail("SKILL_QUARANTINE_PERSISTENCE_FAILED"), failureCode: code, isolated: false };
+      }
+      return { ...fail(code), isolated: true, lifecycleStatus: persisted.record?.status ?? null };
     }
     if (!recovery) {
       const current = await lifecycle.get(c.id);
@@ -154,7 +161,8 @@ export function createSkillGovernancePipeline({
     for (const candidate of candidates) results.push(await process(candidate));
     return { ok: results.every(x => x.ok), discovered: candidates.length,
       verified: results.filter(x => x.ok && x.status === "VERIFIED").length,
-      quarantined: results.filter(x => !x.ok).length, results };
+      quarantined: results.filter(x => !x.ok && x.isolated === true).length,
+      blocked: results.filter(x => !x.ok).length, results };
   }
 
   async function recover(skillId, { approvedByOwner = false } = {}) {
