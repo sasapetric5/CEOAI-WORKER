@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - "security/tuf-worker/**"
+      - "scripts/verify-tuf-wasm.mjs"
       - ".github/workflows/skill-tuf-worker.yml"
   pull_request:
     branches: [main]
     paths:
       - "security/tuf-worker/**"
+      - "scripts/verify-tuf-wasm.mjs"
       - ".github/workflows/skill-tuf-worker.yml"
   workflow_dispatch:
 
