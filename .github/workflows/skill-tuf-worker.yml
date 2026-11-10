@@ -28,5 +28,7 @@ jobs:
           targets: wasm32-unknown-unknown
       - name: Run TUF trust-chain regression tests
         run: cargo test --manifest-path security/tuf-worker/Cargo.toml
-      - name: Compile Worker-compatible WASM target
-        run: cargo check --manifest-path security/tuf-worker/Cargo.toml --target wasm32-unknown-unknown
+      - name: Compile optimized Worker WASM artifact
+        run: cargo build --release --manifest-path security/tuf-worker/Cargo.toml --target wasm32-unknown-unknown
+      - name: Exercise the real WASM ABI in Node
+        run: node scripts/verify-tuf-wasm.mjs
