@@ -1,7 +1,8 @@
 // Bounded acquisition of Sigstore Public Good TUF repository inputs.
 // All fetched bytes remain untrusted until the Rust TUF verifier validates the complete chain.
 const REPOSITORY = "https://tuf-repo-cdn.sigstore.dev";
-const ROOT_BOOTSTRAP_VERSION = 10; // Official Sigstore bootstrap; rotations 11+ must verify sequentially.
+export const SIGSTORE_TUF_BOOTSTRAP_ROOT_VERSION = 10;
+const ROOT_BOOTSTRAP_VERSION = SIGSTORE_TUF_BOOTSTRAP_ROOT_VERSION;
 const MAX_ROOT_ROTATIONS = 32;
 const MAX_METADATA_BYTES = 2 * 1024 * 1024;
 const MAX_ROOT_BYTES = 512 * 1024;
