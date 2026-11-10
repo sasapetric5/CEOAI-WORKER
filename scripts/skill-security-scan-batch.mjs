@@ -34,7 +34,7 @@ async function runRetry(c,a,t=120000,attempts=3){
 async function attest(payloadObj,outDir,repo,ref){
  const payload=path.join(outDir,"unsigned.json"),bundle=path.join(outDir,"cosign.bundle.json");
  await writeFile(payload,JSON.stringify(payloadObj,null,2)+"\n",{mode:0o600});
- const s=await runRetry("cosign",["sign-blob","--yes","--bundle",bundle,payload]);
+ const s=await runRetry("cosign",["sign-blob","--new-bundle-format","--yes","--bundle",bundle,payload]);
  if(s.status!==0)throw Error("COSIGN_SIGN_FAILED");
  const esc=v=>v.replace(/[|\\{}()[\]^$+*?.-]/g,"\\$&");
  const identity="^https://github\\.com/"+esc(repo)+"/.github/workflows/skill-security-firewall\\.yml@"+esc(ref)+"$";
