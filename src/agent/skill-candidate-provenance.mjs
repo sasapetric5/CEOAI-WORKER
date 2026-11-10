@@ -7,6 +7,6 @@ export function validatePinnedSkillCandidate(input = {}) {
   if (typeof repository !== "string" || !REPOSITORY.test(repository) || repository.includes("..")) throw new Error("CANDIDATE_REPOSITORY_INVALID");
   if (typeof commit !== "string" || !SHA1.test(commit)) throw new Error("CANDIDATE_COMMIT_INVALID");
   if (typeof blobSha !== "string" || !SHA1.test(blobSha)) throw new Error("CANDIDATE_BLOB_SHA_INVALID");
-  if (typeof path !== "string" || !path || path.length > 512 || path.includes("\\\\") || path.startsWith("/") || path.split("/").some(part => !part || part === "." || part === "..") || path.split("/").at(-1).toLowerCase() !== "skill.md") throw new Error("CANDIDATE_PATH_INVALID");
+  if (typeof path !== "string" || !path || path.length > 512 || path.includes("\\") || path.startsWith("/") || path.split("/").some(part => !part || part === "." || part === "..") || path.split("/").at(-1).toLowerCase() !== "skill.md") throw new Error("CANDIDATE_PATH_INVALID");
   return Object.freeze({ id, repository, commit: commit.toLowerCase(), path, blobSha: blobSha.toLowerCase() });
 }
