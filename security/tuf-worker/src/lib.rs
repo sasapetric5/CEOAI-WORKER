@@ -271,14 +271,9 @@ pub unsafe extern "C" fn verify_tuf(ptr: u32, len: u32) -> u64 {
     let input = std::slice::from_raw_parts(ptr as *const u8, len as usize);
     let output = encode_output(verify(input));
     let boxed = output.into_boxed_slice();
-    let out_ptr = Box::leak(boxed).as_mut_ptr() as u32;
-    let out_len = output_len_from_ptr(out_ptr);
+    let out_len = boxed.len() as u32;
+    let out_ptr = Box::into_raw(boxed) as *mut u8 as u32;
     ((out_ptr as u64) << 32) | out_len as u64
-}
-
-unsafe fn output_len_from_ptr(_ptr: u32) -> u32 {
-    // Replaced by the explicit length return path in the implementation below.
-    0
 }
 
 #[cfg(test)]
