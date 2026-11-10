@@ -283,13 +283,19 @@ function estimateTokens(text) {
   return Math.ceil(ascii / 4 + nonAscii / 2);
 }
 
+// Cloudflare dashboard values can contain accidental surrounding whitespace.
+// Normalize only the explicit literal "true"; this never enables an unset flag.
+function isTrueFlag(value) {
+  return typeof value === "string" && value.trim() === "true";
+}
+
 function allowedOrigins(env) {
   // Production defaults to the canonical domain only. Local origins require explicit opt-in.
   const configured = typeof env.ALLOWED_ORIGINS === "string"
     ? env.ALLOWED_ORIGINS.split(",").map(value => value.trim()).filter(Boolean)
     : [];
   const origins = new Set(configured.length ? configured : ["https://ceoai.dev"]);
-  if (env.ALLOW_LOCAL_ORIGINS === "true") {
+  if (isTrueFlag(env.ALLOW_LOCAL_ORIGINS)) {
     origins.add("http://localhost:8787");
     origins.add("http://127.0.0.1:8787");
   }
@@ -397,7 +403,7 @@ function buildProviderPool(env) {
   // Configured owner-supplied credentials activate provider candidates. Runtime quota/provider errors trigger cooldown and fallback.
   const pool = [
     // Cloudflare Workers AI joins the pool when its binding and enable switch are present.
-    { id: "workers-ai-1", provider: "workers-ai", model: typeof env.WORKERS_AI_MODEL === "string" && /^@?[A-Za-z0-9][A-Za-z0-9._:\/-]{0,199}$/.test(env.WORKERS_AI_MODEL.trim()) ? env.WORKERS_AI_MODEL.trim() : MODEL, key: "", enabled: Boolean(env.AI) && env.WORKERS_AI_ENABLED === "true", env, tier: "fast" },
+    { id: "workers-ai-1", provider: "workers-ai", model: typeof env.WORKERS_AI_MODEL === "string" && /^@?[A-Za-z0-9][A-Za-z0-9._:\/-]{0,199}$/.test(env.WORKERS_AI_MODEL.trim()) ? env.WORKERS_AI_MODEL.trim() : MODEL, key: "", enabled: Boolean(env.AI) && isTrueFlag(env.WORKERS_AI_ENABLED), env, tier: "fast" },
     { id: "glm-flash-1", provider: "glm-flash", model: glmFlashModel, key: env.ZAI_GLM_FLASH_KEY_1, tier: "fast" },
     { id: "glm-flash-2", provider: "glm-flash", model: glmFlashModel, key: env.ZAI_GLM_FLASH_KEY_2, tier: "fast" },
     { id: "gemini-1", provider: "gemini", model: geminiModel, key: (env.GEMINI_API_KEY_PRIMARY || env.GEMINI_KEY_1), tier: "fast" },
@@ -428,16 +434,16 @@ function buildProviderPool(env) {
   if (!freeOnly) return pool;
   // Chat and agent paths share the same explicit free-tier allowlist. Credentials alone never imply free usage.
   return pool.filter(candidate => {
-    if (candidate.provider === "workers-ai") return env.WORKERS_AI_ENABLED === "true" && env.WORKERS_AI_FREE_CONFIRMED === "true";
-    if (candidate.provider === "gemini") return env.GEMINI_FREE_CONFIRMED === "true";
-    if (candidate.provider === "openrouter") return env.OPENROUTER_FREE_CONFIRMED === "true" &&
+    if (candidate.provider === "workers-ai") return isTrueFlag(env.WORKERS_AI_ENABLED) && isTrueFlag(env.WORKERS_AI_FREE_CONFIRMED);
+    if (candidate.provider === "gemini") return isTrueFlag(env.GEMINI_FREE_CONFIRMED);
+    if (candidate.provider === "openrouter") return isTrueFlag(env.OPENROUTER_FREE_CONFIRMED) &&
       /:free$/i.test(candidate.model) && candidate.id !== "openrouter-complex";
-    if (candidate.provider === "glm-flash") return env.ZAI_GLM_FLASH_FREE_CONFIRMED === "true";
-    if (candidate.provider === "deepseek") return env.DEEPSEEK_FREE_CONFIRMED === "true";
-    if (candidate.provider === "mistral") return env.MISTRAL_FREE_CONFIRMED === "true";
-    if (candidate.provider === "xai") return env.XAI_FREE_CONFIRMED === "true";
-    if (candidate.provider === "nvidia") return env.NVIDIA_FREE_CONFIRMED === "true";
-    if (candidate.provider === "huggingface") return env.HF_FREE_CONFIRMED === "true";
+    if (candidate.provider === "glm-flash") return isTrueFlag(env.ZAI_GLM_FLASH_FREE_CONFIRMED);
+    if (candidate.provider === "deepseek") return isTrueFlag(env.DEEPSEEK_FREE_CONFIRMED);
+    if (candidate.provider === "mistral") return isTrueFlag(env.MISTRAL_FREE_CONFIRMED);
+    if (candidate.provider === "xai") return isTrueFlag(env.XAI_FREE_CONFIRMED);
+    if (candidate.provider === "nvidia") return isTrueFlag(env.NVIDIA_FREE_CONFIRMED);
+    if (candidate.provider === "huggingface") return isTrueFlag(env.HF_FREE_CONFIRMED);
     return false;
   });
 
@@ -473,7 +479,7 @@ async function readProviderError(response, provider, env = {}) {
 async function executeModel(provider, messages, timeoutMs = PROVIDER_TIMEOUT_MS) {
   let response;
   if (provider.provider === "workers-ai") {
-    if (!provider.enabled || !provider.env?.AI || provider.env.WORKERS_AI_ENABLED !== "true") {
+    if (!provider.enabled || !provider.env?.AI || provider.!isTrueFlag(env.WORKERS_AI_ENABLED)) {
       throw new Error("Workers AI nije omogućen ili trenutno nije dostupan");
     }
     let timeout;
@@ -648,22 +654,22 @@ function quotaCooldownTTL(error) {
  */
 function isAgentFreeProvider(candidate, env) {
   if (candidate.provider === "openrouter") {
-    return env.OPENROUTER_FREE_CONFIRMED === "true" && /:free$/i.test(candidate.model);
+    return isTrueFlag(env.OPENROUTER_FREE_CONFIRMED) && /:free$/i.test(candidate.model);
   }
   if (candidate.provider === "gemini") {
-    return env.GEMINI_FREE_CONFIRMED === "true" && env.GEMINI_FREE_ONLY !== "false";
+    return isTrueFlag(env.GEMINI_FREE_CONFIRMED) && env.GEMINI_FREE_ONLY !== "false";
   }
   if (candidate.provider === "workers-ai") {
-    return env.WORKERS_AI_ENABLED === "true" && env.WORKERS_AI_FREE_CONFIRMED === "true";
+    return isTrueFlag(env.WORKERS_AI_ENABLED) && isTrueFlag(env.WORKERS_AI_FREE_CONFIRMED);
   }
   if (candidate.provider === "glm-flash") {
-    return env.ZAI_GLM_FLASH_FREE_CONFIRMED === "true";
+    return isTrueFlag(env.ZAI_GLM_FLASH_FREE_CONFIRMED);
   }
   return false;
 }
 
 export function hasConfiguredProviderCredentials(env) {
-  if (env?.AI && env.WORKERS_AI_ENABLED === "true") return true;
+  if (env?.AI && isTrueFlag(env.WORKERS_AI_ENABLED)) return true;
   return [
     "ZAI_GLM_FLASH_KEY_1","ZAI_GLM_FLASH_KEY_2","GEMINI_API_KEY_PRIMARY","GEMINI_KEY_1",
     "GEMINI_API_KEY_SECONDARY","GEMINI_KEY_2","GEMINI_API_KEY_TERTIARY","GEMINI_KEY_3",
@@ -673,7 +679,7 @@ export function hasConfiguredProviderCredentials(env) {
 }
 
 async function runConfiguredProviderCompletion(env, messages, intent = CAPABILITY.reasoning) {
-  if (!env || env.AI_ENABLED !== "true") return { ok: false, code: "AI_DISABLED" };
+  if (!env || !isTrueFlag(env.AI_ENABLED)) return { ok: false, code: "AI_DISABLED" };
   if (!Array.isArray(messages) || messages.length < 1 || messages.length > 12) return { ok: false, code: "INVALID_MODEL_MESSAGES" };
   let bytes = 0;
   for (const message of messages) {
@@ -684,7 +690,7 @@ async function runConfiguredProviderCompletion(env, messages, intent = CAPABILIT
   const configuredPool = buildProviderPool(env);
   const pool = configuredPool.filter(candidate => isAgentFreeProvider(candidate, env));
   if (!pool.length) return { ok: false, code: hasConfiguredProviderCredentials(env) ? "NO_FREE_PROVIDER_CONFIRMED" : "NO_PROVIDER_CONFIGURED" };
-  let candidates = env.ZAI_GLM_FLASH_ONLY === "true" ? pool.filter(p => p.provider === "glm-flash") : pool.slice();
+  let candidates = isTrueFlag(env.ZAI_GLM_FLASH_ONLY) ? pool.filter(p => p.provider === "glm-flash") : pool.slice();
   candidates = candidates.map((p, idx) => ({ p, idx, score: scoreProviderForIntent(p.provider, intent) }))
     .sort((a, b) => b.score - a.score || a.idx - b.idx).map(x => x.p);
   if (!candidates.length) return { ok: false, code: "NO_PROVIDER_CONFIGURED" };
@@ -1191,7 +1197,7 @@ async function readBodyLimited(request, maxBytes) {
 
 async function compressHistory(env, oldSummary, oldMessages) {
   // Compression requires AI and Workers AI to be explicitly enabled.
-  if (env.AI_ENABLED !== "true" || !env.AI || env.WORKERS_AI_ENABLED !== "true") return null;
+  if (!isTrueFlag(env.AI_ENABLED) || !env.AI || !isTrueFlag(env.WORKERS_AI_ENABLED)) return null;
   const unboundedSource = [
     oldSummary ? `PRETHODNI SAŽETAK:\n${oldSummary}` : "",
     ...oldMessages.map(m => `${m.role.toUpperCase()}: ${m.content}`),
@@ -1229,7 +1235,7 @@ async function compressHistory(env, oldSummary, oldMessages) {
 export async function runCEOAIInternalAgentTask(env, { system, task, input = {}, limit = 3, agentIds, allowedToolIds = [], allowToolExecution = false, allowNoToolAgentRun = false, maxToolCalls = 4, maxModelCalls = 4, synthesize = true, intent = CAPABILITY.reasoning, runId = crypto.randomUUID() } = {}) {
   const noToolRunApproved = allowNoToolAgentRun === true && Array.isArray(allowedToolIds) && allowedToolIds.length === 0;
   if (allowToolExecution !== true && !noToolRunApproved) return { ok: false, code: "EXECUTION_NOT_APPROVED", agents: [], results: [] };
-  if (!env || env.AI_ENABLED !== "true") return { ok: false, code: "AI_DISABLED", agents: [], results: [] };
+  if (!env || !isTrueFlag(env.AI_ENABLED)) return { ok: false, code: "AI_DISABLED", agents: [], results: [] };
   if (!env.KV_MEMORY) return { ok: false, code: "MEMORY_BINDING_UNAVAILABLE", agents: [], results: [] };
   const configuredPool = buildProviderPool(env);
   if (!configuredPool.length) return { ok: false, code: hasConfiguredProviderCredentials(env) ? "NO_FREE_PROVIDER_CONFIRMED" : "NO_PROVIDER_CONFIGURED", agents: [], results: [] };
@@ -1270,7 +1276,7 @@ async function createRequestAgentSystem(env, maxAgents, capabilityContext, appro
   // Registration is safe, but execution additionally requires an explicit operator
   // opt-in. Signed four-layer grants and the durable authority still gate every call.
   // This flag is deliberately not set by repository code or deployment automation.
-  const researchReadEnabled = env?.RESEARCH_READ_ENABLED === "true";
+  const researchReadEnabled = isTrueFlag(env?.RESEARCH_READ_ENABLED);
   const toolRegistry = createToolRegistry({
     tools: [createResearchReadTool()],
     enabled: researchReadEnabled,
@@ -1320,8 +1326,8 @@ export default {
       console.info("CEOAI_DIAG request_received", JSON.stringify({
         method: request.method,
         originAllowed,
-        aiEnabled: env.AI_ENABLED === "true",
-        externalAiEnabled: env.AI_ENABLED === "true",
+        aiEnabled: isTrueFlag(env.AI_ENABLED),
+        externalAiEnabled: isTrueFlag(env.EXTERNAL_AI_ENABLED),
       }));
     }
 
@@ -1403,7 +1409,7 @@ export default {
       }
       const policy = APP_AGENT_POLICIES[auth.appId];
       if (policy?.enabled !== true) return json({ success: false, error: "Aplikacija nema aktivan pristup agent gateway-u.", code: "APP_NOT_ENABLED" }, 403);
-      if (env.AI_ENABLED !== "true") return json({ success: false, error: "AI je isključen.", code: "AI_DISABLED" }, 503);
+      if (!isTrueFlag(env.AI_ENABLED)) return json({ success: false, error: "AI je isključen.", code: "AI_DISABLED" }, 503);
       if (!env.RATE_LIMITER || typeof env.RATE_LIMITER.limit !== "function") {
         return json({ success: false, error: "Zaštita od preopterećenja nije dostupna.", code: "RATE_LIMITER_UNAVAILABLE" }, 503);
       }
@@ -1524,7 +1530,7 @@ export default {
         return json({ success: false, error: "Bezbednosna konfiguracija ovlašćenja nije validna.", code: "CAPABILITY_GRANT_CONFIGURATION_INVALID" }, 503);
       }
       const result = await runCEOAIInternalAgentTask(env, {
-        system, task: safeTask, input: agentInput, limit, agentIds: policy.allowedAgentIds, allowedToolIds: env?.RESEARCH_READ_ENABLED === "true" ? ["research_read"] : [], allowToolExecution: env?.RESEARCH_READ_ENABLED === "true", allowNoToolAgentRun: true,
+        system, task: safeTask, input: agentInput, limit, agentIds: policy.allowedAgentIds, allowedToolIds: isTrueFlag(env?.RESEARCH_READ_ENABLED) ? ["research_read"] : [], allowToolExecution: isTrueFlag(env?.RESEARCH_READ_ENABLED), allowNoToolAgentRun: true,
         maxToolCalls: 1, maxModelCalls: policy.maxModelCalls, synthesize: true,
         intent, runId: requestId ?? crypto.randomUUID(),
       });
@@ -1748,7 +1754,7 @@ export default {
     const safePrompt = redactSensitiveText(prompt.trim(), env, MAX_PROMPT_CHARS);
 
     // External AI is enabled by the owner-controlled AI_ENABLED switch; credentials select provider candidates.
-    if (env.AI_ENABLED !== "true") {
+    if (!isTrueFlag(env.AI_ENABLED)) {
       return json({ success: false, error: "AI je isključen. Nije poslat zahtev nijednom AI provajderu." }, 503, corsHeaders(origin));
     }
 
@@ -1774,8 +1780,8 @@ export default {
         .slice(-MAX_HISTORY_INPUT_MESSAGES)
         .map(m => ({ role: m.role, content: redactSensitiveText(m.content, env, MAX_REPLY_CHARS) }));
       const canCompressHistory = validatedHistory.length >= COMPRESSION_THRESHOLD - 1 &&
-        env.AI_ENABLED === "true" &&
-        Boolean(env.AI) && env.WORKERS_AI_ENABLED === "true";
+        isTrueFlag(env.AI_ENABLED) &&
+        Boolean(env.AI) && isTrueFlag(env.WORKERS_AI_ENABLED);
       const prepared = await prepareConversation({
         stored: validatedHistory,
         userMessage: safePrompt,
@@ -1817,7 +1823,7 @@ export default {
       const pool = buildProviderPool(env);
 
       // Explicit GLM-only mode: no other provider may be called.
-      let candidates = env.ZAI_GLM_FLASH_ONLY === "true"
+      let candidates = isTrueFlag(env.ZAI_GLM_FLASH_ONLY)
         ? pool.filter(p => p.provider === "glm-flash")
         : pool.slice();
 
@@ -1829,9 +1835,13 @@ export default {
         .map(x => x.p);
 
       console.info("CEOAI_DIAG provider_pool", JSON.stringify({
-        glmOnly: env.ZAI_GLM_FLASH_ONLY === "true",
+        glmOnly: isTrueFlag(env.ZAI_GLM_FLASH_ONLY),
         hasGlmKey1: typeof env.ZAI_GLM_FLASH_KEY_1 === "string" && Boolean(env.ZAI_GLM_FLASH_KEY_1.trim()),
         hasGlmKey2: typeof env.ZAI_GLM_FLASH_KEY_2 === "string" && Boolean(env.ZAI_GLM_FLASH_KEY_2.trim()),
+        glmFreeConfirmed: isTrueFlag(env.ZAI_GLM_FLASH_FREE_CONFIRMED),
+        workersAiBindingPresent: Boolean(env.AI),
+        workersAiEnabled: isTrueFlag(env.WORKERS_AI_ENABLED),
+        workersAiFreeConfirmed: isTrueFlag(env.WORKERS_AI_FREE_CONFIRMED),
         configuredProviderCount: pool.length,
         candidateCount: candidates.length,
         intent,
@@ -1840,7 +1850,7 @@ export default {
       }));
       if (!candidates.length) {
         console.warn("CEOAI_DIAG no_provider_candidates", JSON.stringify({
-          glmOnly: env.ZAI_GLM_FLASH_ONLY === "true",
+          glmOnly: isTrueFlag(env.ZAI_GLM_FLASH_ONLY),
           configuredProviderCount: pool.length,
           intent,
         }));
@@ -1901,7 +1911,7 @@ export default {
           lastStatus = Number(error?.status) || 0;
           const msg = String(error?.message || "");
           console.warn("CEOAI_DIAG provider_failed", JSON.stringify({ provider: candidate.id, status: lastStatus, quota: isQuotaError(error) }));
-          if (env.DEBUG_PROVIDER_ERRORS === "true" && error?.providerDetail) {
+          if (isTrueFlag(env.DEBUG_PROVIDER_ERRORS) && error?.providerDetail) {
             console.debug(`Provider ${candidate.id} detail: ${redactSensitiveText(error.providerDetail, env).slice(0, 600)}`);
           }
           const quotaHit = isQuotaError(error);
@@ -1948,6 +1958,7 @@ export default {
           sawRateLimit,
           sawQuotaExhaustion,
           providerDeadlineExhausted,
+          allCandidatesInCooldown: providerAttemptCount === 0 && cooldownSkipCount === candidates.length,
           lastStatus,
         }));
         const rateLimited = sawRateLimit || sawCooldownSkip || sawQuotaExhaustion;
