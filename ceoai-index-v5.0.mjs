@@ -1309,7 +1309,10 @@ export default {
     const origin = request.headers.get("Origin") || "";
     // Parse the allowlist once per request; do not cache mutable environment config globally.
     const requestAllowedOrigins = allowedOrigins(env);
-    const originAllowed = isAllowedOrigin(origin, requestAllowedOrigins);
+    // Permit HTTPS same-origin requests on the Worker’s own hostname, while keeping
+    // the explicit allowlist for cross-origin callers and the opt-in local-origin policy.
+    const originAllowed = isAllowedOrigin(origin, requestAllowedOrigins) ||
+      (url.protocol === "https:" && origin === url.origin);
     const isApi = url.pathname === "/api/chat";
 
     // Safe diagnostics: never log prompts, cookies, IP addresses, origins, or secret values.
