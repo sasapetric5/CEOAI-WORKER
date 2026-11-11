@@ -222,6 +222,49 @@ try {
   assert.equal(fallbackCalls.length, 2, 'Gemini failure is followed by OpenRouter fallback');
 } finally { globalThis.fetch = originalFetch3; }
 
+// 17a: Gemini rotates independently through primary, secondary and tertiary keys.
+// Each credential has its own candidate ID/cooldown, so one exhausted key cannot block the others.
+{
+  const original = globalThis.fetch;
+  const attemptedKeys = [];
+  globalThis.fetch = async (_url, options = {}) => {
+    attemptedKeys.push(options.headers?.["x-goog-api-key"]);
+    if (attemptedKeys.length < 3) {
+      return new Response(JSON.stringify({ error: { message: "rate limited" } }), {
+        status: 429, headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: "Gemini tercijarni ključ je preuzeo." }] } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  try {
+    const geminiRotationEnv = makeEnv({
+      AI_ENABLED: "true", EXTERNAL_AI_ENABLED: "true",
+      GEMINI_API_KEY_PRIMARY: "test-gemini-primary",
+      GEMINI_API_KEY_SECONDARY: "test-gemini-secondary",
+      GEMINI_API_KEY_TERTIARY: "test-gemini-tertiary",
+    });
+    const { cookie: geminiRotationCookie } = await getSession(geminiRotationEnv);
+    const response = await worker.fetch(
+      apiRequest(geminiRotationCookie, JSON.stringify({ prompt: "Zdravo" })),
+      geminiRotationEnv
+    );
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).reply, "Gemini tercijarni ključ je preuzeo.");
+    assert.deepEqual(attemptedKeys, [
+      "test-gemini-primary",
+      "test-gemini-secondary",
+      "test-gemini-tertiary",
+    ], "Gemini keys must be attempted in primary-secondary-tertiary order");
+    assert.ok(await geminiRotationEnv.KV_MEMORY.get("cooldown:gemini-1"));
+    assert.ok(await geminiRotationEnv.KV_MEMORY.get("cooldown:gemini-2"));
+    assert.equal(await geminiRotationEnv.KV_MEMORY.get("cooldown:gemini-3"), null);
+  } finally {
+    globalThis.fetch = original;
+  }
+}
+
 // 18: history compression uses the bounded validated history and persists only the summary + new turn.
 const originalFetch4 = globalThis.fetch;
 globalThis.fetch = async (url) => {

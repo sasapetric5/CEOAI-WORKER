@@ -687,21 +687,9 @@ function quotaCooldownTTL(error) {
  * Reuses configured provider credentials, model IDs, ranking, cooldown and failover.
  * This helper does not create or expose an HTTP route.
  */
-function isAgentFreeProvider(candidate, env) {
-  if (candidate.provider === "openrouter") {
-    return isTrueFlag(env.OPENROUTER_FREE_CONFIRMED) && /:free$/i.test(candidate.model);
-  }
-  if (candidate.provider === "gemini") {
-    return isTrueFlag(env.GEMINI_FREE_CONFIRMED) && env.GEMINI_FREE_ONLY !== "false";
-  }
-  if (candidate.provider === "workers-ai") {
-    return isTrueFlag(env.WORKERS_AI_ENABLED) && isTrueFlag(env.WORKERS_AI_FREE_CONFIRMED);
-  }
-  if (candidate.provider === "glm-flash") {
-    return isTrueFlag(env.ZAI_GLM_FLASH_FREE_CONFIRMED);
-  }
-  return false;
-}
+// buildProviderPool is the single source of truth for free-only eligibility.
+// Do not maintain a second Agent Runtime allowlist: it silently excluded DeepSeek,
+// Mistral, xAI, NVIDIA and Hugging Face even when the main chat pool accepted them.
 
 export function hasConfiguredProviderCredentials(env) {
   if (env?.AI && isTrueFlag(env.WORKERS_AI_ENABLED)) return true;
@@ -722,8 +710,9 @@ async function runConfiguredProviderCompletion(env, messages, intent = CAPABILIT
     bytes += new TextEncoder().encode(message.role + message.content).byteLength;
     if (bytes > 24000) return { ok: false, code: "MODEL_CONTEXT_TOO_LARGE" };
   }
-  const configuredPool = buildProviderPool(env);
-  const pool = configuredPool.filter(candidate => isAgentFreeProvider(candidate, env));
+  // Reuse the exact free-only pool used by /api/chat. This keeps provider
+  // eligibility, model restrictions and credential policy identical across runtimes.
+  const pool = buildProviderPool(env);
   if (!pool.length) return { ok: false, code: hasConfiguredProviderCredentials(env) ? "NO_FREE_PROVIDER_CONFIRMED" : "NO_PROVIDER_CONFIGURED" };
   let candidates = isTrueFlag(env.ZAI_GLM_FLASH_ONLY) ? pool.filter(p => p.provider === "glm-flash") : pool.slice();
   candidates = candidates.map((p, idx) => ({ p, idx, score: scoreProviderForIntent(p.provider, intent) }))
