@@ -598,12 +598,47 @@ async function markCooldown(env, id, ttl) {
   try { await env.KV_MEMORY.put(`cooldown:${id}`, "1", { expirationTtl: ttl }); } catch {}
 }
 
-async function isInCooldownStrict(env, id) {
-  return Boolean(await env.KV_MEMORY.get(`cooldown:${id}`));
+export async function providerCredentialFingerprint(candidate) {
+  if (!candidate || typeof candidate !== "object" ||
+      typeof candidate.id !== "string" || typeof candidate.provider !== "string") {
+    throw new TypeError("INVALID_PROVIDER_COOLDOWN_CANDIDATE");
+  }
+  const secret = typeof candidate.key === "string" ? candidate.key.trim() : "";
+  const material = `${candidate.provider}:${String(candidate.model || "")}:${secret || (candidate.provider === "workers-ai" ? "binding" : "no-credential")}`;
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(material));
+  return [...new Uint8Array(digest).slice(0, 12)]
+    .map(value => value.toString(16).padStart(2, "0"))
+    .join("");
 }
 
-async function markProviderCooldown(env, id, ttl) {
-  await env.KV_MEMORY.put(`cooldown:${id}`, "1", { expirationTtl: Math.max(60, Math.min(30 * 24 * 60 * 60, Math.trunc(ttl))) });
+async function readProviderCooldown(env, candidate) {
+  const raw = await env.KV_MEMORY.get(`cooldown:${candidate.id}`);
+  if (typeof raw !== "string" || !raw) return null;
+  let state;
+  try { state = JSON.parse(raw); } catch {
+    // Legacy provider-id-only cooldowns cannot be tied to the current credential.
+    // Ignore them once so a rotated or newly verified key is not blocked by an old failure.
+    return null;
+  }
+  const fingerprint = await providerCredentialFingerprint(candidate);
+  if (!state || typeof state !== "object" || state.fingerprint !== fingerprint ||
+      !Number.isFinite(state.until) || state.until <= Date.now()) return null;
+  return {
+    reason: typeof state.reason === "string" ? state.reason : "provider_failure",
+    status: Number.isInteger(state.status) ? state.status : 0,
+    until: state.until,
+  };
+}
+
+async function markProviderCooldown(env, candidate, ttl, reason = "provider_failure", status = 0) {
+  const safeTtl = Math.max(60, Math.min(30 * 24 * 60 * 60, Math.trunc(ttl)));
+  const fingerprint = await providerCredentialFingerprint(candidate);
+  await env.KV_MEMORY.put(`cooldown:${candidate.id}`, JSON.stringify({
+    fingerprint,
+    reason: String(reason || "provider_failure").slice(0, 64),
+    status: Number.isInteger(status) ? status : 0,
+    until: Date.now() + safeTtl * 1000,
+  }), { expirationTtl: safeTtl });
 }
 
 function modelUnavailableCooldown(error) {
@@ -700,7 +735,7 @@ async function runConfiguredProviderCompletion(env, messages, intent = CAPABILIT
     const remaining = deadline - Date.now();
     if (remaining < 2000) break;
     let cooling;
-    try { cooling = await isInCooldownStrict(env, candidate.id); }
+    try { cooling = await readProviderCooldown(env, candidate); }
     catch { return { ok: false, code: "PROVIDER_COOLDOWN_STORAGE_UNAVAILABLE" }; }
     if (cooling) { sawCooldown = true; continue; }
     if (inFlightProviders.has(candidate.id)) { sawCooldown = true; continue; }
@@ -716,7 +751,7 @@ async function runConfiguredProviderCompletion(env, messages, intent = CAPABILIT
       const cooldown = gone || providerFailureCooldown({ status, quotaExhausted: quota, retryAfterSeconds: error?.retryAfterSeconds });
       if (cooldown) {
         const ttl = gone ? gone.ttl : quota ? quotaCooldownTTL(error) : cooldown.ttl;
-        try { await markProviderCooldown(env, candidate.id, ttl); } catch { return { ok: false, code: "PROVIDER_COOLDOWN_STORAGE_UNAVAILABLE" }; }
+        try { await markProviderCooldown(env, candidate, ttl, gone?.reason || cooldown?.reason || "provider_failure", status); } catch { return { ok: false, code: "PROVIDER_COOLDOWN_STORAGE_UNAVAILABLE" }; }
       }
     } finally {
       inFlightProviders.delete(candidate.id);
@@ -1862,6 +1897,7 @@ export default {
       let lastStatus = 0;
       let sawRateLimit = false;
       let sawQuotaExhaustion = false;
+      let sawAuthFailure = false;
       let sawCooldownSkip = false;
       let cooldownSkipCount = 0;
       let inFlightSkipCount = 0;
@@ -1878,13 +1914,15 @@ export default {
       for (const candidate of candidates) {
         const remainingMs = providerDeadline - Date.now();
         if (remainingMs < 2000) { providerDeadlineExhausted = true; break; }
-        const cooldownKey = `cooldown:${candidate.id}`;
-        let coolingDown = false;
-        try { coolingDown = Boolean(await env.KV_MEMORY.get(cooldownKey)); } catch {
+        let cooldownState = null;
+        try { cooldownState = await readProviderCooldown(env, candidate); } catch {
           return json({ success: false, error: "Servis privremenih ograničenja je nedostupan." }, 503, corsHeaders(origin));
         }
-        if (coolingDown) {
+        if (cooldownState) {
           sawCooldownSkip = true;
+          if (cooldownState.reason === "provider_auth_or_policy") sawAuthFailure = true;
+          if (cooldownState.reason === "quota_exhausted") sawQuotaExhaustion = true;
+          if (cooldownState.reason === "rate_limited") sawRateLimit = true;
           cooldownSkipCount++;
           cooldownSkippedProviders.push(candidate.id);
           continue;
@@ -1915,6 +1953,7 @@ export default {
             console.debug(`Provider ${candidate.id} detail: ${redactSensitiveText(error.providerDetail, env).slice(0, 600)}`);
           }
           const quotaHit = isQuotaError(error);
+          if (lastStatus === 401 || (lastStatus === 403 && !quotaHit)) sawAuthFailure = true;
           const gone = modelUnavailableCooldown(error);
           const cooldown = gone || providerFailureCooldown({
             status: lastStatus,
@@ -1931,7 +1970,7 @@ export default {
             // Never re-introduce an untrusted raw hint after policy validation.
             const ttl = gone ? gone.ttl : quotaHit ? quotaCooldownTTL(error) : cooldown.ttl;
             if (quotaHit) quotaRetryAfter = Math.max(quotaRetryAfter, ttl);
-            try { await markProviderCooldown(env, candidate.id, ttl); } catch {
+            try { await markProviderCooldown(env, candidate, ttl, gone?.reason || cooldown?.reason || "provider_failure", lastStatus); } catch {
               return json({ success: false, error: "Servis privremenih ograničenja je nedostupan." }, 503, corsHeaders(origin));
             }
             console.info("CEOAI_DIAG provider_failover", JSON.stringify({
@@ -1961,15 +2000,23 @@ export default {
           allCandidatesInCooldown: providerAttemptCount === 0 && cooldownSkipCount === candidates.length,
           lastStatus,
         }));
-        const rateLimited = sawRateLimit || sawCooldownSkip || sawQuotaExhaustion;
+        const code = sawQuotaExhaustion ? "PROVIDER_QUOTA_EXHAUSTED"
+          : sawAuthFailure ? "PROVIDER_AUTH_FAILED"
+          : sawRateLimit ? "PROVIDER_RATE_LIMITED"
+          : sawCooldownSkip ? "PROVIDER_COOLDOWN"
+          : "PROVIDERS_UNAVAILABLE";
         const message = sawQuotaExhaustion
           ? "Besplatne kvote aktivnih AI provajdera su trenutno potrošene. Sistem će automatski prebaciti na druge kada cooldown istekne. Pokušajte kasnije."
-          : rateLimited
-            ? "Provajderi su dostigli ograničenje ili čekaju da istekne privremeno ograničenje. Pokušajte kasnije."
-            : "AI provajderi trenutno nisu dostupni. Istorija razgovora nije promenjena.";
-        return json({ success: false, error: message }, 503, {
+          : sawAuthFailure
+            ? "Jedan ili više AI provajdera odbili su autentifikaciju (HTTP 401/403). Proverite da li su API ključevi važeći i namenjeni odgovarajućem API servisu. Istorija razgovora nije promenjena."
+            : sawRateLimit
+              ? "AI provajderi su dostigli ograničenje zahteva i privremeno su pauzirani. Pokušajte nakon isteka ograničenja."
+              : sawCooldownSkip
+                ? "AI provajderi su privremeno pauzirani nakon prethodne greške. Sistem će ih ponovo proveriti nakon isteka pauze."
+                : "AI provajderi trenutno nisu dostupni. Istorija razgovora nije promenjena.";
+        return json({ success: false, code, error: message }, 503, {
           ...corsHeaders(origin),
-          "Retry-After": sawQuotaExhaustion ? String(quotaRetryAfter) : (sawRateLimit ? String(COOLDOWN_TTL) : "120"),
+          "Retry-After": sawQuotaExhaustion ? String(quotaRetryAfter) : ((sawRateLimit || sawAuthFailure) ? String(COOLDOWN_TTL) : "120"),
         });
       }
 

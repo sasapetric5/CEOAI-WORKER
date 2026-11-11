@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import worker from './ceoai-index-v5.0.mjs';
+import worker, { providerCredentialFingerprint } from './ceoai-index-v5.0.mjs';
 
 class MemoryKV {
   constructor() { this.data = new Map(); }
@@ -468,11 +468,121 @@ assert.equal(whitespaceRejected.status, 403);
 // 25: providers already in cooldown produce a specific, non-misleading rate-limit message.
 const cooldownEnv = makeEnv({ AI_ENABLED:'true', EXTERNAL_AI_ENABLED:'true', OPENROUTER_KEY:'test-cooldown-key' });
 const {cookie: cooldownCookie} = await getSession(cooldownEnv);
-cooldownEnv.KV_MEMORY.data.set('cooldown:openrouter-1', '1');
+const cooldownCandidate = {
+  id: 'openrouter-1', provider: 'openrouter',
+  model: 'meta-llama/llama-3-8b-instruct:free', key: 'test-cooldown-key',
+};
+const cooldownFingerprint = await providerCredentialFingerprint(cooldownCandidate);
+cooldownEnv.KV_MEMORY.data.set('cooldown:openrouter-1', JSON.stringify({
+  fingerprint: cooldownFingerprint, reason: 'provider_failure', status: 503, until: Date.now() + 60_000,
+}));
 const cooldownResponse = await worker.fetch(apiRequest(cooldownCookie, JSON.stringify({prompt:'Zdravo'})), cooldownEnv);
 assert.equal(cooldownResponse.status, 503);
-assert.match((await cooldownResponse.json()).error, /ograničenje/);
+assert.match((await cooldownResponse.json()).error, /privremeno pauzirani/);
 assert.equal(cooldownResponse.headers.get('Retry-After'), '120');
+
+
+// Credential rotation regression: old cooldown metadata must not block a newly saved API key.
+{
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), authorization: options.headers?.Authorization });
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: "GLM radi nakon rotacije ključa." } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  try {
+    const oldCandidate = {
+      id: "glm-flash-1", provider: "glm-flash", model: "glm-4.5-flash", key: "old-glm-key",
+    };
+    const newKey = "new-glm-key-after-rotation";
+    const env = makeEnv({
+      AI_ENABLED: "true",
+      ZAI_GLM_FLASH_FREE_CONFIRMED: "true",
+      ZAI_GLM_FLASH_KEY_1: newKey,
+    });
+    const { cookie } = await getSession(env);
+    const oldFingerprint = await providerCredentialFingerprint(oldCandidate);
+    await env.KV_MEMORY.put("cooldown:glm-flash-1", JSON.stringify({
+      fingerprint: oldFingerprint, reason: "provider_auth_or_policy",
+      status: 401, until: Date.now() + 3_600_000,
+    }), { expirationTtl: 3600 });
+
+    const response = await worker.fetch(
+      apiRequest(cookie, JSON.stringify({ prompt: "Zdravo" })), env
+    );
+    assert.equal(response.status, 200, "a new credential must not inherit the old credential's cooldown");
+    assert.equal((await response.json()).reply, "GLM radi nakon rotacije ključa.");
+    assert.equal(calls.length, 1, "the newly rotated key should be tried immediately");
+    assert.equal(calls[0].authorization, `Bearer ${newKey}`);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+// Legacy cooldown regression: unscoped cooldowns from the old deployment are ignored once.
+{
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  globalThis.fetch = async () => {
+    providerCalls++;
+    return new Response(JSON.stringify({
+      choices: [{ message: { content: "Legacy cooldown je bezbedno zanemaren." } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  try {
+    const env = makeEnv({
+      AI_ENABLED: "true",
+      ZAI_GLM_FLASH_FREE_CONFIRMED: "true",
+      ZAI_GLM_FLASH_KEY_1: "new-glm-key",
+    });
+    const { cookie } = await getSession(env);
+    await env.KV_MEMORY.put("cooldown:glm-flash-1", "1", { expirationTtl: 3600 });
+    const response = await worker.fetch(
+      apiRequest(cookie, JSON.stringify({ prompt: "Zdravo" })), env
+    );
+    assert.equal(response.status, 200);
+    assert.equal(providerCalls, 1, "legacy provider-id-only cooldown must not suppress the new credential");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+// Authentication regression: HTTP 401 must never be reported as a rate-limit/quota failure.
+{
+  const originalFetch = globalThis.fetch;
+  let providerCalls = 0;
+  globalThis.fetch = async () => {
+    providerCalls++;
+    return new Response(JSON.stringify({ error: "invalid API key" }), {
+      status: 401, headers: { "Content-Type": "application/json" },
+    });
+  };
+  try {
+    const env = makeEnv({
+      AI_ENABLED: "true",
+      ZAI_GLM_FLASH_FREE_CONFIRMED: "true",
+      ZAI_GLM_FLASH_KEY_1: "invalid-glm-primary",
+      ZAI_GLM_FLASH_KEY_2: "invalid-glm-secondary",
+    });
+    const { cookie } = await getSession(env);
+    const request = () => worker.fetch(apiRequest(cookie, JSON.stringify({ prompt: "Zdravo" })), env);
+    const first = await request();
+    assert.equal(first.status, 503);
+    const firstBody = await first.json();
+    assert.equal(firstBody.code, "PROVIDER_AUTH_FAILED");
+    assert.match(firstBody.error, /autentifikaciju.*401\/403/);
+    const second = await request();
+    assert.equal(second.status, 503);
+    const secondBody = await second.json();
+    assert.equal(secondBody.code, "PROVIDER_AUTH_FAILED", "stored auth cooldown must preserve the real failure class");
+    assert.match(secondBody.error, /autentifikaciju.*401\/403/);
+    assert.equal(providerCalls, 2, "the second request should skip both keys while their auth cooldown is active");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
 
 // 26: Cyrillic sequence words activate the complex-provider fallback path.
 const originalFetch8 = globalThis.fetch;
@@ -1806,7 +1916,14 @@ console.log("PASS: CEOAI V5.0 smoke/security assertions (quota failover + Firecr
       GEMINI_API_KEY_PRIMARY: "test-batch-cooldown-only",
     });
     const { cookie } = await getSession(env);
-    await env.KV_MEMORY.put("cooldown:gemini-1", "1", { expirationTtl: 60 });
+    const candidate = {
+      id: "gemini-1", provider: "gemini",
+      model: "gemini-flash-latest", key: "test-batch-cooldown-only",
+    };
+    const fingerprint = await providerCredentialFingerprint(candidate);
+    await env.KV_MEMORY.put("cooldown:gemini-1", JSON.stringify({
+      fingerprint, reason: "provider_failure", status: 503, until: Date.now() + 60_000,
+    }), { expirationTtl: 60 });
     const response = await worker.fetch(apiRequest(cookie, JSON.stringify({ prompt: "Test cooldown" })), env);
     assert.equal(response.status, 503);
     assert.equal(calls.length, 0, "provider in cooldown must not be called");
