@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeResearchUrl, planResearchAcquisition } from "../src/agent/research-acquisition-policy.mjs";
+import { isExplicitSpiderCrawlRequest, normalizeResearchUrl, planResearchAcquisition } from "../src/agent/research-acquisition-policy.mjs";
+
+test("Spider intent requires an explicit crawl request in Serbian or English", () => {
+  assert.equal(isExplicitSpiderCrawlRequest("Crawl https://docs.example.com across all pages"), true);
+  assert.equal(isExplicitSpiderCrawlRequest("Reptaj https://docs.example.com/sve-stranice"), true);
+  assert.equal(isExplicitSpiderCrawlRequest("Рептај https://docs.example.com/sve-stranice"), true);
+  assert.equal(isExplicitSpiderCrawlRequest("Research crawler reliability"), false);
+});
 
 test("single-page URL reads prefer Jina and retain a free-search fallback", () => {
   const plan = planResearchAcquisition({

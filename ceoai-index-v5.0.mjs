@@ -28,7 +28,7 @@ import { createProviderAgentRuntime } from "./src/agent/provider-agent-runtime.m
 import { createToolRegistry } from "./src/agent/tool-registry.mjs";
 import { createAgentLoop } from "./src/agent/agent-loop.mjs";
 import { createBuiltinAgentSystem } from "./src/agent/agent-system.mjs";
-import { planResearchAcquisition, normalizeResearchUrl } from "./src/agent/research-acquisition-policy.mjs";
+import { planResearchAcquisition, normalizeResearchUrl, isExplicitSpiderCrawlRequest } from "./src/agent/research-acquisition-policy.mjs";
 import { createResearchReadTool } from "./src/agent/research-read-tool.mjs";
 import { enqueueSpiderCrawl, createSpiderQueueHandler, readSpiderResult } from "./src/integrations/spider-queue.mjs";
 import { SpiderJobLedgerDO } from "./src/durable-objects/spider-job-ledger-do.mjs";
@@ -341,7 +341,8 @@ function chooseIntent(prompt) {
   const hasUrl = /https?:\/\/\S+/i.test(raw);
   const hasCode = raw.includes("```") || /\b(?:const|let|var|function|class|import|export|async|await)\b/.test(raw);
   const hasMultiStep = new Set(p.match(/\b(zatim|nakon|potom|takodje|prvo|drugo|trece|konacno)\b/g) || []).size >= 2;
-  if (hasUrl || /\b(pretraz\w*|istraz\w*|search|google|nadji izvor\w*|pronadji|koji sajt|sta kaze|procitaj link|sumiraj stranic\w*|pregledaj url)\b/.test(p)) return CAPABILITY.research;
+  if (hasUrl || isExplicitSpiderCrawlRequest(raw) ||
+      /\b(pretraz\w*|istraz\w*|search|google|nadji izvor\w*|pronadji|koji sajt|sta kaze|procitaj link|sumiraj stranic\w*|pregledaj url)\b/.test(p)) return CAPABILITY.research;
   if (/\b(refaktor\w*|debug\w*|implementir\w*|programir\w*|repozitorij\w*|worker|api|typescript|javascript|python|bug|stack.?trace|compile\w*|lint\w*)\b/.test(p) ||
       /\b(?:otkloni|ispravi)\s+(?:bag|gresk|error)\w*/.test(p) ||
       /\b(?:napisi|napisite|pregledaj|ovaj|moj|taj|ceo|sledeci|dati)\s+kod\b/.test(p) ||
@@ -1485,8 +1486,22 @@ export default {
       let agentInput;
       try { agentInput = redactSensitiveValue(input, env, 4000); }
       catch { return json({ success: false, error: "Ulazni podaci sadrže neispravne ili prevelike vrednosti.", code: "INVALID_AGENT_INPUT" }, 400); }
+      let system;
+      try {
+        system = await createRequestAgentSystem(env, policy.maxAgents, {
+          // Derived only from the authenticated HMAC app identity; this is an app service principal, not an end-user identity.
+          appId: auth.appId.toLowerCase(),
+          callerId: "app_" + auth.appId.toLowerCase().replace(/[^a-z0-9_-]/g, "_"),
+          operation: "execute",
+          resource: "public-web-search:duckduckgo",
+        }, approvalTokens);
+      } catch {
+        return json({ success: false, error: "Bezbednosna konfiguracija ovlašćenja nije validna.", code: "CAPABILITY_GRANT_CONFIGURATION_INVALID" }, 503);
+      }
       let researchUsed = false;
       let researchSource = null;
+      let spiderJob = null;
+      const dataProviders = [];
       if (intent === CAPABILITY.research) {
         // Reuse CEOAI's existing search-provider failover; search text is always untrusted evidence.
         try {
@@ -1494,23 +1509,77 @@ export default {
           // DuckDuckGo Instant Answer is a no-key, best-effort source; URL reading uses Jina Reader.
           const jinaAvailable = env.JINA_READER_ENABLED !== "false" &&
             !(await isInCooldown(env, "search-jina"));
+          const spiderRequested = isExplicitSpiderCrawlRequest(safeTask);
+          const spiderEnabled = spiderRequested && policy.spider === true &&
+            isTrueFlag(env.SPIDER_AGENT_ROUTING_ENABLED) &&
+            typeof env.SPIDER_QUEUE?.send === "function" &&
+            typeof env.SPIDER_BROWSER_RUN_ACCOUNT_ID === "string" &&
+            typeof env.SPIDER_BROWSER_RUN_TOKEN === "string";
+          let spiderRateLimited = false;
+          if (spiderEnabled) {
+            try {
+              const spiderLimit = await env.RATE_LIMITER.limit({ key: "spider:" + auth.appId });
+              spiderRateLimited = !spiderLimit?.success;
+            } catch {
+              spiderRateLimited = true;
+            }
+          }
+          if (spiderEnabled && !spiderRateLimited) {
+            const route = await system.multiAgentSupervisor.prepare({
+              task: safeTask,
+              limit,
+              agentIds: policy.allowedAgentIds,
+            });
+            if (!route.ok) {
+              return json({ success: false, error: "Nije pronađen odgovarajući odobreni agent za crawl zadatak.", code: route.code }, 422);
+            }
+          }
           const plan = planResearchAcquisition({
             task: safeTask,
             jinaAvailable,
             freeSearchAvailable: env.DUCKDUCKGO_ENABLED !== "false",
-            // Public app agents do not receive Browser Run capability automatically.
-            browserRunRequested: false,
-            browserRunAuthorized: false,
-            browserRunBudgetAvailable: false,
+            browserRunRequested: spiderRequested,
+            browserRunAuthorized: spiderEnabled,
+            browserRunBudgetAvailable: spiderEnabled && !spiderRateLimited,
           });
           let enriched = { text: "", source: null };
-          if (plan.strategy === "jina_read") {
+          if (plan.strategy === "browser_run_crawl") {
+            dataProviders.push("spider_browser_run");
+            const queued = await enqueueSpiderCrawl(env, {
+              appId: auth.appId,
+              url: plan.url,
+              jobId: requestId ?? crypto.randomUUID(),
+            });
+            if (queued.ok) {
+              spiderJob = { jobId: queued.jobId, status: queued.status };
+              agentInput = {
+                ...agentInput,
+                crawlerContext: {
+                  provider: "spider_browser_run",
+                  jobId: queued.jobId,
+                  status: "queued",
+                  trust: "untrusted_reference",
+                  note: "Crawl je asinhron; sadržaj još nije dostupan. Rezultati se preuzimaju zasebnim Spider result zahtevom.",
+                },
+              };
+            } else {
+              spiderJob = { status: "unavailable", code: queued.code };
+            }
+          }
+          const fallbackStrategy = spiderJob?.status === "unavailable"
+            ? plan.fallbackStrategy
+            : plan.strategy === "browser_run_crawl" ? null : plan.strategy;
+          if (!enriched.text && (fallbackStrategy === "jina_read" || fallbackStrategy === "duckduckgo_search") &&
+              fallbackStrategy === "jina_read") {
+            dataProviders.push("jina-reader");
             const pageText = await fetchUrlWithJina(env, plan.url);
             if (pageText) enriched = { text: pageText, source: "jina-reader" };
           }
           // A failed or disabled direct read falls back to no-key web discovery.
           if (!enriched.text &&
-              (plan.strategy === "duckduckgo_search" || plan.fallbackStrategy === "duckduckgo_search")) {
+              (fallbackStrategy === "duckduckgo_search" ||
+                (fallbackStrategy === "jina_read" && plan.fallbackStrategy === "duckduckgo_search"))) {
+            dataProviders.push("duckduckgo");
             const text = await fetchSearchDuckDuckGo(env, plan.query || safeTask);
             if (text) enriched = { text, source: "duckduckgo" };
           }
@@ -1541,18 +1610,6 @@ export default {
           },
         };
       }
-      let system;
-      try {
-        system = await createRequestAgentSystem(env, policy.maxAgents, {
-        // Derived only from the authenticated HMAC app identity; this is an app service principal, not an end-user identity.
-        appId: auth.appId.toLowerCase(),
-        callerId: "app_" + auth.appId.toLowerCase().replace(/[^a-z0-9_-]/g, "_"),
-        operation: "execute",
-        resource: "public-web-search:duckduckgo",
-        }, approvalTokens);
-      } catch {
-        return json({ success: false, error: "Bezbednosna konfiguracija ovlašćenja nije validna.", code: "CAPABILITY_GRANT_CONFIGURATION_INVALID" }, 503);
-      }
       const result = await runCEOAIInternalAgentTask(env, {
         system, task: safeTask, input: agentInput, limit, agentIds: policy.allowedAgentIds, allowedToolIds: isTrueFlag(env?.RESEARCH_READ_ENABLED) ? ["research_read"] : [], allowToolExecution: isTrueFlag(env?.RESEARCH_READ_ENABLED), allowNoToolAgentRun: true,
         maxToolCalls: 1, maxModelCalls: policy.maxModelCalls, synthesize: true,
@@ -1570,7 +1627,7 @@ export default {
       }));
       if (!result.ok) {
         const unavailable = ["AI_DISABLED", "NO_PROVIDER_CONFIGURED", "NO_FREE_PROVIDER_CONFIRMED", "PROVIDER_QUOTA_EXHAUSTED", "PROVIDER_COOLDOWN", "PROVIDER_COOLDOWN_STORAGE_UNAVAILABLE", "PROVIDERS_UNAVAILABLE"].includes(result.code);
-        return json({ success: false, error: unavailable ? "Trenutno nema dostupnog potvrđenog besplatnog AI provajdera." : "Agentski zadatak nije uspeo.", code: result.code || "AGENT_FAILED" }, unavailable ? 503 : 422);
+        return json({ success: false, error: unavailable ? "Trenutno nema dostupnog potvrđenog besplatnog AI provajdera." : "Agentski zadatak nije uspeo.", code: result.code || "AGENT_FAILED", ...(spiderJob ? { spiderJob } : {}) }, unavailable ? 503 : 422);
       }
       const safeOutput = redactSensitiveText(String(result.output || ""), env, 8000);
       if (memoryStore) {
@@ -1592,6 +1649,14 @@ export default {
         modelUsage: result.modelUsage,
         researchUsed,
         researchSource,
+        routing: {
+          modelIntent: intent,
+          modelProviders: result.modelUsage?.providers ?? [],
+          agents: result.agents,
+          skills: [...new Set((result.results ?? []).map(item => item.skillId).filter(id => typeof id === "string"))],
+          dataProviders,
+          spiderJob,
+        },
       }, 200);
     }
 

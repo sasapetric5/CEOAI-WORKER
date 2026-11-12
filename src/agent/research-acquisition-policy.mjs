@@ -1,6 +1,25 @@
 // Deterministic research source selection. It never grants tool permissions.
 const URL_PATTERN = /https?:\/\/[^\s<>"']+/i;
 const SENSITIVE_QUERY_KEY = /(?:token|key|auth|session|password|secret|signature|sig|cookie)/i;
+const CYRILLIC_TO_LATIN = {
+  а:"a",б:"b",в:"v",г:"g",д:"d",ђ:"dj",е:"e",ж:"z",з:"z",и:"i",ј:"j",к:"k",л:"l",љ:"lj",
+  м:"m",н:"n",њ:"nj",о:"o",п:"p",р:"r",с:"s",т:"t",ћ:"c",у:"u",ф:"f",х:"h",ц:"c",ч:"c",џ:"dz",ш:"s",
+};
+
+function normalizeIntentText(value) {
+  return [...String(value ?? "").toLowerCase()]
+    .map(ch => CYRILLIC_TO_LATIN[ch] ?? ch)
+    .join("")
+    .replace(/đ/g, "dj")
+    .normalize("NFD")
+    .replace(/\p{M}+/gu, "");
+}
+
+export function isExplicitSpiderCrawlRequest(task) {
+  const text = normalizeIntentText(task).replace(/\s+/g, " ").trim();
+  return /\b(?:crawl(?:ing)?|scrap(?:e|ing)|rept(?:aj|anje|ati)|skini\s+sve\s+stranice|preuzmi\s+sve\s+stranice|skeniraj\s+sajt|crawl\s+site)\b/.test(text) ||
+    /\b(?:use|run|start|invoke|call|pokreni|koristi)\s+(?:the\s+)?(?:spider\s+)?crawler\b/.test(text);
+}
 
 export function normalizeResearchUrl(value) {
   if (typeof value !== "string" || value.length > 2048) return null;

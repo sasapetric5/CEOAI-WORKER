@@ -206,3 +206,49 @@ test("agent gateway falls back to free discovery when Jina cannot read a supplie
     globalThis.fetch = originalFetch;
   }
 });
+
+test("agent gateway routes an explicitly requested crawl to Spider only when operator-enabled", async () => {
+  const originalFetch = globalThis.fetch;
+  const queued = [];
+  let sawQueuedSpiderContext = false;
+  globalThis.fetch = async (url, options) => {
+    if (String(url) !== "https://openrouter.ai/api/v1/chat/completions") throw new Error("Unexpected data provider");
+    const body = JSON.parse(options.body);
+    const synthesis = body.messages[0].content.includes("završni koordinator");
+    if (!synthesis) {
+      const plan = JSON.parse(body.messages[1].content);
+      const context = plan.context?.input?.crawlerContext ?? plan.originalInput?.crawlerContext;
+      sawQueuedSpiderContext = context?.provider === "spider_browser_run" &&
+        context?.status === "queued" && context?.trust === "untrusted_reference";
+    }
+    return Response.json({ choices: [{ message: { content: synthesis
+      ? JSON.stringify({ output: "Spider crawl je stavljen u red." })
+      : JSON.stringify({ type: "final", output: "Spider crawl je stavljen u red." }) } }] });
+  };
+  try {
+    const response = await worker.fetch(await signedRequest({
+      task: "Crawl https://docs.example.com/guide across all pages and research Cloudflare Queues.",
+      input: {},
+      limit: 1,
+    }), environment({
+      SPIDER_AGENT_ROUTING_ENABLED: "true",
+      SPIDER_BROWSER_RUN_ACCOUNT_ID: "0123456789abcdef0123456789abcdef",
+      SPIDER_BROWSER_RUN_TOKEN: "test-spider-token",
+      SPIDER_QUEUE: { async send(message) { queued.push(message); } },
+    }));
+    assert.equal(response.status, 200);
+    const data = await response.json();
+    assert.equal(data.success, true);
+    assert.equal(data.routing.modelIntent, "research");
+    assert.deepEqual(data.routing.modelProviders, ["openrouter-1"]);
+    assert.deepEqual(data.routing.dataProviders, ["spider_browser_run"]);
+    assert.equal(data.routing.spiderJob.status, "queued");
+    assert.equal(queued.length, 1);
+    assert.equal(queued[0].kind, "start");
+    assert.equal(queued[0].url, "https://docs.example.com/guide");
+    assert.equal(sawQueuedSpiderContext, true);
+    assert.equal(data.researchUsed, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

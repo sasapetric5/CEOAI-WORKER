@@ -31,6 +31,11 @@ test("provider failures are sanitized and counted against budget",async()=>{
  await assert.rejects(()=>p.planAgent({agent,skill,context,task:"t",input:{}}),/PROVIDER_QUOTA_EXHAUSTED/);
  assert.equal(p.usage.used,1);
 });
+test("planner reports only the configured providers that actually answered",async()=>{
+ const p=createProviderAgentPlanner({generateText:async()=>({ok:true,text:'{"type":"final","output":"ok"}',providerId:"gemini"})});
+ await p.planAgent({agent,skill,context,task:"t",input:{}});
+ assert.deepEqual(p.usage.providers,["gemini"]);
+});
 test("rejects oversized input before spending model calls",async()=>{
  let calls=0;const p=createProviderAgentPlanner({generateText:async()=>{calls++;return {ok:true,text:'{"type":"final","output":"x"}'};}});
  await assert.rejects(()=>p.planAgent({agent,skill,context,task:"t",input:{blob:"x".repeat(24000)}}),/AGENT_PLAN_CONTEXT_TOO_LARGE/);

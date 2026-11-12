@@ -14,13 +14,14 @@ export function createProviderAgentPlanner({generateText,maxModelCalls=4,intent=
  if(typeof generateText!=="function")throw new TypeError("MODEL_GENERATOR_REQUIRED");
  if(!Number.isSafeInteger(maxModelCalls)||maxModelCalls<1||maxModelCalls>8)throw new TypeError("INVALID_MODEL_CALL_BUDGET");
  if(!Number.isSafeInteger(maxPlanChars)||maxPlanChars<1000||maxPlanChars>16000)throw new TypeError("INVALID_PLAN_CONTEXT_LIMIT");
- let used=0;
+ let used=0;const providers=new Set();
  async function generate(messages,kind){
   if(used>=maxModelCalls)throw new Error("AGENT_MODEL_BUDGET_EXHAUSTED");
   used++;
   let result;
   try{result=await generateText(messages,intent,kind);}catch{throw new Error("AGENT_MODEL_UNAVAILABLE");}
   if(!result||result.ok!==true||typeof result.text!=="string"||!result.text.trim())throw new Error(typeof result?.code==="string"?result.code:"AGENT_MODEL_UNAVAILABLE");
+  if(typeof result.providerId==="string"&&/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(result.providerId))providers.add(result.providerId);
   return result.text.slice(0,MAX_OUTPUT_BYTES);
  }
  async function planAgent({agent,skill,context,task,input,instructionTrust}={}){
@@ -60,5 +61,5 @@ export function createProviderAgentPlanner({generateText,maxModelCalls=4,intent=
   if(typeof parsed.output!=="string"||!parsed.output.trim()||new TextEncoder().encode(parsed.output).byteLength>8000)throw new Error("INVALID_SYNTHESIS_OUTPUT");
   return parsed.output;
  }
- return Object.freeze({planAgent,synthesize,get usage(){return {used,remaining:maxModelCalls-used,limit:maxModelCalls};}});
+ return Object.freeze({planAgent,synthesize,get usage(){return {used,remaining:maxModelCalls-used,limit:maxModelCalls,providers:[...providers]};}});
 }

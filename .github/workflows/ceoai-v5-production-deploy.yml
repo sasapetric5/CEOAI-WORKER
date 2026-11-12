@@ -1,4 +1,4 @@
-name: CEOAI V5.1 production deploy
+name: CEOAI Worker production deploy
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ concurrency:
 jobs:
   verify:
     name: Full verification before deployment
-    if: ${{ inputs.confirm_production == 'deploy' }}
+    if: ${{ github.ref == 'refs/heads/main' && inputs.confirm_production == 'deploy' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -45,19 +45,18 @@ jobs:
         run: |
           set -o pipefail
           npm exec --yes --package wrangler@4.157.0 -- wrangler deploy --dry-run --config wrangler.toml 2>&1 | tee /tmp/ceoai-wrangler-dry-run.log
-          grep -q "RATE_LIMITER" /tmp/ceoai-wrangler-dry-run.log || {
-            echo "::error::RATE_LIMITER binding is missing from Wrangler's resolved configuration."
-            exit 1
-          }
-          grep -q "SPIDER_QUEUE" /tmp/ceoai-wrangler-dry-run.log || {
-            echo "::error::SPIDER_QUEUE binding is missing from Wrangler's resolved configuration."
-            exit 1
-          }
+          for binding in KV_MEMORY RATE_LIMITER SECURITY_DO SPIDER_QUEUE SPIDER_LEDGER WORKFLOW_TASKS CAPABILITY_AUTHORITY; do
+            grep -q "$binding" /tmp/ceoai-wrangler-dry-run.log || {
+              echo "::error::$binding binding is missing from Wrangler's resolved configuration."
+              exit 1
+            }
+          done
 
   deploy:
     name: Deploy existing ceoai-worker Worker
     needs: verify
-    if: ${{ needs.verify.result == 'success' && inputs.confirm_production == 'deploy' }}
+    if: ${{ github.ref == 'refs/heads/main' && needs.verify.result == 'success' && inputs.confirm_production == 'deploy' }}
+    environment: production
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
